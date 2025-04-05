@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware  # Import CORS middleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import aiohttp
@@ -19,6 +20,24 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI()
+
+# Configure CORS
+origins = [
+    "http://localhost",
+    "http://localhost:3000",  # Common React dev server
+    "http://localhost:8080",  # Common dev server
+    "https://your-production-frontend-domain.com",  # Replace with your actual production domain
+    # Add any other domains that need access to your API
+]
+
+# Add CORS middleware to the application
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # List of allowed origins (domains)
+    allow_credentials=True,  # Allow cookies to be included in requests
+    allow_methods=["*"],     # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],     # Allow all headers
+)
 
 # Supabase credentials
 SUPABASE_URL = os.environ.get("SUPABASE_URL","https://zyaobehxpcwxlyljzknw.supabase.co")
@@ -54,6 +73,14 @@ async def analyze_audio(request: AnalysisRequest, background_tasks: BackgroundTa
         "message": f"Analysis started for {len(request.urls)} audio files",
         "submission_id": request.submission_id
     }
+
+# Add a simple health check endpoint
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint to verify API is running
+    """
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 async def process_submission(urls: List[str], submission_id: str):
     """
@@ -213,6 +240,7 @@ async def upload_to_supabase(data: Dict[str, Any], filename: str):
             logger.info(f"Saved results locally to {filename} after error")
         except Exception as local_error:
             logger.error(f"Could not save results anywhere: {str(local_error)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
