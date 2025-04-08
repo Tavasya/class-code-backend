@@ -1,5 +1,7 @@
 fastapi
 uvicorn
-aiohttp
 pydantic
+aiohttp
 supabase
+typing-extensions
+azure_cognitiveservices-speech
