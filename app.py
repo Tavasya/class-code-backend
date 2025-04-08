@@ -30,6 +30,7 @@ origins = [
     "https://class-code-nu.vercel.app",  
     "https://www.class-code-nu.vercel.app",  
     "http://localhost:8080",
+    "http://localhost:8081",
 ]
 
 app.add_middleware(
