@@ -1,0 +1,235 @@
+{
+  "submission_id": "unique_zg78in9",
+  "timestamp": "2025-04-09T22:49:31.212262",
+  "status": "completed",
+  "file_count": 4,
+  "pronunciation_analysis": [
+    {
+      "status": "success",
+      "audio_duration": 3.36,
+      "transcript": "Hello. Hello. Hello. My name is Rex.",
+      "overall_pronunciation_score": 0,
+      "accuracy_score": 0,
+      "fluency_score": 0,
+      "prosody_score": 0,
+      "completeness_score": 0,
+      "critical_errors": [],
+      "filler_words": [],
+      "word_details": [
+        {
+          "word": "hello",
+          "offset": 0.39,
+          "duration": 1.17,
+          "accuracy_score": 91.0,
+          "error_type": "None"
+        },
+        {
+          "word": "hello",
+          "offset": 1.59,
+          "duration": 0.43,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "hello",
+          "offset": 2.03,
+          "duration": 0.62,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "my",
+          "offset": 2.68,
+          "duration": 0.14,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "name",
+          "offset": 2.83,
+          "duration": 0.27,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "is",
+          "offset": 3.11,
+          "duration": 0.15,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "rex",
+          "offset": 3.27,
+          "duration": 0.48,
+          "accuracy_score": 94.0,
+          "error_type": "None"
+        }
+      ],
+      "improvement_suggestion": "Practice enunciating each vowel sound clearly, particularly the \"e\" in \"Hello\" and the \"a\" in \"name,\" to enhance clarity and reduce any slurring between words.",
+      "url": "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/bf230441-ab07-4c99-b355-1358aa5c6b5e/44/0_1744264156570.webm"
+    },
+    {
+      "status": "success",
+      "audio_duration": 1.93,
+      "transcript": "Hello. Hello. My name is Rex.",
+      "overall_pronunciation_score": 0,
+      "accuracy_score": 0,
+      "fluency_score": 0,
+      "prosody_score": 0,
+      "completeness_score": 0,
+      "critical_errors": [],
+      "filler_words": [],
+      "word_details": [
+        {
+          "word": "hello",
+          "offset": 0.44,
+          "duration": 0.5,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "hello",
+          "offset": 0.95,
+          "duration": 0.42,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "my",
+          "offset": 1.38,
+          "duration": 0.15,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "name",
+          "offset": 1.54,
+          "duration": 0.19,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "is",
+          "offset": 1.74,
+          "duration": 0.17,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "rex",
+          "offset": 1.92,
+          "duration": 0.45,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        }
+      ],
+      "improvement_suggestion": "Practice enunciating each word clearly by exaggerating the vowel sounds and consonant endings, especially in the name \"Rex,\" to enhance clarity.",
+      "url": "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/bf230441-ab07-4c99-b355-1358aa5c6b5e/44/1_1744264161198.webm"
+    },
+    {
+      "status": "success",
+      "audio_duration": 1.61,
+      "transcript": "Testing. Testing 1-2 Three.",
+      "overall_pronunciation_score": 0,
+      "accuracy_score": 0,
+      "fluency_score": 0,
+      "prosody_score": 0,
+      "completeness_score": 0,
+      "critical_errors": [],
+      "filler_words": [],
+      "word_details": [
+        {
+          "word": "testing",
+          "offset": 0.22,
+          "duration": 0.52,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "testing",
+          "offset": 0.75,
+          "duration": 0.43,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "one",
+          "offset": 1.19,
+          "duration": 0.15,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "two",
+          "offset": 1.35,
+          "duration": 0.21,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "three",
+          "offset": 1.57,
+          "duration": 0.26,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        }
+      ],
+      "improvement_suggestion": "Practice enunciating each word clearly, particularly the numbers, to ensure they are distinct and easily understood.",
+      "url": "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/bf230441-ab07-4c99-b355-1358aa5c6b5e/44/2_1744264164572.webm"
+    },
+    {
+      "status": "success",
+      "audio_duration": 1.53,
+      "transcript": "Testing. Testing 1-2 Three.",
+      "overall_pronunciation_score": 0,
+      "accuracy_score": 0,
+      "fluency_score": 0,
+      "prosody_score": 0,
+      "completeness_score": 0,
+      "critical_errors": [],
+      "filler_words": [],
+      "word_details": [
+        {
+          "word": "testing",
+          "offset": 0.31,
+          "duration": 0.47,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "testing",
+          "offset": 0.79,
+          "duration": 0.41,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "one",
+          "offset": 1.21,
+          "duration": 0.19,
+          "accuracy_score": 97.0,
+          "error_type": "None"
+        },
+        {
+          "word": "two",
+          "offset": 1.41,
+          "duration": 0.15,
+          "accuracy_score": 100.0,
+          "error_type": "None"
+        },
+        {
+          "word": "three",
+          "offset": 1.57,
+          "duration": 0.27,
+          "accuracy_score": 85.0,
+          "error_type": "None"
+        }
+      ],
+      "improvement_suggestion": "Practice enunciating the numbers \"1-2-Three\" clearly, ensuring each digit is pronounced distinctly to enhance clarity and avoid blending sounds.",
+      "url": "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/bf230441-ab07-4c99-b355-1358aa5c6b5e/44/3_1744264168601.webm"
+    }
+  ],
+  "grammar_analysis": {},
+  "vocabulary_suggestions": {}
+}
