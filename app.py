@@ -14,6 +14,7 @@ import uvicorn
 # Import our modules
 import pronoun
 import grammar
+import fluency
 
 # Setup logging
 logging.basicConfig(
@@ -177,7 +178,8 @@ async def process_submission(urls: List[str], submission_id: str):
         "file_count": len(urls),
         "pronunciation_analysis": [],
         "grammar_analysis": {},
-        "vocabulary_suggestions": {}
+        "vocabulary_suggestions": {},
+        "fluency_coherence_analysis": {}  # New section for fluency/coherence
     }
     
     try:
@@ -190,15 +192,32 @@ async def process_submission(urls: List[str], submission_id: str):
             
             try:
                 temp_file = await download_audio(url)
+                
+                # 1. Pronunciation analysis (existing)
                 pronun_result = await pronoun.analyze_audio_file(temp_file)
                 pronun_result["url"] = url
                 results["pronunciation_analysis"].append(pronun_result)
                 
                 transcript = pronun_result.get("transcript", "")
                 if transcript:
+                    # 2. Grammar analysis (existing)
                     gram_result = await grammar.analyze_grammar(transcript)
                     results["grammar_analysis"].update(gram_result["grammar_corrections"])
                     results["vocabulary_suggestions"].update(gram_result["vocabulary_suggestions"])
+                    
+                    # 3. NEW: Fluency and coherence analysis
+                    # Get word details from pronunciation analysis if available
+                    word_details = pronun_result.get("word_details", [])
+                    
+                    # Import the new fluency module
+                    import fluency
+                    
+                    # Run fluency and coherence analysis
+                    fluency_result = await fluency.analyze_fluency_coherence(transcript, word_details)
+                    
+                    # Add a unique identifier key based on URL or index
+                    fluency_key = f"recording_{i+1}"
+                    results["fluency_coherence_analysis"][fluency_key] = fluency_result
                 
             except Exception as e:
                 logger.error(f"Error processing {url}: {str(e)}")
@@ -262,7 +281,7 @@ async def health_check():
     supabase_status = "connected" if supabase else "not connected"
     
     return {
-        "status": "healthy",
+        "status": "healthyTESTTTTT",
         "timestamp": datetime.now().isoformat(),
         "environment": os.environ.get("ENVIRONMENT", "development"),
         "supabase": supabase_status
@@ -288,6 +307,23 @@ async def test_upload():
         return {
             "status": "error",
             "message": "Test upload failed. Check logs for details."
+        }
+        
+@app.get("/test-fluency")
+async def test_fluency():
+    """Test fluency module functionality"""
+    try:
+        test_transcript = "This is a test transcript to check if the fluency module is working properly."
+        result = await fluency.analyze_fluency_coherence(test_transcript)
+        return {
+            "status": "success",
+            "message": "Fluency module is working correctly",
+            "test_result": result
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error testing fluency module: {str(e)}"
         }
 
 if __name__ == "__main__":
