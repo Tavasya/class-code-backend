@@ -179,6 +179,7 @@ async def process_submission(urls: List[str], submission_id: str):
         "pronunciation_analysis": [],
         "grammar_analysis": {},
         "vocabulary_suggestions": {},
+        "lexical_resources": {},
         "fluency_coherence_analysis": {}  # New section for fluency/coherence
     }
     
@@ -204,7 +205,7 @@ async def process_submission(urls: List[str], submission_id: str):
                     gram_result = await grammar.analyze_grammar(transcript)
                     results["grammar_analysis"].update(gram_result["grammar_corrections"])
                     results["vocabulary_suggestions"].update(gram_result["vocabulary_suggestions"])
-                    
+                    results["lexical_resources"].update(gram_result["lexical_resources"])
                     # 3. NEW: Fluency and coherence analysis
                     # Get word details from pronunciation analysis if available
                     word_details = pronun_result.get("word_details", [])
