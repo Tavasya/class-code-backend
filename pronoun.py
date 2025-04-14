@@ -248,7 +248,6 @@ async def analyze_audio_file(audio_file: str) -> Dict[str, Any]:
 
 async def analyze_pronunciation(audio_file: str, reference_text: str) -> Dict[str, Any]:
     """
-<<<<<<< Updated upstream
     Analyze pronunciation using Azure Speech Services with a provided reference text
     
     Args:
@@ -257,9 +256,6 @@ async def analyze_pronunciation(audio_file: str, reference_text: str) -> Dict[st
         
     Returns:
         Pronunciation assessment results
-=======
-    Analyze pronunciation using Azure Speech Services with continuous recognition
->>>>>>> Stashed changes
     """
     try:
         # Set up the Speech config
@@ -281,131 +277,60 @@ async def analyze_pronunciation(audio_file: str, reference_text: str) -> Dict[st
         recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
         pron_config.apply_to(recognizer)
         
-
-        # Setup for continuous recognition
-        done = False
-        all_results = []
-        full_transcript = ""
-        all_words = []
+        # Run recognition
+        logger.info(f"Starting pronunciation assessment on {audio_file} with reference text")
+        result = recognizer.recognize_once()
         
-        # Define callback functions
-        def recognized_cb(evt):
-            nonlocal all_results, full_transcript, all_words
-            
-            # Log recognition
-            logger.info(f"Recognition result: {evt.result.text}")
+        # Process result based on recognition outcome
+        if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+            logger.info("Speech recognized successfully")
             
             # Get the detailed JSON result
-            json_result = evt.result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
+            json_result = result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
             
-
-            if json_result:
-                # Parse the JSON result
-                azure_result = json.loads(json_result)
-                
-                # Store the result
-                all_results.append(azure_result)
-                
-                # Append to full transcript
-                if evt.result.text:
-                    full_transcript += " " + evt.result.text
-                
-                # Extract words
-                if "NBest" in azure_result and azure_result["NBest"]:
-                    best_result = azure_result["NBest"][0]
-                    words = best_result.get("Words", [])
-                    all_words.extend(words)
+            if not json_result:
+                return {
+                    "status": "error",
+                    "error": "No pronunciation assessment result returned",
+                    "transcript": reference_text  # Use AssemblyAI transcript
+                }
             
-        def stop_cb(evt):
-            nonlocal done
-            logger.info(f"Recognition stopped: {evt}")
-            done = True
+            # Parse the JSON result
+            azure_result = json.loads(json_result)
             
-        def canceled_cb(evt):
-            nonlocal done
-            logger.info(f"Recognition canceled: {evt.cancellation_details.reason}")
-            if evt.cancellation_details.reason == speechsdk.CancellationReason.Error:
-                logger.error(f"Error details: {evt.cancellation_details.error_details}")
-            done = True
-        
-        # Connect callbacks
-        recognizer.recognized.connect(recognized_cb)
-        recognizer.session_stopped.connect(stop_cb)
-        recognizer.canceled.connect(canceled_cb)
-        
-        # Start continuous recognition
-        logger.info(f"Starting continuous speech recognition on {audio_file}")
-        recognizer.start_continuous_recognition()
-        
-        # Wait for recognition to complete or timeout
-        import asyncio
-        timeout_seconds = 60  # Adjust this based on your expected audio length
-        start_time = asyncio.get_event_loop().time()
-        
-        while not done:
-            await asyncio.sleep(0.5)
-            elapsed = asyncio.get_event_loop().time() - start_time
+            # Process the results
+            processed_result = process_pronunciation_result(azure_result, reference_text)
             
-            # Stop if we've reached the timeout
-            if elapsed > timeout_seconds:
-                logger.info(f"Recognition timed out after {timeout_seconds} seconds")
-                done = True
-                
-        # Clean up
-        recognizer.stop_continuous_recognition()
-        
-        # If no results, return error
-        if not all_results:
+            # Get improvement suggestion
+            improvement_suggestion = await get_improvement_suggestion(
+                processed_result["transcript"],
+                processed_result["critical_errors"],
+                processed_result["filler_words"]
+            )
+            
+            processed_result["improvement_suggestion"] = improvement_suggestion
+            return processed_result
+            
+        elif result.reason == speechsdk.ResultReason.NoMatch:
+            logger.warning(f"No speech recognized: {result.no_match_details}")
             return {
                 "status": "error",
-                "error": "No speech recognized",
-                "transcript": ""
+                "error": f"No speech recognized: {result.no_match_details.reason}",
+                "transcript": reference_text  # Use AssemblyAI transcript
             }
-        
-        # Process results
-        full_transcript = full_transcript.strip()
-        
-        # Create a combined result structure similar to a single recognition result
-        combined_result = {
-            "DisplayText": full_transcript,
-            "Duration": sum(r.get("Duration", 0) for r in all_results),
-            "NBest": [{"Words": all_words}]
-        }
-        
-        # If we have pronunciation scores, combine them
-        if all_results and "PronunciationAssessment" in all_results[0]:
-            # Average the scores from all segments
-            scores = [r.get("PronunciationAssessment", {}) for r in all_results]
-            valid_scores = [s for s in scores if s]
             
-            if valid_scores:
-                avg_pron_score = sum(s.get("PronScore", 0) for s in valid_scores) / len(valid_scores)
-                avg_accuracy = sum(s.get("AccuracyScore", 0) for s in valid_scores) / len(valid_scores)
-                avg_fluency = sum(s.get("FluencyScore", 0) for s in valid_scores) / len(valid_scores)
-                avg_prosody = sum(s.get("ProsodyScore", 0) for s in valid_scores) / len(valid_scores)
-                avg_completeness = sum(s.get("CompletenessScore", 0) for s in valid_scores) / len(valid_scores)
-                
-                combined_result["PronunciationAssessment"] = {
-                    "PronScore": avg_pron_score,
-                    "AccuracyScore": avg_accuracy,
-                    "FluencyScore": avg_fluency,
-                    "ProsodyScore": avg_prosody,
-                    "CompletenessScore": avg_completeness
-                }
-        
-        # Process the combined results
-        processed_result = process_pronunciation_result(combined_result)
-        
-        # Get improvement suggestion
-        improvement_suggestion = await get_improvement_suggestion(
-            processed_result["transcript"],
-            processed_result["critical_errors"],
-            processed_result["filler_words"]
-        )
-        
-        processed_result["improvement_suggestion"] = improvement_suggestion
-        return processed_result
-
+        elif result.reason == speechsdk.ResultReason.Canceled:
+            cancellation = result.cancellation_details
+            logger.error(f"Speech recognition canceled: {cancellation.reason}")
+            if cancellation.reason == speechsdk.CancellationReason.Error:
+                logger.error(f"Error details: {cancellation.error_details}")
+            
+            return {
+                "status": "error",
+                "error": f"Recognition canceled: {cancellation.reason}, {cancellation.error_details if hasattr(cancellation, 'error_details') else ''}",
+                "transcript": reference_text  # Use AssemblyAI transcript
+            }
+            
     except Exception as e:
         logger.exception("Error in analyze_pronunciation")
         return {
@@ -414,8 +339,7 @@ async def analyze_pronunciation(audio_file: str, reference_text: str) -> Dict[st
             "transcript": reference_text  # Use AssemblyAI transcript
         }
 
-def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]:
-
+def process_pronunciation_result(azure_result, reference_text):
     """
     Process Azure Speech pronunciation assessment result with AssemblyAI transcript
     
