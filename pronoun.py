@@ -7,6 +7,8 @@ import aiohttp
 import re
 import subprocess
 import tempfile
+import asyncio
+import time
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +17,11 @@ logger = logging.getLogger(__name__)
 # Azure Speech config - retrieve from environment variables for security
 SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "CPhzqHVeoa5YnFTLqimhoVB8tiM0aYdtnAnumfNJtVkv3AzHV18PJQQJ99BDACYeBjFXJ3w3AAAYACOGaN2q")
 REGION = os.environ.get("AZURE_SPEECH_REGION", "eastus")
+
+# AssemblyAI API config
+ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY", "793e69da37b04250a9473ff974eb7157")
+ASSEMBLYAI_UPLOAD_URL = "https://api.assemblyai.com/v2/upload"
+ASSEMBLYAI_TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript"
 
 # OpenAI API config for improvement suggestions
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
@@ -66,15 +73,122 @@ async def convert_webm_to_wav(webm_file: str) -> str:
         logger.error(f"Error in conversion: {str(e)}")
         raise Exception(f"Error converting WebM to WAV: {str(e)}")
 
+async def upload_to_assemblyai(file_path: str) -> str:
+    """
+    Upload an audio file to AssemblyAI
+    
+    Args:
+        file_path: Path to the audio file
+        
+    Returns:
+        The URL of the uploaded file on AssemblyAI's servers
+    """
+    logger.info(f"Uploading file to AssemblyAI: {file_path}")
+    
+    headers = {
+        "authorization": ASSEMBLYAI_API_KEY
+    }
+    
+    try:
+        with open(file_path, 'rb') as audio_file:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    ASSEMBLYAI_UPLOAD_URL,
+                    headers=headers,
+                    data=audio_file
+                ) as response:
+                    if response.status == 200:
+                        response_json = await response.json()
+                        upload_url = response_json.get('upload_url')
+                        logger.info(f"File uploaded successfully: {upload_url}")
+                        return upload_url
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"AssemblyAI upload error: {response.status}, {error_text}")
+                        raise Exception(f"AssemblyAI upload failed: {error_text}")
+    
+    except Exception as e:
+        logger.exception("Error uploading to AssemblyAI")
+        raise Exception(f"Failed to upload file to AssemblyAI: {str(e)}")
+
+async def get_assemblyai_transcript(audio_url: str) -> Dict[str, Any]:
+    """
+    Submit and retrieve a transcript from AssemblyAI
+    
+    Args:
+        audio_url: URL of the uploaded audio file
+        
+    Returns:
+        The transcript and related data
+    """
+    headers = {
+        "authorization": ASSEMBLYAI_API_KEY,
+        "content-type": "application/json"
+    }
+    
+    # Request body for the transcript
+    data = {
+        "audio_url": audio_url,
+        "speaker_labels": True,  # Optional: identify different speakers
+        "punctuate": True,
+        "format_text": True
+    }
+    
+    try:
+        # Submit the transcription request
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                ASSEMBLYAI_TRANSCRIPT_URL,
+                json=data,
+                headers=headers
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"AssemblyAI transcription request error: {response.status}, {error_text}")
+                    raise Exception(f"AssemblyAI transcription request failed: {error_text}")
+                
+                transcript_response = await response.json()
+                transcript_id = transcript_response['id']
+                logger.info(f"Transcription request submitted: {transcript_id}")
+                
+                # Poll for the transcript completion
+                polling_endpoint = f"{ASSEMBLYAI_TRANSCRIPT_URL}/{transcript_id}"
+                
+                while True:
+                    await asyncio.sleep(3)  # Poll every 3 seconds
+                    
+                    async with session.get(polling_endpoint, headers=headers) as polling_response:
+                        if polling_response.status != 200:
+                            error_text = await polling_response.text()
+                            logger.error(f"AssemblyAI polling error: {polling_response.status}, {error_text}")
+                            raise Exception(f"AssemblyAI polling failed: {error_text}")
+                        
+                        polling_result = await polling_response.json()
+                        status = polling_result['status']
+                        
+                        if status == 'completed':
+                            logger.info(f"Transcription completed: {transcript_id}")
+                            return polling_result
+                        elif status == 'error':
+                            error_message = polling_result.get('error', 'Unknown error')
+                            logger.error(f"AssemblyAI transcription error: {error_message}")
+                            raise Exception(f"AssemblyAI transcription failed: {error_message}")
+                        
+                        logger.info(f"Transcription in progress: {status}")
+    
+    except Exception as e:
+        logger.exception("Error getting transcript from AssemblyAI")
+        raise Exception(f"Failed to get transcript from AssemblyAI: {str(e)}")
+
 async def analyze_audio_file(audio_file: str) -> Dict[str, Any]:
     """
-    Process an audio file, handling WebM conversion if needed
+    Process an audio file using AssemblyAI for transcription and Azure for pronunciation assessment
     
     Args:
         audio_file: Path to the audio file
         
     Returns:
-        Pronunciation analysis results
+        Pronunciation analysis results with transcript from AssemblyAI
     """
     temp_wav_file = None
     
@@ -83,12 +197,45 @@ async def analyze_audio_file(audio_file: str) -> Dict[str, Any]:
         if audio_file.lower().endswith('.webm'):
             logger.info(f"Detected WebM file, converting: {audio_file}")
             temp_wav_file = await convert_webm_to_wav(audio_file)
-            result = await analyze_pronunciation(temp_wav_file)
+            file_to_process = temp_wav_file
         else:
-            # Directly analyze WAV files
-            result = await analyze_pronunciation(audio_file)
-            
-        return result
+            file_to_process = audio_file
+        
+        # Step 1: Upload to AssemblyAI and get transcript
+        upload_url = await upload_to_assemblyai(file_to_process)
+        transcript_result = await get_assemblyai_transcript(upload_url)
+        
+        # Extract transcript text
+        transcript_text = transcript_result.get('text', '')
+        
+        if not transcript_text:
+            return {
+                "status": "error",
+                "error": "AssemblyAI returned empty transcript",
+                "transcript": ""
+            }
+        
+        logger.info(f"AssemblyAI transcript: {transcript_text}")
+        
+        # Step 2: Use Azure for pronunciation assessment with the AssemblyAI transcript
+        pronunciation_result = await analyze_pronunciation(file_to_process, transcript_text)
+        
+        # Add AssemblyAI detailed data to the result
+        pronunciation_result["assemblyai_data"] = {
+            "words": transcript_result.get("words", []),
+            "utterances": transcript_result.get("utterances", []),
+            "confidence": transcript_result.get("confidence")
+        }
+        
+        return pronunciation_result
+        
+    except Exception as e:
+        logger.exception(f"Error in analyze_audio_file: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "transcript": ""
+        }
         
     finally:
         # Clean up temporary WAV file if created
@@ -99,18 +246,25 @@ async def analyze_audio_file(audio_file: str) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Failed to clean up temporary file {temp_wav_file}: {str(e)}")
 
-async def analyze_pronunciation(audio_file: str) -> Dict[str, Any]:
+async def analyze_pronunciation(audio_file: str, reference_text: str) -> Dict[str, Any]:
     """
-    Analyze pronunciation using Azure Speech Services
+    Analyze pronunciation using Azure Speech Services with a provided reference text
+    
+    Args:
+        audio_file: Path to the audio file
+        reference_text: Transcript text from AssemblyAI to use as reference
+        
+    Returns:
+        Pronunciation assessment results
     """
     try:
         # Set up the Speech config
         speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
         audio_config = speechsdk.AudioConfig(filename=audio_file)
         
-        # Configure pronunciation assessment
+        # Configure pronunciation assessment with the AssemblyAI reference text
         pron_config = speechsdk.PronunciationAssessmentConfig(
-            reference_text="",  # Empty for unscripted assessment
+            reference_text=reference_text,  # Use transcript from AssemblyAI
             grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
             granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
             enable_miscue=True
@@ -124,7 +278,7 @@ async def analyze_pronunciation(audio_file: str) -> Dict[str, Any]:
         pron_config.apply_to(recognizer)
         
         # Run recognition
-        logger.info(f"Starting speech recognition on {audio_file}")
+        logger.info(f"Starting pronunciation assessment on {audio_file} with reference text")
         result = recognizer.recognize_once()
         
         # Process result based on recognition outcome
@@ -138,14 +292,14 @@ async def analyze_pronunciation(audio_file: str) -> Dict[str, Any]:
                 return {
                     "status": "error",
                     "error": "No pronunciation assessment result returned",
-                    "transcript": result.text
+                    "transcript": reference_text  # Use AssemblyAI transcript
                 }
             
             # Parse the JSON result
             azure_result = json.loads(json_result)
             
             # Process the results
-            processed_result = process_pronunciation_result(azure_result)
+            processed_result = process_pronunciation_result(azure_result, reference_text)
             
             # Get improvement suggestion
             improvement_suggestion = await get_improvement_suggestion(
@@ -162,7 +316,7 @@ async def analyze_pronunciation(audio_file: str) -> Dict[str, Any]:
             return {
                 "status": "error",
                 "error": f"No speech recognized: {result.no_match_details.reason}",
-                "transcript": ""
+                "transcript": reference_text  # Use AssemblyAI transcript
             }
             
         elif result.reason == speechsdk.ResultReason.Canceled:
@@ -174,7 +328,7 @@ async def analyze_pronunciation(audio_file: str) -> Dict[str, Any]:
             return {
                 "status": "error",
                 "error": f"Recognition canceled: {cancellation.reason}, {cancellation.error_details if hasattr(cancellation, 'error_details') else ''}",
-                "transcript": ""
+                "transcript": reference_text  # Use AssemblyAI transcript
             }
             
     except Exception as e:
@@ -182,21 +336,23 @@ async def analyze_pronunciation(audio_file: str) -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "transcript": ""
+            "transcript": reference_text  # Use AssemblyAI transcript
         }
 
-def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]:
+def process_pronunciation_result(azure_result, reference_text):
     """
-    Process Azure Speech pronunciation assessment result
-    """
-    # Extract transcript
-    transcript = azure_result.get("DisplayText", "")
+    Process Azure Speech pronunciation assessment result with AssemblyAI transcript
     
-    # Initialize result structure
+    Args:
+        azure_result: Raw Azure pronunciation assessment result
+        reference_text: Reference text from AssemblyAI
+    """
+    # Initialize result structure with the AssemblyAI transcript
     processed_result = {
         "status": "success",
         "audio_duration": azure_result.get("Duration", 0) / 10000000,  # Convert to seconds
-        "transcript": transcript,
+        "transcript": reference_text,  # Use AssemblyAI transcript
+        "azure_transcript": azure_result.get("DisplayText", ""),  # Still keep Azure's transcript
         "overall_pronunciation_score": 0,
         "accuracy_score": 0,
         "fluency_score": 0,
@@ -226,8 +382,23 @@ def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]
         filler_pattern = re.compile(r'^(uh|um|uhh|uhm|er|erm|hmm)$', re.IGNORECASE)
 
         
+        # Keywords to filter out
+        filter_keywords = ["omission", "insertion"]
+        
         for word in words:
             word_text = word.get("Word", "").lower()
+            error_type = word.get("PronunciationAssessment", {}).get("ErrorType", "None")
+            
+            # Skip any entries containing the filter keywords in either word text or error type
+            should_skip = False
+            for keyword in filter_keywords:
+                if keyword in word_text.lower() or keyword in error_type.lower():
+                    should_skip = True
+                    break
+                    
+            if should_skip:
+                continue
+                
             assessment = word.get("PronunciationAssessment", {})
             accuracy_score = assessment.get("AccuracyScore", 0)
             
@@ -241,19 +412,27 @@ def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]
                 "offset": offset_seconds,
                 "duration": duration_seconds,
                 "accuracy_score": accuracy_score,
-                "error_type": assessment.get("ErrorType", "None")
+                "error_type": error_type
             }
             
             processed_result["word_details"].append(word_detail)
             
             # Check for critical errors (accuracy score < 60)
+            # Also make sure this doesn't contain any filtered keywords
             if accuracy_score < 60:
-                processed_result["critical_errors"].append({
-                    "word": word_text,
-                    "score": accuracy_score,
-                    "timestamp": offset_seconds,
-                    "duration": duration_seconds
-                })
+                contains_filter_keyword = False
+                for keyword in filter_keywords:
+                    if keyword in word_text.lower() or keyword in error_type.lower():
+                        contains_filter_keyword = True
+                        break
+                
+                if not contains_filter_keyword:
+                    processed_result["critical_errors"].append({
+                        "word": word_text,
+                        "score": accuracy_score,
+                        "timestamp": offset_seconds,
+                        "duration": duration_seconds
+                    })
             
             # Check for filler words/sounds
             if filler_pattern.match(word_text):
@@ -263,10 +442,36 @@ def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]
                     "duration": duration_seconds
                 })
     
-    
-    logger.info(f"Raw Azure result: {json.dumps(azure_result, indent=2)}")
-    return processed_result
 
+    # Additional filter to ensure no filtered entries slip through
+    filtered_critical_errors = []
+    for error in processed_result["critical_errors"]:
+        contains_filter_keyword = False
+        for keyword in filter_keywords:
+            if keyword in error["word"].lower():
+                contains_filter_keyword = True
+                break
+        
+        if not contains_filter_keyword:
+            filtered_critical_errors.append(error)
+    
+    processed_result["critical_errors"] = filtered_critical_errors
+    
+    filtered_word_details = []
+    for detail in processed_result["word_details"]:
+        contains_filter_keyword = False
+        for keyword in filter_keywords:
+            if keyword in detail["word"].lower() or keyword in detail["error_type"].lower():
+                contains_filter_keyword = True
+                break
+        
+        if not contains_filter_keyword:
+            filtered_word_details.append(detail)
+    
+    processed_result["word_details"] = filtered_word_details
+    
+
+    return processed_result
 async def get_improvement_suggestion(transcript: str, critical_errors: List[Dict], filler_words: List[Dict]) -> str:
     """
     Get a concise suggestion for pronunciation improvement using an LLM
