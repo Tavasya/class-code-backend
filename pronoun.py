@@ -363,13 +363,15 @@ def process_pronunciation_result(azure_result, reference_text):
         "word_details": []
     }
     
-    # Extract overall scores
-    pronunciation_assessment = azure_result.get("PronunciationAssessment", {})
-    processed_result["overall_pronunciation_score"] = pronunciation_assessment.get("PronScore", 0)
-    processed_result["accuracy_score"] = pronunciation_assessment.get("AccuracyScore", 0)
-    processed_result["fluency_score"] = pronunciation_assessment.get("FluencyScore", 0)
-    processed_result["prosody_score"] = pronunciation_assessment.get("ProsodyScore", 0)
-    processed_result["completeness_score"] = pronunciation_assessment.get("CompletenessScore", 0)
+    # Extract overall scores from NBest[0]
+    if "NBest" in azure_result and azure_result["NBest"]:
+        best_result = azure_result["NBest"][0]
+        pronunciation_assessment = best_result.get("PronunciationAssessment", {})
+        processed_result["overall_pronunciation_score"] = pronunciation_assessment.get("PronScore", 0)
+        processed_result["accuracy_score"] = pronunciation_assessment.get("AccuracyScore", 0)
+        processed_result["fluency_score"] = pronunciation_assessment.get("FluencyScore", 0)
+        processed_result["prosody_score"] = pronunciation_assessment.get("ProsodyScore", 0)
+        processed_result["completeness_score"] = pronunciation_assessment.get("CompletenessScore", 0)
     
     # Process word-level details
     if "NBest" in azure_result and azure_result["NBest"]:
@@ -378,6 +380,7 @@ def process_pronunciation_result(azure_result, reference_text):
         
         # Track filler sounds and critical errors
         filler_pattern = re.compile(r'^(uh|um|uhh|uhm|er|erm|hmm)$', re.IGNORECASE)
+
         
         # Keywords to filter out
         filter_keywords = ["omission", "insertion"]
@@ -439,6 +442,7 @@ def process_pronunciation_result(azure_result, reference_text):
                     "duration": duration_seconds
                 })
     
+
     # Additional filter to ensure no filtered entries slip through
     filtered_critical_errors = []
     for error in processed_result["critical_errors"]:
@@ -466,6 +470,7 @@ def process_pronunciation_result(azure_result, reference_text):
     
     processed_result["word_details"] = filtered_word_details
     
+
     return processed_result
 async def get_improvement_suggestion(transcript: str, critical_errors: List[Dict], filler_words: List[Dict]) -> str:
     """
