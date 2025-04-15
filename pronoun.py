@@ -207,13 +207,15 @@ def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]
         "word_details": []
     }
     
-    # Extract overall scores
-    pronunciation_assessment = azure_result.get("PronunciationAssessment", {})
-    processed_result["overall_pronunciation_score"] = pronunciation_assessment.get("PronScore", 0)
-    processed_result["accuracy_score"] = pronunciation_assessment.get("AccuracyScore", 0)
-    processed_result["fluency_score"] = pronunciation_assessment.get("FluencyScore", 0)
-    processed_result["prosody_score"] = pronunciation_assessment.get("ProsodyScore", 0)
-    processed_result["completeness_score"] = pronunciation_assessment.get("CompletenessScore", 0)
+    # Extract overall scores from NBest[0]
+    if "NBest" in azure_result and azure_result["NBest"]:
+        best_result = azure_result["NBest"][0]
+        pronunciation_assessment = best_result.get("PronunciationAssessment", {})
+        processed_result["overall_pronunciation_score"] = pronunciation_assessment.get("PronScore", 0)
+        processed_result["accuracy_score"] = pronunciation_assessment.get("AccuracyScore", 0)
+        processed_result["fluency_score"] = pronunciation_assessment.get("FluencyScore", 0)
+        processed_result["prosody_score"] = pronunciation_assessment.get("ProsodyScore", 0)
+        processed_result["completeness_score"] = pronunciation_assessment.get("CompletenessScore", 0)
     
     # Process word-level details
     if "NBest" in azure_result and azure_result["NBest"]:
@@ -222,6 +224,7 @@ def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]
         
         # Track filler sounds and critical errors
         filler_pattern = re.compile(r'^(uh|um|uhh|uhm|er|erm|hmm)$', re.IGNORECASE)
+
         
         for word in words:
             word_text = word.get("Word", "").lower()
@@ -260,6 +263,8 @@ def process_pronunciation_result(azure_result: Dict[str, Any]) -> Dict[str, Any]
                     "duration": duration_seconds
                 })
     
+    
+    logger.info(f"Raw Azure result: {json.dumps(azure_result, indent=2)}")
     return processed_result
 
 async def get_improvement_suggestion(transcript: str, critical_errors: List[Dict], filler_words: List[Dict]) -> str:
