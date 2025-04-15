@@ -231,23 +231,30 @@ async def check_grammar(sentences: List[str]) -> List[List[Dict[str, str]]]:
     
     try:
         # Batch analysis for efficiency
-        prompt = """
-You are an expert in English grammar and spoken communication. Analyze the following transcript, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
+        prompt = prompt = """
+You are an expert in analyzing spoken English grammar. Analyze the following transcript from a spoken response, focusing only on actual grammar mistakes that would be considered errors even in casual spoken American English.
 
-Your job is to:
-- Detect and correct grammar mistakes related to:
-  1. Subject-verb agreement  
-  2. Verb tense consistency  
-  3. Article usage (a, an, the)  
-  4. Singular/plural form  
-  5. Word order and sentence structure  
-  6. Preposition use  
-  7. Sentence completeness (fragments, run-ons)
+Important: Since this is transcribed speech, IGNORE:
+- Disfluencies (e.g., "um", "uh") and filler words
+- Minor punctuation or capitalization issues
+- Natural speech patterns like contractions ("gonna", "wanna")
+- Sentence fragments that are normal in conversation
+- Minor word repetitions or self-corrections
+- Regional speech patterns or dialects
+
+ONLY focus on clear grammar mistakes that would be noticed in everyday speech:
+1. Subject-verb agreement (e.g., "he don't" instead of "he doesn't")
+2. Incorrect verb tenses (e.g., "yesterday I go" instead of "yesterday I went")
+3. Missing or wrong articles when they affect meaning
+4. Incorrect plural/singular forms
+5. Word order that causes confusion
+6. Preposition errors that sound unnatural to native speakers
+7. Run-on sentences that create confusion
 
 Provide a list of corrections for each sentence in **structured JSON format**, even if no corrections are needed (return an empty array for those). Each correction should include:
 - "original_phrase": the problematic phrase from the sentence  
 - "suggested_correction": the corrected version  
-- "explanation": a brief, clear explanation of the issue
+- "explanation": a brief, clear explanation of why this would be considered an error even in casual spoken American English
 
 Output format:
 [
