@@ -33,6 +33,7 @@ origins = [
     "https://www.class-code-nu.vercel.app",  
     "http://localhost:8080",
     "http://localhost:8081",
+    "https://app.nativespeaking.ai",
 ]
 
 app.add_middleware(
