@@ -255,7 +255,7 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
         """
     
     prompt = f"""
-    You are an expert in speech assessment focusing on fluency and coherence. Analyze the following transcript from a language learner:
+    You are an expert in speech assessment focusing on fluency and coherence. Answer in 2nd person. Analyze the following transcript from a language learner:
     
     "{transcript}"
     
