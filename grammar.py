@@ -262,16 +262,23 @@ async def check_grammar(sentences: List[str]) -> List[List[Dict[str, str]]]:
     
     try:
         # Batch analysis for efficiency
-        prompt = prompt = """
+        prompt = """
 You are an expert in analyzing spoken English grammar. Analyze the following transcript from a spoken response, focusing only on actual grammar mistakes that would be considered errors even in casual spoken American English.
 
 Important: Since this is transcribed speech, IGNORE:
+- Article mistakes (a/an/the) unless they completely change meaning
+- Minor spelling variations that don't affect understanding
+- Punctuation and capitalization
+- Sentence fragments if meaning is clear
+- Common learner mistakes that don't affect meaning
+- Simple verb form errors that don't change timeframe
+- Basic preposition errors that don't affect clarity
 - Disfluencies (e.g., "um", "uh") and filler words
-- Minor punctuation or capitalization issues
 - Natural speech patterns like contractions ("gonna", "wanna")
-- Sentence fragments that are normal in conversation
 - Minor word repetitions or self-corrections
 - Regional speech patterns or dialects
+- Simple run-on sentences that are normal in conversation
+- Hyphenation errors
 
 ONLY focus on clear grammar mistakes that would be noticed in everyday speech:
 1. Subject-verb agreement (e.g., "he don't" instead of "he doesn't")
@@ -280,12 +287,17 @@ ONLY focus on clear grammar mistakes that would be noticed in everyday speech:
 4. Incorrect plural/singular forms
 5. Word order that causes confusion
 6. Preposition errors that sound unnatural to native speakers
-7. Run-on sentences that create confusion
+7. Harsh run-on sentences that create confusion
+
+IMPORTANT: Only mark sentences that have actual errors. Do not include any corrections for sentences that are grammatically acceptable in spoken English.
 
 Provide a list of corrections for each sentence in **structured JSON format**, even if no corrections are needed (return an empty array for those). Each correction should include:
 - "original_phrase": the problematic phrase from the sentence  
 - "suggested_correction": the corrected version  
 - "explanation": a brief, clear explanation of why this would be considered an error even in casual spoken American English
+
+
+
 
 Output format:
 [
