@@ -173,6 +173,9 @@ async def process_submission(urls: List[str], submission_id: str):
     if not clean_submission_id:
         clean_submission_id = f"submission_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    # Add a global sentence counter
+    sentence_idx = 1
+    
     results = {
         "submission_id": submission_id,  # Keep original ID in the data
         "timestamp": datetime.now().isoformat(),
@@ -198,6 +201,21 @@ async def process_submission(urls: List[str], submission_id: str):
                 
                 # 1. Pronunciation analysis (existing)
                 pronun_result = await pronoun.analyze_audio_file(temp_file)
+                
+                # ---------- NORMALISE PRONUNCIATION SHAPE ----------
+                pronun_result.setdefault(
+                    "overall_pronunciation_score",
+                    round(sum(w["accuracy_score"] for w in pronun_result.get("word_details", [])) /
+                          max(len(pronun_result.get("word_details", [])), 1))
+                )
+                pronun_result.setdefault("accuracy_score",    pronun_result["overall_pronunciation_score"])
+                pronun_result.setdefault("fluency_score",     0)
+                pronun_result.setdefault("prosody_score",     0)
+                pronun_result.setdefault("completeness_score",0)
+                pronun_result.setdefault("critical_errors",   [])
+                pronun_result.setdefault("filler_words",      [])
+                # ---------------------------------------------------
+                
                 pronun_result["url"] = url
                 results["pronunciation_analysis"].append(pronun_result)
                 
@@ -205,22 +223,56 @@ async def process_submission(urls: List[str], submission_id: str):
                 if transcript:
                     # 2. Grammar analysis (existing)
                     gram_result = await grammar.analyze_grammar(transcript)
-                    results["grammar_analysis"].update(gram_result["grammar_corrections"])
-                    results["vocabulary_suggestions"].update(gram_result["vocabulary_suggestions"])
-                    results["lexical_resources"].update(gram_result["lexical_resources"])
+                    
+                    # Add a local sentence counter for this recording
+                    local_sent_idx = 1
+                    
+                    # ----- 1️⃣ GRAMMAR -------------------------------------------------
+                    for sent_key, sent in gram_result["grammar_corrections"].items():
+                        results["grammar_analysis"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
+                            "original": sent.get("original", sent.get("sentence", "")),
+                            "corrections": sent.get("corrections", [])
+                        }
+                        local_sent_idx += 1
+                        sentence_idx += 1  # Keep global counter for backward compatibility
+                    
+                    # Reset local counter for vocabulary
+                    local_sent_idx = 1
+                    
+                    # ----- 2️⃣ VOCABULARY ----------------------------------------------
+                    for sent_key, sent in gram_result["vocabulary_suggestions"].items():
+                        results["vocabulary_suggestions"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
+                            "original": sent.get("original", sent.get("sentence", "")),
+                            "suggestions": sent.get("suggestions", [])
+                        }
+                        local_sent_idx += 1
+                        sentence_idx += 1  # Keep global counter for backward compatibility
+                    
+                    # Reset local counter for lexical
+                    local_sent_idx = 1
+                    
+                    # ----- 3️⃣ LEXICAL -------------------------------------------------
+                    for sent_key, sent in gram_result["lexical_resources"].items():
+                        results["lexical_resources"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
+                            "original": sent.get("original", sent.get("sentence", "")),
+                            "suggestions": sent.get("suggestions", [])
+                        }
+                        local_sent_idx += 1
+                        sentence_idx += 1  # Keep global counter for backward compatibility
+                
                     # 3. NEW: Fluency and coherence analysis
                     # Get word details from pronunciation analysis if available
                     word_details = pronun_result.get("word_details", [])
                     
-                    # Import the new fluency module
-                    import fluency
-                    
                     # Run fluency and coherence analysis
                     fluency_result = await fluency.analyze_fluency_coherence(transcript, word_details)
                     
-                    # Add a unique identifier key based on URL or index
-                    fluency_key = f"recording_{i+1}"
-                    results["fluency_coherence_analysis"][fluency_key] = fluency_result
+                    results["fluency_coherence_analysis"][f"recording_{i+1}"] = {
+                        "fluency_metrics":           fluency_result.get("fluency_metrics",   {}),
+                        "coherence_metrics":         fluency_result.get("coherence_metrics", {}),
+                        "key_findings":              fluency_result.get("key_findings",      []),
+                        "improvement_suggestions":   fluency_result.get("improvement_suggestions", [])
+                    }
                 
             except Exception as e:
                 logger.error(f"Error processing {url}: {str(e)}")
@@ -329,11 +381,11 @@ async def update_class_grade_for_student(student_id, class_id):
             return None
         
         # Get all submissions for this student in these assignments
-        submissions_data = supabase.table("submissions")\
-            .select("grade")\
-            .eq("student_id", student_id)\
-            .in_("assignment_id", assignment_ids)\
-            .not_.is_("grade", "null")\
+        submissions_data = supabase.table("submissions") \
+            .select("grade") \
+            .eq("student_id", student_id) \
+            .in_("assignment_id", assignment_ids) \
+            .neq("grade", None) \
             .execute()
             
         # Calculate average from the grades
@@ -658,11 +710,66 @@ async def test_update_submission_grade(submission_uid: str, grade: float):
             "status": "error",
             "message": f"Error updating submission grade: {str(e)}"
         }
+
+
+
+@app.post("/test-grammar-lexical")
+async def test_grammar_lexical(transcript: str):
+    """
+    Test endpoint to analyze grammar and lexical feedback for a given transcript
+    
+    Args:
+        transcript: The text transcript to analyze
+        
+    Returns:
+        Dict with grammar and lexical analysis results
+    """
+    try:
+        logger.info(f"Testing grammar and lexical analysis with transcript of length: {len(transcript)}")
+        
+        if not transcript or len(transcript) < 10:
+            return {
+                "status": "error",
+                "message": "Transcript is too short for analysis (minimum 10 characters)"
+            }
+        
+        # Run the grammar analysis
+        gram_result = await grammar.analyze_grammar(transcript)
+        
+        # Extract statistics
+        grammar_count = len(gram_result["grammar_corrections"])
+        vocab_count = len(gram_result["vocabulary_suggestions"])
+        lexical_count = len(gram_result["lexical_resources"])
+        
+        # Create a summary of the analysis
+        summary = {
+            "status": "success",
+            "transcript_length": len(transcript),
+            "num_sentences": len(transcript.split('.')),
+            "stats": {
+                "grammar_issues_found": grammar_count,
+                "vocabulary_suggestions_found": vocab_count,
+                "lexical_resource_issues_found": lexical_count
+            },
+            "results": gram_result
+        }
+        
+        logger.info(f"Analysis complete: {grammar_count} grammar issues, {vocab_count} vocabulary suggestions, {lexical_count} lexical issues")
+        return summary
+        
+    except Exception as e:
+        logger.error(f"Error in test_grammar_lexical: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Error testing grammar and lexical analysis: {str(e)}"
+        }
+        
+        
         
         
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8081))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=8081)
     
 
 
