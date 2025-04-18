@@ -165,11 +165,8 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
                 }
         
         # 2. Vocabulary suggestions
-        # Select sentences without grammar issues for vocabulary analysis
-        vocab_candidates = [
-            (i, sent) for i, sent in enumerate(sentences)
-            if f"sentence_{i+1}" not in grammar_results and len(sent.split()) > 5
-        ]
+        # Select sentences 
+        vocab_candidates = [(i, sent) for i, sent in enumerate(sentences)]
         
         original_vocab_count = len(vocab_candidates)
         vocab_candidates = vocab_candidates[:min(5, len(vocab_candidates))]
@@ -584,15 +581,16 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
                 }
         
         # 2. Vocabulary suggestions
-        # Select sentences without grammar issues for vocabulary analysis
+        # Select all sentences without grammar issues for vocabulary analysis
         vocab_candidates = [
             (i, sent) for i, sent in enumerate(sentences)
-            if f"sentence_{i+1}" not in grammar_results and len(sent.split()) > 5
+            if f"sentence_{i+1}" not in grammar_results
         ]
-        
+
         original_vocab_count = len(vocab_candidates)
-        vocab_candidates = vocab_candidates[:min(5, len(vocab_candidates))]
-        logger.info(f"Selected {len(vocab_candidates)} sentences for vocabulary suggestions out of {original_vocab_count} candidates")
+        # Remove the limit to analyze all grammatically correct sentences
+        # vocab_candidates = vocab_candidates[:min(5, len(vocab_candidates))]
+        logger.info(f"Selected {len(vocab_candidates)} sentences for vocabulary suggestions")
         
         if vocab_candidates:
             logger.info("Starting vocabulary suggestion process")
@@ -610,32 +608,13 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         else:
             logger.info("No sentences selected for vocabulary suggestions")
             
-        # 3. Lexical resources analysis
-        # Select sentences for lexical resource analysis
-        # Prioritize sentences that already have vocabulary suggestions as they likely contain 
-        # phrases that could benefit from collocation/idiom analysis
-        vocab_sentence_ids = set(key.split('_')[1] for key in vocab_results.keys())
-        
-        # First, prioritize sentences with vocab suggestions
-        lexical_candidates = [
-            (i, sent) for i, sent in enumerate(sentences)
-            if f"sentence_{i+1}" in vocab_results
-        ]
-        
-        # Then add some sentences without grammar issues that weren't already selected for vocab
-        additional_candidates = [
-            (i, sent) for i, sent in enumerate(sentences)
-            if f"sentence_{i+1}" not in grammar_results 
-            and f"sentence_{i+1}" not in vocab_results
-            and len(sent.split()) > 7
-        ]
-        
-        lexical_candidates.extend(additional_candidates)
-        
-        # Limit the total number of sentences for analysis
+        # 3. Lexical resource analysis
+        # Select all sentences 
+        lexical_candidates = [(i, sent) for i, sent in enumerate(sentences)]
+
         original_lexical_count = len(lexical_candidates)
-        lexical_candidates = lexical_candidates[:min(4, len(lexical_candidates))]
-        logger.info(f"Selected {len(lexical_candidates)} sentences for lexical resource analysis out of {original_lexical_count} candidates")
+        logger.info(f"Selected {len(lexical_candidates)} sentences for lexical resource analysis")
+        
         
         if lexical_candidates:
             logger.info("Starting lexical resource analysis process")
