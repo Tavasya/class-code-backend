@@ -102,6 +102,14 @@ async def upload_to_assemblyai(file_path: str) -> str:
                         upload_url = response_json.get('upload_url')
                         logger.info(f"File uploaded successfully: {upload_url}")
                         return upload_url
+                    elif response.status == 400:
+                        logger.info(f"Bad request")
+                    elif response.status == 401:
+                        logger.info(f"Missing or invalid API key")
+                    elif response.status == 404:
+                        logger.info(f"The request resource does not exist")
+                    elif response.status in (500, 503, 504):
+                        logger.info(f"Server error")
                     else:
                         error_text = await response.text()
                         logger.error(f"AssemblyAI upload error: {response.status}, {error_text}")
