@@ -116,8 +116,9 @@ async def upload_to_supabase(data: Dict[str, Any], filename: str) -> bool:
             response = supabase.storage.from_('analysis-results').upload(
                 path=filename,
                 file=f,
-                file_options={"content-type": "application/json"},
+                file_options={"content-type": "application/json", "upsert": "true"},
                 # Add upsert option to overwrite existing files with same name
+
                 
             )
         
@@ -465,6 +466,9 @@ async def health_check():
         "environment": os.environ.get("ENVIRONMENT", "development"),
         "supabase": supabase_status
     }
+    
+    
+    
 
 @app.get("/test-upload")
 async def test_upload():
@@ -487,7 +491,13 @@ async def test_upload():
             "status": "error",
             "message": "Test upload failed. Check logs for details."
         }
-        
+
+
+
+
+
+
+
 @app.get("/test-fluency")
 async def test_fluency():
     """Test fluency module functionality"""
@@ -762,6 +772,118 @@ async def test_grammar_lexical(transcript: str):
         return {
             "status": "error",
             "message": f"Error testing grammar and lexical analysis: {str(e)}"
+        }
+        
+        
+        
+        
+@app.post("/test-transcription-length")
+async def test_transcription_length(url: str):
+    """
+    Test endpoint to diagnose potential truncation issues with long audio files
+    
+    Args:
+        url: URL of the audio file to analyze
+        
+    Returns:
+        Dict with detailed analysis of transcription process
+    """
+    try:
+        logger.info(f"Testing transcription length with audio from URL: {url}")
+        temp_file = None
+        
+        try:
+            # Download the audio file
+            temp_file = await download_audio(url)
+            logger.info(f"Downloaded audio file to {temp_file}")
+            
+            # Get file size and duration using ffprobe
+            file_info = {}
+            try:
+                import subprocess
+                cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration,size', 
+                       '-of', 'json', temp_file]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    import json
+                    probe_data = json.loads(result.stdout)
+                    file_info = {
+                        "file_size_bytes": int(probe_data.get("format", {}).get("size", 0)),
+                        "duration_seconds": float(probe_data.get("format", {}).get("duration", 0))
+                    }
+                    logger.info(f"Audio file info: {file_info}")
+            except Exception as e:
+                logger.warning(f"Could not get audio file info: {str(e)}")
+                file_info = {"error": str(e)}
+            
+            # Step 1: Only get AssemblyAI transcript
+            if temp_file.lower().endswith('.webm'):
+                temp_wav_file = await pronoun.convert_webm_to_wav(temp_file)
+                file_to_process = temp_wav_file
+            else:
+                file_to_process = temp_file
+                temp_wav_file = None
+                
+            try:
+                upload_url = await pronoun.upload_to_assemblyai(file_to_process)
+                assemblyai_result = await pronoun.get_assemblyai_transcript(upload_url)
+                
+                # Step 2: Get Azure pronunciation assessment with the AssemblyAI transcript
+                transcript_text = assemblyai_result.get('text', '')
+                
+                azure_result = None
+                if transcript_text:
+                    azure_result = await pronoun.analyze_pronunciation(file_to_process, transcript_text)
+                
+                # Step 3: Compare the results
+                return {
+                    "status": "success",
+                    "file_info": file_info,
+                    "assemblyai": {
+                        "transcript_text": transcript_text,
+                        "transcript_word_count": len(transcript_text.split()) if transcript_text else 0,
+                        "audio_duration_reported": assemblyai_result.get("audio_duration"),
+                        "word_count_reported": len(assemblyai_result.get("words", [])),
+                        "utterance_count": len(assemblyai_result.get("utterances", [])),
+                        "confidence": assemblyai_result.get("confidence"),
+                        "raw_result": assemblyai_result if assemblyai_result else {}
+                    },
+                    "azure": {
+                        "transcript_used": azure_result.get("transcript") if azure_result else None,
+                        "azure_transcript": azure_result.get("azure_transcript") if azure_result else None,
+                        "word_count_processed": len(azure_result.get("word_details", [])) if azure_result else 0,
+                        "audio_duration": azure_result.get("audio_duration") if azure_result else None,
+                        "completeness_score": azure_result.get("completeness_score") if azure_result else None
+                    }
+                }
+            finally:
+                # Clean up temporary wav file if created
+                if temp_wav_file and os.path.exists(temp_wav_file):
+                    try:
+                        os.unlink(temp_wav_file)
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up temporary wav file {temp_wav_file}: {str(e)}")
+                
+        except Exception as e:
+            logger.error(f"Error processing audio from URL {url}: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e),
+            }
+        
+        finally:
+            # Clean up temporary file
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.unlink(temp_file)
+                except Exception as e:
+                    logger.warning(f"Failed to delete temp file: {str(e)}")
+    
+    except Exception as e:
+        logger.error(f"Error in test_transcription_length: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Error testing transcription length: {str(e)}"
         }
         
         
