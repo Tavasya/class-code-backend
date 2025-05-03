@@ -1,0 +1,40 @@
+{
+  "submission_id": "unique_qdky771",
+  "timestamp": "2025-04-09T22:55:08.673089",
+  "status": "completed",
+  "file_count": 1,
+  "pronunciation_analysis": [
+    {
+      "status": "success",
+      "audio_duration": 1.25,
+      "transcript": "Testing, testing.",
+      "overall_pronunciation_score": 0,
+      "accuracy_score": 0,
+      "fluency_score": 0,
+      "prosody_score": 0,
+      "completeness_score": 0,
+      "critical_errors": [],
+      "filler_words": [],
+      "word_details": [
+        {
+          "word": "testing",
+          "offset": 0.47,
+          "duration": 0.59,
+          "accuracy_score": 94.0,
+          "error_type": "None"
+        },
+        {
+          "word": "testing",
+          "offset": 1.07,
+          "duration": 0.65,
+          "accuracy_score": 94.0,
+          "error_type": "None"
+        }
+      ],
+      "improvement_suggestion": "Practice emphasizing the initial consonant sounds in \"Testing\" to enhance clarity and ensure each word is distinctly articulated.",
+      "url": "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/bf230441-ab07-4c99-b355-1358aa5c6b5e/47/0_1744264505670.webm"
+    }
+  ],
+  "grammar_analysis": {},
+  "vocabulary_suggestions": {}
+}

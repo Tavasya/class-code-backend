@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic
+aiohttp
+supabase
+typing-extensions
+azure_cognitiveservices-speech
