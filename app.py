@@ -17,6 +17,8 @@ import pronoun
 import grammar
 import fluency
 
+import re
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +36,7 @@ origins = [
     "http://localhost:8080",
     "http://localhost:8081",
     "https://app.nativespeaking.ai",
+    "http://localhost:5173",
 ]
 
 app.add_middleware(
@@ -330,9 +333,24 @@ async def process_submission(urls: List[str], submission_id: str):
                 if submission_data.data and len(submission_data.data) > 0:
                     submission = submission_data.data[0]
                     
+                    #Check if trasciprt has at least 2 sentences
+                    transcript = ""
+                    for analysis in results.get("pronunciation_anaysis", []):
+                        if "transcript" in analysis:
+                            transcript += analysis["transcript"] + " "
+                    #Split by .,?,!
+                    senetences = re.splot(r'[.!?]+', transcript)
+                    #filter empty sentences
+                    senetences = [s.strip() for s in senetences if s.strip()]
+                    senetences_count = len(senetences)
+                    valid_transcript = senetences >= 2
+                    
+                    logger.info(f"Transcript validation: {senetences_count} sentences found, valid_transcript={valid_transcript}")
+                    
                     # Update the grade for this specific submission
                     update_result = supabase.table("submissions").update({
                         "grade": final_grade,
+                        "valid_transcript": valid_transcript
                     }).eq("submission_uid", submission_id).execute()
                     
                     logger.info(f"Updated grade for submission {submission_id} to {final_grade}")
