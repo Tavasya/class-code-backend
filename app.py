@@ -11,6 +11,7 @@ import logging
 from supabase import create_client, Client
 import uvicorn
 import fluency
+import practice
 
 # Import our modules
 import pronoun
@@ -67,6 +68,15 @@ class AnalysisResponse(BaseModel):
     status: str
     message: str
     submission_id: str
+
+class PracticeRequest(BaseModel):
+    transcript: str
+
+class PracticeResponse(BaseModel):
+    status: str
+    message: str
+    improved_transcript: Optional[str] = None
+    blanked_transcript: Optional[str] = None
 
 def _save_locally(data: Dict[str, Any], filename: str):
     """Helper function to save data locally"""
@@ -767,9 +777,85 @@ async def test_grammar_lexical(transcript: str):
         
         
         
+@app.post("/practice/improve", response_model=PracticeResponse)
+async def improve_transcript(request: PracticeRequest):
+    """
+    Endpoint to improve a transcript using OpenAI's GPT model.
+    Returns improved transcript and a version with blanks for practice.
+    """
+    try:
+        if not request.transcript or len(request.transcript.strip()) < 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Transcript must be at least 10 characters long"
+            )
+
+        # Generate improved transcript
+        improved_transcript = await practice.improve_transcript_band_openai(request.transcript)
+        logger.info(f"Generated improved transcript of length: {len(improved_transcript)}")
+
+        # Identify words that were improved
+        import difflib
+        orig_words = request.transcript.split()
+        improved_words = improved_transcript.split()
+        sm = difflib.SequenceMatcher(None, orig_words, improved_words)
+        improved_word_indices = set()
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag in ("replace", "insert"):
+                improved_word_indices.update(range(j1, j2))
+        
+        logger.info(f"Identified {len(improved_word_indices)} improved words")
+
+        # Get blank indices, excluding improved words
+        blank_indices = await practice.get_blank_indices_openai(improved_transcript, sorted(list(improved_word_indices)))
+        
+        # Log error if no blanks were generated
+        if not blank_indices:
+            logger.warning("No blank indices were generated! Check the get_blank_indices_openai function.")
+            
+            # Fallback: Generate blanks algorithmically if OpenAI failed
+            words = improved_transcript.split()
+            valid_indices = [i for i in range(len(words)) if i not in improved_word_indices]
+            blank_count = int(len(valid_indices) * 0.7)
+            if valid_indices and blank_count > 0:
+                import random
+                blank_indices = sorted(random.sample(valid_indices, min(blank_count, len(valid_indices))))
+                logger.info(f"Used fallback method to generate {len(blank_indices)} blanks")
+        else:
+            logger.info(f"Generated {len(blank_indices)} blanks via OpenAI")
+
+        # Create blanked transcript
+        improved_word_list = improved_transcript.split()
+        blanked_word_list = []
+        blanks = []
+        for idx, word in enumerate(improved_word_list):
+            if idx in blank_indices:
+                blanked_word_list.append("____")
+                blanks.append({"index": idx, "answer": word})
+            else:
+                blanked_word_list.append(word)
+        
+        blanked_transcript = " ".join(blanked_word_list)
+        
+        response = {
+            "status": "success",
+            "message": f"Transcript improved and {len(blank_indices)} blanks created",
+            "improved_transcript": improved_transcript,
+            "blanked_transcript": blanked_transcript
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error improving transcript: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error improving transcript: {str(e)}"
+        )
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8081))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=8081)
     
 
 
