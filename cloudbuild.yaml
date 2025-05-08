@@ -7,7 +7,7 @@ steps:
   # Push the container image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Docker image'
-    args: ['push', 'us-west2-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnectimg:$COMMIT_SHA']
+    args: ['push', 'asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnectimg:$COMMIT_SHA']
   
   # Deploy to Cloud Run with secrets
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
