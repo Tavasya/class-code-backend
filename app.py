@@ -77,6 +77,7 @@ class PracticeResponse(BaseModel):
     message: str
     improved_transcript: Optional[str] = None
     blanked_transcript: Optional[str] = None
+    level3_transcript: Optional[str] = None
 
 def _save_locally(data: Dict[str, Any], filename: str):
     """Helper function to save data locally"""
@@ -781,7 +782,7 @@ async def test_grammar_lexical(transcript: str):
 async def improve_transcript(request: PracticeRequest):
     """
     Endpoint to improve a transcript using OpenAI's GPT model.
-    Returns improved transcript and a version with blanks for practice.
+    Returns improved transcript and versions with blanks for practice.
     """
     try:
         if not request.transcript or len(request.transcript.strip()) < 10:
@@ -806,8 +807,11 @@ async def improve_transcript(request: PracticeRequest):
         
         logger.info(f"Identified {len(improved_word_indices)} improved words")
 
-        # Get blank indices, excluding improved words
+        # Get blank indices for regular version, excluding improved words
         blank_indices = await practice.get_blank_indices_openai(improved_transcript, sorted(list(improved_word_indices)))
+        
+        # Get blank indices for level 3 version
+        level3_blank_indices = await practice.get_blank_indices_level3(improved_transcript, sorted(list(improved_word_indices)))
         
         # Log error if no blanks were generated
         if not blank_indices:
@@ -816,7 +820,7 @@ async def improve_transcript(request: PracticeRequest):
             # Fallback: Generate blanks algorithmically if OpenAI failed
             words = improved_transcript.split()
             valid_indices = [i for i in range(len(words)) if i not in improved_word_indices]
-            blank_count = int(len(valid_indices) * 0.7)
+            blank_count = int(len(valid_indices) * 0.25)  # 25% for regular version
             if valid_indices and blank_count > 0:
                 import random
                 blank_indices = sorted(random.sample(valid_indices, min(blank_count, len(valid_indices))))
@@ -827,21 +831,28 @@ async def improve_transcript(request: PracticeRequest):
         # Create blanked transcript
         improved_word_list = improved_transcript.split()
         blanked_word_list = []
-        blanks = []
+        level3_word_list = []
+        
         for idx, word in enumerate(improved_word_list):
             if idx in blank_indices:
                 blanked_word_list.append("____")
-                blanks.append({"index": idx, "answer": word})
             else:
                 blanked_word_list.append(word)
+                
+            if idx in level3_blank_indices:
+                level3_word_list.append("____")
+            else:
+                level3_word_list.append(word)
         
         blanked_transcript = " ".join(blanked_word_list)
+        level3_transcript = " ".join(level3_word_list)
         
         response = {
             "status": "success",
-            "message": f"Transcript improved and {len(blank_indices)} blanks created",
+            "message": f"Transcript improved with {len(blank_indices)} regular blanks and {len(level3_blank_indices)} level 3 blanks",
             "improved_transcript": improved_transcript,
-            "blanked_transcript": blanked_transcript
+            "blanked_transcript": blanked_transcript,
+            "level3_transcript": level3_transcript
         }
         
         return response

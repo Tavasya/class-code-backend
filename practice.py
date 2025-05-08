@@ -246,4 +246,178 @@ def fallback_blank_indices(improved_transcript: str, improved_word_indices: list
     # Remove adjacent indices
     final_indices = remove_adjacent_indices(sorted(selected_indices))
     logger.info(f"Fallback method generated {len(final_indices)} blanks")
+    return final_indices
+
+async def get_blank_indices_level3(improved_transcript: str, improved_word_indices: list) -> list:
+    """
+    Generate a more challenging version with about 40% of words blanked out.
+    This is a harder version than the regular blanked transcript.
+    """
+    if not OPENAI_API_KEY:
+        logger.error("OPENAI_API_KEY not set in environment variables.")
+        logger.info("Using fallback method due to missing API key")
+        return fallback_blank_indices_level3(improved_transcript, improved_word_indices)
+
+    prompt = (
+        f"Given the following transcript, select about 40% of the words to blank out for an advanced language challenge. "
+        f"Important rules:\n"
+        f"1. Do NOT blank out any of these improved words (by index): {improved_word_indices}\n"
+        f"2. Do NOT blank out words that are adjacent to each other\n"
+        f"3. Do NOT blank out critical words that would make the sentence incomprehensible\n"
+        f"4. You can blank out:\n"
+        f"   - Adjectives\n"
+        f"   - Adverbs\n"
+        f"   - Non-essential descriptive words\n"
+        f"   - Some prepositions\n"
+        f"   - Some articles\n"
+        f"   - Some auxiliary verbs\n"
+        f"5. Avoid blanking out:\n"
+        f"   - Main verbs\n"
+        f"   - Subject nouns\n"
+        f"   - Key conjunctions\n"
+        f"   - Question words\n"
+        f"6. IMPORTANT: Distribute the blanks evenly throughout the entire text.\n"
+        f"7. Try to have at least two blanks in each sentence if possible.\n"
+        f"Return ONLY a JSON array of the indices (0-based) of the words to blank. No explanation needed."
+        f"\n\nTranscript: {improved_transcript}"
+    )
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 256,
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"}
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    logger.info(f"OpenAI API call successful for level 3. Response preview: {content[:100]}...")
+                    
+                    json_match = re.search(r'\[.*?\]', content, re.DOTALL)
+                    if json_match:
+                        try:
+                            blank_indices = json.loads(json_match.group(0))
+                            if isinstance(blank_indices, list):
+                                # Validate that none of the improved words are blanked
+                                blank_indices = [idx for idx in blank_indices if idx not in improved_word_indices]
+                                # Ensure no adjacent words are blanked
+                                blank_indices = remove_adjacent_indices(blank_indices)
+                                # Ensure we don't exceed 40% of words
+                                max_blanks = int(len(improved_transcript.split()) * 0.4)
+                                if len(blank_indices) > max_blanks:
+                                    # Sort by position to ensure even distribution
+                                    blank_indices = sorted(blank_indices)
+                                    # Take evenly spaced indices
+                                    step = len(blank_indices) / max_blanks
+                                    blank_indices = [blank_indices[int(i * step)] for i in range(max_blanks)]
+                                if blank_indices:
+                                    logger.info(f"Successfully using OpenAI response for level 3. Generated {len(blank_indices)} blanks")
+                                    return blank_indices
+                                else:
+                                    logger.warning("OpenAI response resulted in no valid blank indices for level 3")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"JSON parsing error from OpenAI response: {e}")
+                    else:
+                        logger.warning("No JSON array found in OpenAI response for level 3")
+                else:
+                    error_text = await response.text()
+                    logger.error(f"OpenAI API error: {response.status}, {error_text}")
+    except Exception as e:
+        logger.error(f"Error in get_blank_indices_level3: {str(e)}")
+    
+    logger.warning("Falling back to algorithmic method for level 3 due to OpenAI issues")
+    return fallback_blank_indices_level3(improved_transcript, improved_word_indices)
+
+def fallback_blank_indices_level3(improved_transcript: str, improved_word_indices: list) -> list:
+    """
+    Fallback method to generate level 3 blank indices if OpenAI API fails.
+    Blanks approximately 40% of words at random, excluding improved words and adjacent words.
+    """
+    logger.info("Starting fallback blank generation method for level 3")
+    words = improved_transcript.split()
+    total_words = len(words)
+    
+    # Split into sentences for better distribution
+    sentences = [s.strip() for s in improved_transcript.split('.') if s.strip()]
+    total_sentences = len(sentences)
+    
+    # Get all valid indices (exclude improved words)
+    valid_indices = [i for i in range(total_words) if i not in improved_word_indices]
+    
+    # Calculate how many words to blank (about 40% of eligible words)
+    blank_count = int(len(valid_indices) * 0.4)
+    
+    if not valid_indices or blank_count <= 0:
+        logger.warning("No valid indices for blanking in level 3 fallback method")
+        return []
+    
+    # Create a scoring system for words (lower score = more likely to be blanked)
+    word_scores = []
+    for i, word in enumerate(words):
+        if i in valid_indices:
+            # Lower score means more likely to be blanked
+            score = 1.0
+            
+            # Don't blank very short words (1-2 letters)
+            if len(word) <= 2:
+                score += 2.0
+            
+            # Don't blank words that look like main verbs (ends with -ing, -ed, etc.)
+            if any(word.endswith(suffix) for suffix in ['ing', 'ed', 's', 'es']):
+                score += 1.0
+            
+            # Don't blank question words
+            if word.lower() in ['what', 'when', 'where', 'who', 'why', 'how', 'which']:
+                score += 2.0
+            
+            # Don't blank common conjunctions
+            if word.lower() in ['and', 'or', 'but', 'because', 'if', 'while', 'although']:
+                score += 1.5
+            
+            # More aggressive blanking for level 3
+            if word.lower() in ['the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'with', 'by']:
+                score -= 0.5  # More likely to blank articles and prepositions
+            
+            word_scores.append((i, score))
+    
+    # Sort by score (lowest first)
+    word_scores.sort(key=lambda x: x[1])
+    
+    # Calculate how many blanks per sentence (minimum 2 if possible)
+    blanks_per_sentence = max(2, blank_count // total_sentences)
+    
+    # Distribute blanks across sentences
+    selected_indices = []
+    current_sentence = 0
+    words_in_current_sentence = 0
+    sentence_start = 0
+    
+    for i, (idx, _) in enumerate(word_scores):
+        # Find which sentence this word belongs to
+        while current_sentence < len(sentences) and idx >= sentence_start + len(sentences[current_sentence].split()):
+            sentence_start += len(sentences[current_sentence].split())
+            current_sentence += 1
+            words_in_current_sentence = 0
+        
+        # If we haven't used up our quota for this sentence
+        if words_in_current_sentence < blanks_per_sentence:
+            selected_indices.append(idx)
+            words_in_current_sentence += 1
+        
+        # If we have enough blanks, stop
+        if len(selected_indices) >= blank_count:
+            break
+    
+    # Remove adjacent indices
+    final_indices = remove_adjacent_indices(sorted(selected_indices))
+    logger.info(f"Level 3 fallback method generated {len(final_indices)} blanks")
     return final_indices 
