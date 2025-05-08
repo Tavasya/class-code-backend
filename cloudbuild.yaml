@@ -2,12 +2,12 @@ steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Build Docker image'
-    args: ['build', '-t', 'asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnectimg:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'us-west2-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnectimg:$COMMIT_SHA', '.']
   
   # Push the container image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Docker image'
-    args: ['push', 'asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnectimg:$COMMIT_SHA']
+    args: ['push', 'us-west2-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnectimg:$COMMIT_SHA']
   
   # Deploy to Cloud Run with secrets
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
