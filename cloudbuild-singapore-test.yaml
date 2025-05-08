@@ -1,0 +1,33 @@
+steps:
+  # Build the container image for Singapore
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build Docker image'
+    args: ['build', '-t', 'asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnect-sg-test:$COMMIT_SHA', '.']
+  
+  # Push the container image to Singapore Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push Docker image'
+    args: ['push', 'asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnect-sg-test:$COMMIT_SHA']
+  
+  # Deploy to Cloud Run in Singapore
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'Deploy to Cloud Run'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy classconnect-sg-test \
+          --image=asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnect-sg-test:$COMMIT_SHA \
+          --region=asia-southeast1 \
+          --platform=managed \
+          --update-secrets=AZURE_SPEECH_KEY=AZURE_SPEECH_KEY:latest \
+          --update-secrets=AZURE_SPEECH_REGION=AZURE_SPEECH_REGION:latest \
+          --update-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest \
+          --update-secrets=SUPABASE_URL=SUPABASE_URL:latest \
+          --update-secrets=SUPABASE_KEY=SUPABASE_KEY:latest
+
+images:
+  - 'asia-southeast1-docker.pkg.dev/classconnect-455912/classconnectrepo/classconnect-sg-test:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
