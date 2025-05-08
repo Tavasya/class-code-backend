@@ -1,0 +1,322 @@
+{
+  "config": {
+    "total_requests": 20,
+    "max_concurrent": 5,
+    "base_url": "https://classconnect-107872842385.us-west2.run.app",
+    "test_audio_url": "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/1f65f05e-7796-4a0a-bdae-c5b518849da6/177/1_1745594975092.webm",
+    "check_interval": 30,
+    "max_check_time": 600
+  },
+  "summary": {
+    "total_duration": 636.590106010437,
+    "initial_success": 20,
+    "complete_success": 0,
+    "initial_success_rate": 100.0,
+    "complete_success_rate": 0.0,
+    "avg_initial_response": 1.3104022860527038,
+    "avg_processing_time": 0,
+    "status_checks_performed": 20
+  },
+  "detailed_results": [
+    {
+      "request_id": 1,
+      "submission_id": "test-79338c92-1541-488b-af0a-f394bfee213f",
+      "initial_status_code": 200,
+      "initial_response_time": 0.6630430221557617,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-79338c92-1541-488b-af0a-f394bfee213f"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 2,
+      "submission_id": "test-b0b99407-b9b6-4545-aff3-68c80a1c98cb",
+      "initial_status_code": 200,
+      "initial_response_time": 0.536890983581543,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-b0b99407-b9b6-4545-aff3-68c80a1c98cb"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 3,
+      "submission_id": "test-77dbb959-cb29-4292-9845-908dca7af191",
+      "initial_status_code": 200,
+      "initial_response_time": 0.09332895278930664,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-77dbb959-cb29-4292-9845-908dca7af191"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 4,
+      "submission_id": "test-a67a108a-cbfe-43ee-8d90-5e84bae6b3b5",
+      "initial_status_code": 200,
+      "initial_response_time": 0.7823660373687744,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-a67a108a-cbfe-43ee-8d90-5e84bae6b3b5"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 5,
+      "submission_id": "test-ebd66b58-029f-4837-954c-1b54d743aa22",
+      "initial_status_code": 200,
+      "initial_response_time": 0.42559003829956055,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-ebd66b58-029f-4837-954c-1b54d743aa22"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 6,
+      "submission_id": "test-bd7d1e08-815e-49eb-ac72-da18d18f485e",
+      "initial_status_code": 200,
+      "initial_response_time": 0.20230913162231445,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-bd7d1e08-815e-49eb-ac72-da18d18f485e"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 7,
+      "submission_id": "test-8cda5704-f5f7-4d79-8e54-3d9f9837ca2b",
+      "initial_status_code": 200,
+      "initial_response_time": 0.04535675048828125,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-8cda5704-f5f7-4d79-8e54-3d9f9837ca2b"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 8,
+      "submission_id": "test-da002a3d-f97e-4066-b9d4-8018e96fd75e",
+      "initial_status_code": 200,
+      "initial_response_time": 0.6845018863677979,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-da002a3d-f97e-4066-b9d4-8018e96fd75e"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 9,
+      "submission_id": "test-02b589e7-7b49-495f-b42c-b9100127563d",
+      "initial_status_code": 200,
+      "initial_response_time": 0.5103869438171387,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-02b589e7-7b49-495f-b42c-b9100127563d"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 10,
+      "submission_id": "test-04b8516c-4112-4e1a-a047-74ec8b7cfe86",
+      "initial_status_code": 200,
+      "initial_response_time": 0.3288688659667969,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-04b8516c-4112-4e1a-a047-74ec8b7cfe86"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 11,
+      "submission_id": "test-bb532702-a2f1-4479-aafc-65c66639d1d8",
+      "initial_status_code": 200,
+      "initial_response_time": 3.9141390323638916,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-bb532702-a2f1-4479-aafc-65c66639d1d8"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 12,
+      "submission_id": "test-d4c5ae83-1a9d-4443-8088-6b16934a8d74",
+      "initial_status_code": 200,
+      "initial_response_time": 4.072467803955078,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-d4c5ae83-1a9d-4443-8088-6b16934a8d74"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 13,
+      "submission_id": "test-5f613ca5-54db-4c30-8510-496876c002a1",
+      "initial_status_code": 200,
+      "initial_response_time": 3.5416970252990723,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-5f613ca5-54db-4c30-8510-496876c002a1"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 14,
+      "submission_id": "test-af2d3ca3-d718-4a24-8def-5a9dd396d41a",
+      "initial_status_code": 200,
+      "initial_response_time": 4.18369722366333,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-af2d3ca3-d718-4a24-8def-5a9dd396d41a"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 15,
+      "submission_id": "test-78eb109a-e57b-4a95-8a80-8608fcc90c2d",
+      "initial_status_code": 200,
+      "initial_response_time": 3.7825050354003906,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-78eb109a-e57b-4a95-8a80-8608fcc90c2d"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 16,
+      "submission_id": "test-d4196220-4170-431f-9897-b50f49fb9063",
+      "initial_status_code": 200,
+      "initial_response_time": 0.21512985229492188,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-d4196220-4170-431f-9897-b50f49fb9063"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 17,
+      "submission_id": "test-7e832788-564a-4bfd-bf86-e12d707ed695",
+      "initial_status_code": 200,
+      "initial_response_time": 0.46421098709106445,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-7e832788-564a-4bfd-bf86-e12d707ed695"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 18,
+      "submission_id": "test-367940de-e727-4255-b4b2-a3e351a2e9f4",
+      "initial_status_code": 200,
+      "initial_response_time": 0.33135366439819336,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-367940de-e727-4255-b4b2-a3e351a2e9f4"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 19,
+      "submission_id": "test-4e45be20-c433-461b-bacc-22fd1f6dbf0b",
+      "initial_status_code": 200,
+      "initial_response_time": 0.7977077960968018,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-4e45be20-c433-461b-bacc-22fd1f6dbf0b"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    },
+    {
+      "request_id": 20,
+      "submission_id": "test-2a47c4e5-98c9-44a5-8b89-ddce5f891b9e",
+      "initial_status_code": 200,
+      "initial_response_time": 0.6324946880340576,
+      "initial_success": true,
+      "initial_result": {
+        "status": "processing",
+        "message": "Analysis started for 1 audio files",
+        "submission_id": "test-2a47c4e5-98c9-44a5-8b89-ddce5f891b9e"
+      },
+      "complete": false,
+      "processing_time": null,
+      "final_result": "processing_timeout"
+    }
+  ]
+}
