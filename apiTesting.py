@@ -8,7 +8,7 @@ import random
 from typing import Dict, Any, List
 
 # Configuration
-#BASE_URL = "https://classconnect-107872842385.us-west2.run.app"  # Production Cloud Run service URL
+BASE_URL = "https://classconnect-staging-107872842385.us-west2.run.app"  # Production Cloud Run service URL
 ANALYZE_ENDPOINT = "/analyze"
 TEST_AUDIO_URL = "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/1f65f05e-7796-4a0a-bdae-c5b518849da6/177/1_1745594975092.webm"  # Replace with a test audio URL
 TOTAL_REQUESTS = 20
