@@ -479,7 +479,7 @@ async def health_check():
     supabase_status = "connected" if supabase else "not connected"
     
     return {
-        "status": "healthyTESTTTTT",
+        "status": "STAGE BRANCH ISS HEALTHYY",
         "timestamp": datetime.now().isoformat(),
         "environment": os.environ.get("ENVIRONMENT", "development"),
         "supabase": supabase_status
