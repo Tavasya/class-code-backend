@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Azure Speech config - retrieve from environment variables for security
-SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "CPhzqHVeoa5YnFTLqimhoVB8tiM0aYdtnAnumfNJtVkv3AzHV18PJQQJ99BDACYeBjFXJ3w3AAAYACOGaN2q")
+SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "CA4BV9f9rvEKQL22h6L383ucFVNHl9HvkS9bYsBR8xI6cdJm85fHJQQJ99BEACYeBjFXJ3w3AAAYACOGS9sl")
 REGION = os.environ.get("AZURE_SPEECH_REGION", "eastus")
 
 # AssemblyAI API config
@@ -43,35 +43,110 @@ async def convert_webm_to_wav(webm_file: str) -> str:
     logger.info(f"Converting {webm_file} to {wav_file}")
     
     try:
-        # Run ffmpeg to convert WebM to WAV (PCM 16-bit, 16kHz, mono)
-        command = [
-            'ffmpeg',
-            '-i', webm_file,        # Input file
-            '-acodec', 'pcm_s16le',  # Output codec (16-bit PCM)
-            '-ar', '16000',          # Sample rate (16kHz)
-            '-ac', '1',              # Channels (mono)
-            '-y',                    # Overwrite output file if it exists
-            wav_file                 # Output file
+        # First, validate the WebM file using ffprobe
+        validate_cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'a:0',  # Only check audio stream
+            '-show_entries', 'stream=codec_name,codec_type',
+            '-of', 'json',
+            webm_file
         ]
         
-        # Execute ffmpeg command
-        process = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True
-        )
+        try:
+            validate_result = subprocess.run(
+                validate_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True
+            )
+            logger.info(f"WebM file validation successful: {validate_result.stdout.decode()}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"WebM file validation failed: {e.stderr.decode()}")
+            raise Exception(f"Invalid or corrupted WebM file: {e.stderr.decode()}")
         
-        logger.info(f"Conversion successful: {wav_file}")
-        return wav_file
-    
-    except subprocess.CalledProcessError as e:
-        logger.error(f"ffmpeg conversion failed: {e.stderr.decode()}")
-        raise Exception(f"Failed to convert WebM to WAV: {e.stderr.decode()}")
+        # Try first with explicit WebM format
+        command = [
+            'ffmpeg',
+            '-f', 'webm',  # Force WebM format
+            '-i', webm_file,
+            '-acodec', 'pcm_s16le',
+            '-ar', '16000',
+            '-ac', '1',
+            '-y',
+            wav_file
+        ]
+        
+        try:
+            # Execute ffmpeg command
+            process = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True
+            )
+            logger.info(f"Conversion successful: {wav_file}")
+            return wav_file
+            
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"First conversion attempt failed: {e.stderr.decode()}")
+            
+            # If first attempt fails, try without forcing format
+            command = [
+                'ffmpeg',
+                '-i', webm_file,
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1',
+                '-y',
+                wav_file
+            ]
+            
+            try:
+                process = subprocess.run(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True
+                )
+                logger.info(f"Second conversion attempt successful: {wav_file}")
+                return wav_file
+                
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Second conversion attempt failed: {e.stderr.decode()}")
+                raise Exception(f"Failed to convert WebM to WAV after two attempts: {e.stderr.decode()}")
     
     except Exception as e:
         logger.error(f"Error in conversion: {str(e)}")
         raise Exception(f"Error converting WebM to WAV: {str(e)}")
+    
+    finally:
+        # Verify the WAV file was created and is valid
+        if os.path.exists(wav_file):
+            try:
+                # Check if the WAV file is valid
+                check_cmd = [
+                    'ffprobe',
+                    '-v', 'error',
+                    '-select_streams', 'a:0',
+                    '-show_entries', 'stream=codec_name,codec_type',
+                    '-of', 'json',
+                    wav_file
+                ]
+                check_result = subprocess.run(
+                    check_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True
+                )
+                logger.info(f"WAV file validation successful: {check_result.stdout.decode()}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"WAV file validation failed: {e.stderr.decode()}")
+                if os.path.exists(wav_file):
+                    os.unlink(wav_file)
+                raise Exception(f"Generated WAV file is invalid: {e.stderr.decode()}")
+        else:
+            raise Exception("WAV file was not created during conversion")
 
 async def upload_to_assemblyai(file_path: str) -> str:
     """

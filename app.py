@@ -11,13 +11,13 @@ import logging
 from supabase import create_client, Client
 import uvicorn
 import fluency
+import asyncio
+import re
 
 # Import our modules
 import pronoun
 import grammar
 import fluency
-
-import re
 
 # Setup logging
 logging.basicConfig(
@@ -71,6 +71,13 @@ class AnalysisResponse(BaseModel):
     message: str
     submission_id: str
 
+# Create a lock for processing submissions
+# Using a global semaphore with a value of 1 effectively creates a "lock"
+processing_lock = asyncio.Semaphore(1)
+
+# Queue for tracking pending submissions
+submission_queue = asyncio.Queue()
+
 def _save_locally(data: Dict[str, Any], filename: str):
     """Helper function to save data locally"""
     try:
@@ -121,8 +128,6 @@ async def upload_to_supabase(data: Dict[str, Any], filename: str) -> bool:
                 file=f,
                 file_options={"content-type": "application/json", "upsert": "true"},
                 # Add upsert option to overwrite existing files with same name
-
-                
             )
         
         logger.info(f"Successfully uploaded {filename} to Supabase")
@@ -168,224 +173,250 @@ async def download_audio(url: str) -> str:
             os.unlink(temp_path)
         raise Exception(f"Failed to download audio: {str(e)}")
 
+# The main submission processing function
 async def process_submission(urls: List[str], submission_id: str):
-    """Background task to process audio files"""
-    logger.info(f"Starting analysis for submission {submission_id}")
-    
-    # Ensure submission_id is clean and suitable for a filename
-    clean_submission_id = "".join(c for c in submission_id if c.isalnum() or c in "-_").strip()
-    if not clean_submission_id:
-        clean_submission_id = f"submission_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    # Add a global sentence counter
-    sentence_idx = 1
-    
-    results = {
-        "submission_id": submission_id,  # Keep original ID in the data
-        "timestamp": datetime.now().isoformat(),
-        "status": "processing",
-        "file_count": len(urls),
-        "pronunciation_analysis": [],
-        "grammar_analysis": {},
-        "vocabulary_suggestions": {},
-        "lexical_resources": {},
-        "fluency_coherence_analysis": {}  # New section for fluency/coherence
-    }
-    
-    try:
-        # Upload initial processing status
-        await upload_to_supabase(results, f"{clean_submission_id}_status")
+    """Process a single submission"""
+    # Acquire the lock to ensure only one submission is processed at a time
+    async with processing_lock:
+        logger.info(f"Starting analysis for submission {submission_id}")
         
-        for i, url in enumerate(urls):
-            logger.info(f"Processing URL {i+1}/{len(urls)}: {url}")
-            temp_file = None
-            
-            try:
-                temp_file = await download_audio(url)
-                
-                # 1. Pronunciation analysis (existing)
-                pronun_result = await pronoun.analyze_audio_file(temp_file)
-                
-                # ---------- NORMALISE PRONUNCIATION SHAPE ----------
-                pronun_result.setdefault(
-                    "overall_pronunciation_score",
-                    round(sum(w["accuracy_score"] for w in pronun_result.get("word_details", [])) /
-                          max(len(pronun_result.get("word_details", [])), 1))
-                )
-                pronun_result.setdefault("accuracy_score",    pronun_result["overall_pronunciation_score"])
-                pronun_result.setdefault("fluency_score",     0)
-                pronun_result.setdefault("prosody_score",     0)
-                pronun_result.setdefault("completeness_score",0)
-                pronun_result.setdefault("critical_errors",   [])
-                pronun_result.setdefault("filler_words",      [])
-                # ---------------------------------------------------
-                
-                pronun_result["url"] = url
-                results["pronunciation_analysis"].append(pronun_result)
-                
-                transcript = pronun_result.get("transcript", "")
-                if transcript:
-                    # 2. Grammar analysis (existing)
-                    gram_result = await grammar.analyze_grammar(transcript)
-                    
-                    # Add a local sentence counter for this recording
-                    local_sent_idx = 1
-                    
-                    # ----- 1️⃣ GRAMMAR -------------------------------------------------
-                    for sent_key, sent in gram_result["grammar_corrections"].items():
-                        results["grammar_analysis"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
-                            "original": sent.get("original", sent.get("sentence", "")),
-                            "corrections": sent.get("corrections", [])
-                        }
-                        local_sent_idx += 1
-                        sentence_idx += 1  # Keep global counter for backward compatibility
-                    
-                    # Reset local counter for vocabulary
-                    local_sent_idx = 1
-                    
-                    # ----- 2️⃣ VOCABULARY ----------------------------------------------
-                    for sent_key, sent in gram_result["vocabulary_suggestions"].items():
-                        results["vocabulary_suggestions"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
-                            "original": sent.get("original", sent.get("sentence", "")),
-                            "suggestions": sent.get("suggestions", [])
-                        }
-                        local_sent_idx += 1
-                        sentence_idx += 1  # Keep global counter for backward compatibility
-                    
-                    # Reset local counter for lexical
-                    local_sent_idx = 1
-                    
-                    # ----- 3️⃣ LEXICAL -------------------------------------------------
-                    for sent_key, sent in gram_result["lexical_resources"].items():
-                        results["lexical_resources"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
-                            "original": sent.get("original", sent.get("sentence", "")),
-                            "suggestions": sent.get("suggestions", [])
-                        }
-                        local_sent_idx += 1
-                        sentence_idx += 1  # Keep global counter for backward compatibility
-                
-                    # 3. NEW: Fluency and coherence analysis
-                    # Get word details from pronunciation analysis if available
-                    word_details = pronun_result.get("word_details", [])
-                    
-                    # Run fluency and coherence analysis
-                    fluency_result = await fluency.analyze_fluency_coherence(transcript, word_details)
-                    
-                    results["fluency_coherence_analysis"][f"recording_{i+1}"] = {
-                        "fluency_metrics":           fluency_result.get("fluency_metrics",   {}),
-                        "coherence_metrics":         fluency_result.get("coherence_metrics", {}),
-                        "key_findings":              fluency_result.get("key_findings",      []),
-                        "improvement_suggestions":   fluency_result.get("improvement_suggestions", [])
-                    }
-                
-            except Exception as e:
-                logger.error(f"Error processing {url}: {str(e)}")
-                results["pronunciation_analysis"].append({
-                    "url": url,
-                    "error": str(e),
-                    "status": "failed"
-                })
-            
-            finally:
-                if temp_file and os.path.exists(temp_file):
-                    try:
-                        os.unlink(temp_file)
-                    except Exception as e:
-                        logger.warning(f"Failed to delete temp file: {str(e)}")
+        # Ensure submission_id is clean and suitable for a filename
+        clean_submission_id = "".join(c for c in submission_id if c.isalnum() or c in "-_").strip()
+        if not clean_submission_id:
+            clean_submission_id = f"submission_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Update final status
-        results["status"] = "completed"
-        success = await upload_to_supabase(results, clean_submission_id)
+        # Add a global sentence counter
+        sentence_idx = 1
         
-        if success:
-            logger.info(f"Completed analysis for submission {submission_id}")
-            
-            # Calculate and update grade for this specific assignment
-            try:
-                # Extract scores from analysis
-                pronunciation_score = 0
-                fluency_score = 0
-                
-                # Get pronunciation score
-                for analysis in results.get("pronunciation_analysis", []):
-                    if "overall_pronunciation_score" in analysis:
-                        pronunciation_score = analysis["overall_pronunciation_score"]
-                        logger.info(f"Found pronunciation score: {pronunciation_score}")
-                        break
-                
-                # Get fluency score
-                fluency_data = results.get("fluency_coherence_analysis", {})
-                if fluency_data:
-                    first_key = next(iter(fluency_data))
-                    fluency_metrics = fluency_data[first_key].get("fluency_metrics", {})
-                    fluency_score = fluency_metrics.get("overall_fluency_score", 0)
-                    logger.info(f"Found fluency score: {fluency_score}")
-                
-                # Calculate weighted score (70% pronunciation, 30% fluency)
-                assignment_score = (pronunciation_score * 0.7) + (fluency_score * 0.3)
-                final_grade = round(assignment_score)
-                
-                logger.info(f"Calculated grade for submission {submission_id}: {final_grade}")
-                
-                # Find the submission in the database
-                submission_data = supabase.table("submissions").select("*").eq("submission_uid", submission_id).execute()
-                
-                if submission_data.data and len(submission_data.data) > 0:
-                    submission = submission_data.data[0]
-                    
-                    #Check if trasciprt has at least 2 sentences
-                    transcript = ""
-                    for analysis in results.get("pronunciation_anaysis", []):
-                        if "transcript" in analysis:
-                            transcript += analysis["transcript"] + " "
-                    #Split by .,?,!
-                    senetences = re.splot(r'[.!?]+', transcript)
-                    #filter empty sentences
-                    senetences = [s.strip() for s in senetences if s.strip()]
-                    senetences_count = len(senetences)
-                    valid_transcript = senetences >= 2
-                    
-                    logger.info(f"Transcript validation: {senetences_count} sentences found, valid_transcript={valid_transcript}")
-                    
-                    # Update the grade for this specific submission
-                    update_result = supabase.table("submissions").update({
-                        "grade": final_grade,
-                        "valid_transcript": valid_transcript
-                    }).eq("submission_uid", submission_id).execute()
-                    
-                    logger.info(f"Updated grade for submission {submission_id} to {final_grade}")
-                    
-                    # Also update the overall grade for the student in this class
-                    assignment_id = submission["assignment_id"]
-                    student_id = submission["student_id"]
-                    
-                    # Find the class ID for this assignment
-                    assignment_data = supabase.table("assignments").select("course_id").eq("id", assignment_id).execute()
-                    
-                    if assignment_data.data and len(assignment_data.data) > 0:
-                        class_id = assignment_data.data[0]["course_id"]
-                        
-                        # Update the student's overall class grade
-                        await update_class_grade_for_student(student_id, class_id)
-                        logger.info(f"Successfully updated overall grade for student {student_id} in class {class_id}")
-                    else:
-                        logger.warning(f"Could not find class for assignment {assignment_id}")
-                else:
-                    logger.warning(f"Could not find submission record for {submission_id}")
-            except Exception as e:
-                logger.error(f"Error updating grade after analysis: {str(e)}")
-        else:
-            logger.warning(f"Analysis completed but upload may have failed for {submission_id}")
-        
-    except Exception as e:
-        logger.error(f"Fatal error in process_submission: {str(e)}")
-        error_report = {
-            "submission_id": submission_id,
+        results = {
+            "submission_id": submission_id,  # Keep original ID in the data
             "timestamp": datetime.now().isoformat(),
-            "status": "error",
-            "error": str(e)
+            "status": "processing",
+            "file_count": len(urls),
+            "pronunciation_analysis": [],
+            "grammar_analysis": {},
+            "vocabulary_suggestions": {},
+            "lexical_resources": {},
+            "fluency_coherence_analysis": {}  # New section for fluency/coherence
         }
-        await upload_to_supabase(error_report, f"{clean_submission_id}_error")
+        
+        try:
+            # Upload initial processing status
+            await upload_to_supabase(results, f"{clean_submission_id}_status")
+            
+            for i, url in enumerate(urls):
+                logger.info(f"Processing URL {i+1}/{len(urls)}: {url}")
+                temp_file = None
+                
+                try:
+                    temp_file = await download_audio(url)
+                    
+                    # 1. Pronunciation analysis (existing)
+                    pronun_result = await pronoun.analyze_audio_file(temp_file)
+                    
+                    # ---------- NORMALISE PRONUNCIATION SHAPE ----------
+                    pronun_result.setdefault(
+                        "overall_pronunciation_score",
+                        round(sum(w["accuracy_score"] for w in pronun_result.get("word_details", [])) /
+                              max(len(pronun_result.get("word_details", [])), 1))
+                    )
+                    pronun_result.setdefault("accuracy_score",    pronun_result["overall_pronunciation_score"])
+                    pronun_result.setdefault("fluency_score",     0)
+                    pronun_result.setdefault("prosody_score",     0)
+                    pronun_result.setdefault("completeness_score",0)
+                    pronun_result.setdefault("critical_errors",   [])
+                    pronun_result.setdefault("filler_words",      [])
+                    # ---------------------------------------------------
+                    
+                    pronun_result["url"] = url
+                    results["pronunciation_analysis"].append(pronun_result)
+                    
+                    transcript = pronun_result.get("transcript", "")
+                    if transcript:
+                        # 2. Grammar analysis (existing)
+                        gram_result = await grammar.analyze_grammar(transcript)
+                        
+                        # Add a local sentence counter for this recording
+                        local_sent_idx = 1
+                        
+                        # ----- 1️⃣ GRAMMAR -------------------------------------------------
+                        for sent_key, sent in gram_result["grammar_corrections"].items():
+                            results["grammar_analysis"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
+                                "original": sent.get("original", sent.get("sentence", "")),
+                                "corrections": sent.get("corrections", [])
+                            }
+                            local_sent_idx += 1
+                            sentence_idx += 1  # Keep global counter for backward compatibility
+                        
+                        # Reset local counter for vocabulary
+                        local_sent_idx = 1
+                        
+                        # ----- 2️⃣ VOCABULARY ----------------------------------------------
+                        for sent_key, sent in gram_result["vocabulary_suggestions"].items():
+                            results["vocabulary_suggestions"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
+                                "original": sent.get("original", sent.get("sentence", "")),
+                                "suggestions": sent.get("suggestions", [])
+                            }
+                            local_sent_idx += 1
+                            sentence_idx += 1  # Keep global counter for backward compatibility
+                        
+                        # Reset local counter for lexical
+                        local_sent_idx = 1
+                        
+                        # ----- 3️⃣ LEXICAL -------------------------------------------------
+                        for sent_key, sent in gram_result["lexical_resources"].items():
+                            results["lexical_resources"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
+                                "original": sent.get("original", sent.get("sentence", "")),
+                                "suggestions": sent.get("suggestions", [])
+                            }
+                            local_sent_idx += 1
+                            sentence_idx += 1  # Keep global counter for backward compatibility
+                    
+                        # 3. NEW: Fluency and coherence analysis
+                        # Get word details from pronunciation analysis if available
+                        word_details = pronun_result.get("word_details", [])
+                        
+                        # Run fluency and coherence analysis
+                        fluency_result = await fluency.analyze_fluency_coherence(transcript, word_details)
+                        
+                        results["fluency_coherence_analysis"][f"recording_{i+1}"] = {
+                            "fluency_metrics":           fluency_result.get("fluency_metrics",   {}),
+                            "coherence_metrics":         fluency_result.get("coherence_metrics", {}),
+                            "key_findings":              fluency_result.get("key_findings",      []),
+                            "improvement_suggestions":   fluency_result.get("improvement_suggestions", [])
+                        }
+                    
+                except Exception as e:
+                    logger.error(f"Error processing {url}: {str(e)}")
+                    results["pronunciation_analysis"].append({
+                        "url": url,
+                        "error": str(e),
+                        "status": "failed"
+                    })
+                
+                finally:
+                    if temp_file and os.path.exists(temp_file):
+                        try:
+                            os.unlink(temp_file)
+                        except Exception as e:
+                            logger.warning(f"Failed to delete temp file: {str(e)}")
+            
+            # Update final status
+            results["status"] = "completed"
+            success = await upload_to_supabase(results, clean_submission_id)
+            
+            if success:
+                logger.info(f"Completed analysis for submission {submission_id}")
+                
+                # Calculate and update grade for this specific assignment
+                try:
+                    # Extract scores from analysis
+                    pronunciation_score = 0
+                    fluency_score = 0
+                    
+                    # Get pronunciation score
+                    for analysis in results.get("pronunciation_analysis", []):
+                        if "overall_pronunciation_score" in analysis:
+                            pronunciation_score = analysis["overall_pronunciation_score"]
+                            logger.info(f"Found pronunciation score: {pronunciation_score}")
+                            break
+                    
+                    # Get fluency score
+                    fluency_data = results.get("fluency_coherence_analysis", {})
+                    if fluency_data:
+                        first_key = next(iter(fluency_data))
+                        fluency_metrics = fluency_data[first_key].get("fluency_metrics", {})
+                        fluency_score = fluency_metrics.get("overall_fluency_score", 0)
+                        logger.info(f"Found fluency score: {fluency_score}")
+                    
+                    # Calculate weighted score (70% pronunciation, 30% fluency)
+                    assignment_score = (pronunciation_score * 0.7) + (fluency_score * 0.3)
+                    final_grade = round(assignment_score)
+                    
+                    logger.info(f"Calculated grade for submission {submission_id}: {final_grade}")
+                    
+                    # Find the submission in the database
+                    submission_data = supabase.table("submissions").select("*").eq("submission_uid", submission_id).execute()
+                    
+                    if submission_data.data and len(submission_data.data) > 0:
+                        submission = submission_data.data[0]
+                        
+                        # Check if transcript has at least 2 sentences
+                        transcript = ""
+                        for analysis in results.get("pronunciation_analysis", []):
+                            if "transcript" in analysis:
+                                transcript += analysis["transcript"] + " "
+                        # Split by .,?,!
+                        sentences = re.split(r'[.!?]+', transcript)
+                        # Filter empty sentences
+                        sentences = [s.strip() for s in sentences if s.strip()]
+                        sentences_count = len(sentences)
+                        valid_transcript = sentences_count >= 2
+                        
+                        logger.info(f"Transcript validation: {sentences_count} sentences found, valid_transcript={valid_transcript}")
+                        
+                        # Update the grade for this specific submission
+                        update_result = supabase.table("submissions").update({
+                            "grade": final_grade,
+                            "valid_transcript": valid_transcript
+                        }).eq("submission_uid", submission_id).execute()
+                        
+                        logger.info(f"Updated grade for submission {submission_id} to {final_grade}")
+                        
+                        # Also update the overall grade for the student in this class
+                        assignment_id = submission["assignment_id"]
+                        student_id = submission["student_id"]
+                        
+                        # Find the class ID for this assignment
+                        assignment_data = supabase.table("assignments").select("course_id").eq("id", assignment_id).execute()
+                        
+                        if assignment_data.data and len(assignment_data.data) > 0:
+                            class_id = assignment_data.data[0]["course_id"]
+                            
+                            # Update the student's overall class grade
+                            await update_class_grade_for_student(student_id, class_id)
+                            logger.info(f"Successfully updated overall grade for student {student_id} in class {class_id}")
+                        else:
+                            logger.warning(f"Could not find class for assignment {assignment_id}")
+                    else:
+                        logger.warning(f"Could not find submission record for {submission_id}")
+                except Exception as e:
+                    logger.error(f"Error updating grade after analysis: {str(e)}")
+            else:
+                logger.warning(f"Analysis completed but upload may have failed for {submission_id}")
+            
+        except Exception as e:
+            logger.error(f"Fatal error in process_submission: {str(e)}")
+            error_report = {
+                "submission_id": submission_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "error",
+                "error": str(e)
+            }
+            await upload_to_supabase(error_report, f"{clean_submission_id}_error")
+        
+        finally:
+            # Process the next item in the queue if there is one
+            if not submission_queue.empty():
+                try:
+                    next_submission = await submission_queue.get()
+                    asyncio.create_task(process_submission(next_submission["urls"], next_submission["submission_id"]))
+                except Exception as e:
+                    logger.error(f"Error starting next submission: {str(e)}")
+
+# Function to manage the submission queue
+async def queue_submission(urls: List[str], submission_id: str):
+    """Add submission to queue and start processing if no active processing"""
+    # Add to queue
+    await submission_queue.put({"urls": urls, "submission_id": submission_id})
+    
+    # If the lock is available, start processing
+    if processing_lock.locked():
+        logger.info(f"Submission {submission_id} added to queue. Current queue size: {submission_queue.qsize()}")
+    else:
+        # Start processing the first item in the queue
+        next_submission = await submission_queue.get()
+        asyncio.create_task(process_submission(next_submission["urls"], next_submission["submission_id"]))
 
 async def update_class_grade_for_student(student_id, class_id):
     try:
@@ -400,11 +431,12 @@ async def update_class_grade_for_student(student_id, class_id):
             return None
         
         # Get all submissions for this student in these assignments
+        # Modified query to properly handle NULL values
         submissions_data = supabase.table("submissions") \
             .select("grade") \
             .eq("student_id", student_id) \
             .in_("assignment_id", assignment_ids) \
-            .neq("grade", None) \
+            .not_.is_("grade", "null") \
             .execute()
             
         # Calculate average from the grades
@@ -431,10 +463,12 @@ async def update_class_grade_for_student(student_id, class_id):
             }
         else:
             logger.info("No graded submissions found")
-            # No submissions to grade - update to NULL
-            result = supabase.table("students_classes").update({
-                "overall_grade": None
-            }).eq("student_id", student_id).eq("class_id", class_id).execute()
+            # No submissions to grade - update to NULL using proper SQL syntax
+            result = supabase.table("students_classes") \
+                .update({"overall_grade": None}) \
+                .eq("student_id", student_id) \
+                .eq("class_id", class_id) \
+                .execute()
             
             if result.data:
                 logger.info("Successfully cleared grade (set to NULL)")
@@ -465,12 +499,22 @@ async def analyze_audio(request: AnalysisRequest, background_tasks: BackgroundTa
     if not clean_submission_id:
         raise HTTPException(status_code=400, detail="Invalid submission ID format")
     
-    background_tasks.add_task(process_submission, request.urls, request.submission_id)
+    # Add task to queue instead of directly adding to background_tasks
+    background_tasks.add_task(queue_submission, request.urls, request.submission_id)
     
     return {
         "status": "processing",
-        "message": f"Analysis started for {len(request.urls)} audio files",
+        "message": f"Analysis queued for {len(request.urls)} audio files",
         "submission_id": request.submission_id
+    }
+
+@app.get("/queue-status")
+async def queue_status():
+    """Get status of the processing queue"""
+    return {
+        "status": "success",
+        "queue_size": submission_queue.qsize(),
+        "is_processing": processing_lock.locked()
     }
 
 @app.get("/health")
@@ -479,14 +523,13 @@ async def health_check():
     supabase_status = "connected" if supabase else "not connected"
     
     return {
-        "status": "healthyTESTTTTT",
+        "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "environment": os.environ.get("ENVIRONMENT", "development"),
-        "supabase": supabase_status
+        "supabase": supabase_status,
+        "queue_size": submission_queue.qsize(),
+        "active_processing": processing_lock.locked()
     }
-    
-    
-    
 
 @app.get("/test-upload")
 async def test_upload():
@@ -510,12 +553,6 @@ async def test_upload():
             "message": "Test upload failed. Check logs for details."
         }
 
-
-
-
-
-
-
 @app.get("/test-fluency")
 async def test_fluency():
     """Test fluency module functionality"""
@@ -532,7 +569,6 @@ async def test_fluency():
             "status": "error",
             "message": f"Error testing fluency module: {str(e)}"
         }
-
 
 @app.get("/student-performance/{class_id}")
 async def student_performance(class_id: str):
@@ -584,9 +620,6 @@ async def student_performance(class_id: str):
         logger.error(f"Error in student_performance: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-
 @app.get("/test-update-grade/{class_id}/{student_id}/{grade}")
 async def test_update_grade(class_id: str, student_id: str, grade: float):
     try:
@@ -614,8 +647,6 @@ async def test_update_grade(class_id: str, student_id: str, grade: float):
             "status": "error",
             "message": f"Error updating grade: {str(e)}"
         }
-        
-        
 
 @app.get("/test-grading")
 async def test_grading(
@@ -668,8 +699,6 @@ async def test_grading(
             "status": "error",
             "message": f"Error testing grading algorithm: {str(e)}"
         }
-
-
 
 @app.get("/test-update-submission-grade/{submission_uid}/{grade}")
 async def test_update_submission_grade(submission_uid: str, grade: float):
@@ -739,8 +768,6 @@ async def test_update_submission_grade(submission_uid: str, grade: float):
             "message": f"Error updating submission grade: {str(e)}"
         }
 
-
-
 @app.post("/test-grammar-lexical")
 async def test_grammar_lexical(transcript: str):
     """
@@ -791,10 +818,7 @@ async def test_grammar_lexical(transcript: str):
             "status": "error",
             "message": f"Error testing grammar and lexical analysis: {str(e)}"
         }
-        
-        
-        
-        
+
 @app.post("/test-transcription-length")
 async def test_transcription_length(url: str):
     """
@@ -903,15 +927,17 @@ async def test_transcription_length(url: str):
             "status": "error",
             "message": f"Error testing transcription length: {str(e)}"
         }
-        
-        
-        
+
+# Start background task to process the queue on app startup
+@app.on_event("startup")
+async def start_queue_processor():
+    """Start background task to process the queue"""
+    logger.info("Starting queue processor")
+    
+    # This function doesn't do anything on startup,
+    # but it's here to show that we can add startup tasks if needed in the future
+    pass
         
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8081))
     uvicorn.run(app, host="0.0.0.0", port=port)
-    
-
-
-
-
