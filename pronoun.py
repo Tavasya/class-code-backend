@@ -167,7 +167,6 @@ async def get_assemblyai_transcript(audio_url: str) -> Dict[str, Any]:
                         status = polling_result['status']
                         
                         if status == 'completed':
-                            logger.info(f"Transcription completed: {transcript_id}")
                             return polling_result
                         elif status == 'error':
                             error_message = polling_result.get('error', 'Unknown error')

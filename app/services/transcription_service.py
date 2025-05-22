@@ -93,14 +93,13 @@ class TranscriptionService:
                             status = polling_result['status']
                             
                             if status == 'completed':
-                                logger.info(f"Transcription completed: {transcript_id}")
+                                logger.info(f"Transcription completed: {transcript_id}\n")
                                 return polling_result
                             elif status == 'error':
                                 error_message = polling_result.get('error', 'Unknown error')
                                 logger.error(f"AssemblyAI transcription error: {error_message}")
                                 raise Exception(f"AssemblyAI transcription failed: {error_message}")
-                            
-                            logger.info(f"Transcription in progress: {status}")
+                        
         
         except Exception as e:
             logger.exception("Error getting transcript from AssemblyAI")
