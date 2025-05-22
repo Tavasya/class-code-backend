@@ -1,11 +1,12 @@
 from fastapi import APIRouter
 from datetime import datetime
 import os
-from app.core.config import supabase 
+from app.core.config import supabase
+from app.models.schemas import HealthResponse
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("/", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
     supabase_status = "connected" if supabase else "not connected"
