@@ -1,8 +1,9 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class TranscriptionResponse(BaseModel):
-    """Basic transcription response"""
+    """Response model for transcription"""
     text: str
     error: Optional[str] = None
-    question_number: int = 1
+    question_number: Optional[int] = None

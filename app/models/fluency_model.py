@@ -12,7 +12,7 @@ class WordDetail(BaseModel):
 class FluencyRequest(BaseModel):
     """Request model for fluency assessment"""
     reference_text: str
-    word_details: List[WordDetail]
+    word_details: Optional[List[WordDetail]] = None
 
 class FluencyMetrics(BaseModel):
     """Fluency metrics model"""
