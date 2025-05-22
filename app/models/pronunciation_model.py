@@ -5,6 +5,7 @@ class PronunciationRequest(BaseModel):
     """Request model for pronunciation assessment"""
     audio_file: str
     reference_text: Optional[str] = None
+    question_number: int = 1
 
 class PronunciationResponse(BaseModel):
     """Response model for pronunciation assessment"""
@@ -21,3 +22,4 @@ class PronunciationResponse(BaseModel):
     word_details: List[Dict[str, Any]]
     improvement_suggestion: str
     error: Optional[str] = None
+    question_number: int = 1

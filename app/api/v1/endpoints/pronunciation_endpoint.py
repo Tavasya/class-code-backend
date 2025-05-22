@@ -35,7 +35,8 @@ async def assess_pronunciation(request: PronunciationRequest):
                 filler_words=[],
                 word_details=[],
                 improvement_suggestion="",
-                error=result.get("error", "Unknown error")
+                error=result.get("error", "Unknown error"),
+                question_number=request.question_number
             )
         
         # Return successful response
@@ -52,7 +53,8 @@ async def assess_pronunciation(request: PronunciationRequest):
             filler_words=result.get("filler_words", []),
             word_details=result.get("word_details", []),
             improvement_suggestion=result.get("improvement_suggestion", ""),
-            error=None
+            error=None,
+            question_number=request.question_number
         )
         
     except Exception as e:

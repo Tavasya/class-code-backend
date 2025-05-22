@@ -10,6 +10,7 @@ router = APIRouter()
 
 class TranscribeRequest(BaseModel):
     audio_url: str
+    question_number: int = 1
 
 @router.post("/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(request: TranscribeRequest):
@@ -23,7 +24,8 @@ async def transcribe_audio(request: TranscribeRequest):
         
         return TranscriptionResponse(
             text=result["text"],
-            error=result["error"]
+            error=result["error"],
+            question_number=request.question_number
         )
         
     except Exception as e:
