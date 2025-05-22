@@ -2,13 +2,9 @@ from fastapi import APIRouter, HTTPException
 from app.services.audio_service import AudioService
 from app.models.audio_model import AudioConvertRequest, AudioConvertResponse
 
-router = APIRouter(
-    prefix="/audio",
-    tags=["audio"],
-    responses={404: {"description": "Not found"}}
-)
+router = APIRouter()
 
-@router.post("/convert", response_model=AudioConvertResponse)
+@router.post("/audio_proccessing", response_model=AudioConvertResponse)
 async def convert_audio(request: AudioConvertRequest):
     """Download audio from Supabase and convert to WAV for speech analysis"""
     try:

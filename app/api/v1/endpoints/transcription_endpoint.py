@@ -12,7 +12,7 @@ class TranscribeRequest(BaseModel):
     audio_url: str
     question_number: int = 1
 
-@router.post("/transcribe", response_model=TranscriptionResponse)
+@router.post("/audio_proccessing", response_model=TranscriptionResponse)
 async def transcribe_audio(request: TranscribeRequest):
     """Transcribe audio from URL"""
     

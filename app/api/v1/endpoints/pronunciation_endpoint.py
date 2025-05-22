@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/pronunciation", response_model=PronunciationResponse)
+@router.post("/analysis", response_model=PronunciationResponse)
 async def assess_pronunciation(request: PronunciationRequest):
     """Assess pronunciation of audio file with reference text"""
     
