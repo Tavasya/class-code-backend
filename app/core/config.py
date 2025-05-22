@@ -1,6 +1,7 @@
 # app/core/config.py
 from supabase import create_client, Client
 import logging
+#import os
 
 # Setup logging
 logging.basicConfig(
@@ -18,6 +19,14 @@ CORS_ORIGINS = [
     "https://app.nativespeaking.ai",
     "http://localhost:5173",
 ]
+
+# # Google Cloud Pub/Sub Configuration
+# GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "your-project-id")
+# GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "path/to/your/credentials.json")
+
+# # Default Pub/Sub topics and subscriptions
+# DEFAULT_TOPIC = "audio-analysis"
+# DEFAULT_SUBSCRIPTION = "audio-analysis-sub"
 
 # Supabase Configuration
 SUPABASE_URL = "https://zyaobehxpcwxlyljzknw.supabase.co"
