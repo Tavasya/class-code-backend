@@ -1,0 +1,17 @@
+each question should run in parralel with each other as well
+
+so student submission topic you have to implement
+so another endpoint/service/modal
+this will take a list of audio urls and the submission url
+
+then in parralele send the submission url, question number, audio url, to trasncirption and audio conversion
+
+
+then whats transcirption and audio , that would send to its own topics
+
+then that would send to the analusis
+these would take submjission id
+question id
+trasncrpit
+
+remebr pornicinciation also needs the wav_url
