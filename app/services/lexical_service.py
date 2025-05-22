@@ -1,16 +1,14 @@
 import logging
 import aiohttp
 import json
-import os
 from typing import List, Dict, Any, Optional
 from app.models.lexical_model import LexicalFeedback, LexicalCorrection
+from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 
 # Setup logging
 logger = logging.getLogger(__name__)
 
 # OpenAI API configuration
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 MODEL = "gpt-4"  # or your preferred model
 
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
