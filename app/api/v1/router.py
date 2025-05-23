@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from .endpoints import health, audio_endpoint, transcription_endpoint, pronunciation_endpoint, fluency_endpoint, grammar_endpoint, submission_endpoint, lexical_endpoint
+from .endpoints import health, audio_endpoint, transcription_endpoint, pronunciation_endpoint, fluency_endpoint, grammar_endpoint, submission_endpoint, lexical_endpoint, webhooks_endpoint
 
 api_router = APIRouter()
 
 api_router.include_router(submission_endpoint.router, prefix="/submission", tags=["gateway"])
+api_router.include_router(webhooks_endpoint.router, prefix="/webhooks", tags=["webhooks"])
 
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 

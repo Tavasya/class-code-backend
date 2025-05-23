@@ -20,16 +20,13 @@ class SubmissionService:
                 "submission_url": request.submission_url
             }
             
-            # Get the topic path using the topic name
-            topic_path = self.pubsub_client.get_topic_path_by_name("STUDENT_SUBMISSION")
-            
-            # Publish the message
-            message_id = self.pubsub_client.publish_message(
-                topic_id=topic_path,
+            # Publish the message using the topic name
+            message_id = self.pubsub_client.publish_message_by_name(
+                topic_name="STUDENT_SUBMISSION",
                 message=message_data
             )
             
-            logger.info(f"Published submission to topic with message ID: {message_id}")
+            logger.info(f"Published submission to student-submission-topic with message ID: {message_id}")
             
             return SubmissionResponse(
                 status="success",
@@ -38,6 +35,6 @@ class SubmissionService:
         except Exception as e:
             logger.error(f"Error processing submission: {str(e)}")
             return SubmissionResponse(
-                status="error",
-                message=f"Error processing submission: {str(e)}"
+                status="error", 
+                message=f"Failed to process submission: {str(e)}"
             ) 

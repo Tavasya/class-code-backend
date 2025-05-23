@@ -1,4 +1,4 @@
-from app.pubsub.subscribers.audio_subscriber import AudioSubscriber
-from app.pubsub.subscribers.transcription_subscriber import TranscriptionSubscriber
+# Subscribers have been replaced with push-based webhooks
+# See app/pubsub/webhooks/ for the new webhook handlers
 
-__all__ = ['AudioSubscriber', 'TranscriptionSubscriber'] 
+__all__ = [] 
