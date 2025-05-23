@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from typing import Dict, Any
+from datetime import datetime
 from fastapi import Request, HTTPException
 from app.pubsub.client import PubSubClient
 from app.pubsub.utils import parse_pubsub_message
@@ -21,6 +22,8 @@ class AnalysisWebhook:
         self.analysis_coordinator = AnalysisCoordinatorService()
         # State tracking for analysis coordination
         self._analysis_state: Dict[str, Dict] = {}
+        # NEW: Submission-level aggregation state
+        self._submission_state: Dict[str, Dict] = {}
         
     def _get_analysis_state_key(self, submission_url: str, question_number: int) -> str:
         """Generate a unique key for analysis state tracking"""
@@ -50,6 +53,28 @@ class AnalysisWebhook:
         key = self._get_analysis_state_key(submission_url, question_number)
         if key in self._analysis_state:
             del self._analysis_state[key]
+            
+    def _get_submission_state_key(self, submission_url: str) -> str:
+        """Generate key for submission-level tracking"""
+        return f"submission:{submission_url}"
+        
+    def _get_or_create_submission_state(self, submission_url: str, total_questions: int) -> Dict:
+        """Get or create submission state"""
+        key = self._get_submission_state_key(submission_url)
+        if key not in self._submission_state:
+            self._submission_state[key] = {
+                "total_questions": total_questions,
+                "completed_questions": 0,
+                "question_results": {},
+                "submission_url": submission_url
+            }
+        return self._submission_state[key]
+        
+    def _cleanup_submission_state(self, submission_url: str):
+        """Clean up submission state after completion"""
+        key = self._get_submission_state_key(submission_url)
+        if key in self._submission_state:
+            del self._submission_state[key]
 
     async def handle_audio_conversion_done_webhook(self, request: Request) -> Dict[str, str]:
         """Handle audio conversion completed webhook from Pub/Sub push"""
@@ -119,6 +144,7 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             audio_url = message_data["audio_url"]
+            total_questions = message_data.get("total_questions", 1)
             
             logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical)")
             
@@ -127,6 +153,7 @@ class AnalysisWebhook:
             state["wav_path"] = wav_path
             state["transcript"] = transcript
             state["audio_url"] = audio_url
+            state["total_questions"] = total_questions
             
             # Create tasks for parallel execution (Grammar, Pronunciation, Lexical only)
             tasks = []
@@ -147,6 +174,7 @@ class AnalysisWebhook:
                             "wav_path": wav_path,
                             "transcript": transcript,
                             "audio_url": audio_url,
+                            "total_questions": total_questions,
                             "result": pronunciation_result
                         }
                     )
@@ -169,6 +197,7 @@ class AnalysisWebhook:
                         {
                             "question_number": question_number,
                             "submission_url": submission_url,
+                            "total_questions": total_questions,
                             "result": grammar_result
                         }
                     )
@@ -192,6 +221,7 @@ class AnalysisWebhook:
                         {
                             "question_number": question_number,
                             "submission_url": submission_url,
+                            "total_questions": total_questions,
                             "result": [feedback.dict() for feedback in lexical_result]
                         }
                     )
@@ -226,6 +256,7 @@ class AnalysisWebhook:
             submission_url = message_data["submission_url"]
             pronunciation_result = message_data["result"]
             transcript = message_data["transcript"]
+            total_questions = message_data.get("total_questions", 1)
             
             logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency with pronunciation data)")
             
@@ -245,6 +276,7 @@ class AnalysisWebhook:
                     {
                         "question_number": question_number,
                         "submission_url": submission_url,
+                        "total_questions": total_questions,
                         "result": fluency_result
                     }
                 )
@@ -256,7 +288,7 @@ class AnalysisWebhook:
                 state["fluency_done"] = True
             
             # Check if all analyses are complete
-            await self._check_and_publish_completion(submission_url, question_number)
+            await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             return {"status": "success", "message": "Phase 2 analysis completed (Fluency)"}
             
@@ -266,7 +298,7 @@ class AnalysisWebhook:
             logger.error(f"Error handling pronunciation done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-    async def _check_and_publish_completion(self, submission_url: str, question_number: int):
+    async def _check_and_publish_completion(self, submission_url: str, question_number: int, total_questions: int = None):
         """Check if all analyses are complete and publish final results"""
         state = self._get_or_create_analysis_state(submission_url, question_number)
         
@@ -282,14 +314,20 @@ class AnalysisWebhook:
                 "fluency": state["fluency_result"]
             }
             
-            # Publish analysis complete
+            # Publish analysis complete with total_questions
+            message_data = {
+                "question_number": question_number,
+                "submission_url": submission_url,
+                "analysis_results": analysis_results
+            }
+            
+            # Add total_questions if available
+            if total_questions is not None:
+                message_data["total_questions"] = total_questions
+            
             self.pubsub_client.publish_message_by_name(
                 "ANALYSIS_COMPLETE",
-                {
-                    "question_number": question_number,
-                    "submission_url": submission_url,
-                    "analysis_results": analysis_results
-                }
+                message_data
             )
             
             logger.info(f"ALL analysis completed for question {question_number} - published to analysis-complete-topic")
@@ -346,7 +384,7 @@ class AnalysisWebhook:
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
     async def handle_analysis_complete_webhook(self, request: Request) -> Dict[str, str]:
-        """Handle analysis completion webhook from Pub/Sub push"""
+        """Handle analysis completion and check for submission completion"""
         try:
             parsed_message = await parse_pubsub_message(request)
             message_data = parsed_message["data"]
@@ -354,17 +392,78 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             analysis_results = message_data["analysis_results"]
+            total_questions = message_data.get("total_questions", 1)
             
-            # Here you could store final results, send notifications, etc.
-            logger.info(f"Final analysis completed for question {question_number} in submission {submission_url}")
+            logger.info(f"Question {question_number} analysis completed for submission {submission_url}")
             
-            # TODO: Implement final result storage/notification logic here
-            # For example: store to database, send notification to frontend, etc.
+            # Update submission-level state
+            submission_state = self._get_or_create_submission_state(submission_url, total_questions)
+            submission_state["question_results"][question_number] = analysis_results
+            submission_state["completed_questions"] += 1
             
-            return {"status": "success", "message": "Analysis completion processed"}
+            logger.info(f"Submission {submission_url}: {submission_state['completed_questions']}/{submission_state['total_questions']} questions complete")
             
-        except HTTPException:
-            raise
+            # Check if submission is complete
+            if submission_state["completed_questions"] >= submission_state["total_questions"]:
+                await self._publish_submission_complete(submission_state)
+                
+            return {"status": "success", "message": "Question analysis processed"}
+            
         except Exception as e:
             logger.error(f"Error handling analysis complete webhook: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+            
+    async def _publish_submission_complete(self, submission_state: Dict):
+        """Publish submission completion with all aggregated results"""
+        try:
+            submission_url = submission_state["submission_url"]
+            
+            # Compile final submission results
+            final_results = {
+                "submission_url": submission_url,
+                "total_questions": submission_state["total_questions"],
+                "completed_questions": submission_state["completed_questions"],
+                "question_results": submission_state["question_results"],
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # Publish to submission complete topic
+            message_id = self.pubsub_client.publish_message_by_name(
+                "SUBMISSION_ANALYSIS_COMPLETE",
+                final_results
+            )
+            
+            logger.info(f"🎉 Published submission completion for {submission_url} with {submission_state['completed_questions']} questions - Message ID: {message_id}")
+            
+            # Clean up submission state
+            self._cleanup_submission_state(submission_url)
+                
+        except Exception as e:
+            logger.error(f"Error publishing submission completion: {str(e)}")
+            raise
+            
+    async def handle_submission_analysis_complete_webhook(self, request: Request) -> Dict[str, str]:
+        """Handle submission analysis completion - all questions done"""
+        try:
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            submission_url = message_data["submission_url"]
+            total_questions = message_data["total_questions"]
+            completed_questions = message_data["completed_questions"]
+            question_results = message_data["question_results"]
+            
+            logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
+            
+            # TODO: Implement final submission processing here:
+            # - Calculate overall scores/grades
+            # - Store final results to database  
+            # - Send notifications to students/teachers
+            # - Update student progress tracking
+            # - Generate reports/analytics
+            
+            return {"status": "success", "message": f"Submission analysis complete: {completed_questions} questions processed"}
+            
+        except Exception as e:
+            logger.error(f"Error handling submission analysis complete webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") 

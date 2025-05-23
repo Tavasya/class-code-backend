@@ -17,7 +17,8 @@ class SubmissionService:
             # Publish the submission data to the student-submission-topic
             message_data = {
                 "audio_urls": request.audio_urls,
-                "submission_url": request.submission_url
+                "submission_url": request.submission_url,
+                "total_questions": len(request.audio_urls)
             }
             
             # Publish the message using the topic name

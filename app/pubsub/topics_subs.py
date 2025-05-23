@@ -10,6 +10,7 @@ TOPICS: Dict[str, str] = {
     "PRONOUN_DONE": "pronoun-done-topic",
     "QUESTION_ANALYSIS_READY": "question-analysis-ready-topic",
     "STUDENT_SUBMISSION": "student-submission-topic",
+    "SUBMISSION_ANALYSIS_COMPLETE": "submission-analysis-complete-topic",
     "TRANSCRIPTION_DONE": "transcription-done-topic"
 }
 
@@ -23,5 +24,6 @@ SUBSCRIPTIONS: Dict[str, str] = {
     "PRONOUN_DONE": "pronoun-done-topic-sub",
     "QUESTION_ANALYSIS_READY": "question-analysis-ready-topic-sub",
     "STUDENT_SUBMISSION": "student-submission-topic-sub",
+    "SUBMISSION_ANALYSIS_COMPLETE": "submission-analysis-complete-topic-sub",
     "TRANSCRIPTION_DONE": "transcription-service-sub"
 }

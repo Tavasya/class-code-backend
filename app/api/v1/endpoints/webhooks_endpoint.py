@@ -102,4 +102,14 @@ async def handle_analysis_complete_webhook(request: Request) -> Dict[str, str]:
     Triggered by analysis-complete-topic-sub.
     """
     logger.info("Received analysis complete webhook")
-    return await analysis_webhook.handle_analysis_complete_webhook(request) 
+    return await analysis_webhook.handle_analysis_complete_webhook(request)
+
+@router.post("/submission-analysis-complete")
+async def handle_submission_analysis_complete_webhook(request: Request) -> Dict[str, str]:
+    """
+    Webhook endpoint for complete submission analysis.
+    Triggered when ALL questions in a submission are analyzed.
+    Triggered by submission-analysis-complete-topic-sub.
+    """
+    logger.info("Received submission analysis complete webhook")
+    return await analysis_webhook.handle_submission_analysis_complete_webhook(request) 

@@ -15,7 +15,7 @@ class AnalysisCoordinatorService:
         """Generate a unique key for a question state"""
         return f"{submission_url}:{question_number}"
         
-    def _get_or_create_state(self, submission_url: str, question_number: int) -> Dict:
+    def _get_or_create_state(self, submission_url: str, question_number: int, total_questions: int = None) -> Dict:
         """Get or create state for a question"""
         key = self._get_state_key(submission_url, question_number)
         if key not in self._state_map:
@@ -23,8 +23,12 @@ class AnalysisCoordinatorService:
                 "audio_done": False,
                 "transcript_done": False,
                 "audio_data": None,
-                "transcript_data": None
+                "transcript_data": None,
+                "total_questions": total_questions
             }
+        elif total_questions is not None:
+            # Update total_questions if provided
+            self._state_map[key]["total_questions"] = total_questions
         return self._state_map[key]
         
     def _cleanup_state(self, submission_url: str, question_number: int):
@@ -36,7 +40,8 @@ class AnalysisCoordinatorService:
     async def handle_audio_done(self, message: AudioDoneMessage) -> None:
         """Handle audio conversion completion"""
         try:
-            state = self._get_or_create_state(message.submission_url, message.question_number)
+            total_questions = getattr(message, 'total_questions', None)
+            state = self._get_or_create_state(message.submission_url, message.question_number, total_questions)
             state["audio_done"] = True
             state["audio_data"] = message
             
@@ -55,7 +60,8 @@ class AnalysisCoordinatorService:
     async def handle_transcription_done(self, message: TranscriptionDoneMessage) -> None:
         """Handle transcription completion"""
         try:
-            state = self._get_or_create_state(message.submission_url, message.question_number)
+            total_questions = getattr(message, 'total_questions', None)
+            state = self._get_or_create_state(message.submission_url, message.question_number, total_questions)
             state["transcript_done"] = True
             state["transcript_data"] = message
             
@@ -79,18 +85,20 @@ class AnalysisCoordinatorService:
     ) -> None:
         """Publish message when both audio and transcript are ready"""
         try:
-            analysis_message = QuestionAnalysisReadyMessage(
-                wav_path=state["audio_data"].wav_path,
-                transcript=state["transcript_data"].text,
-                question_number=question_number,
-                submission_url=submission_url,
-                audio_url=state["audio_data"].original_audio_url
-            )
+            # Get message data with total_questions
+            message_data = {
+                "wav_path": state["audio_data"].wav_path,
+                "transcript": state["transcript_data"].text,
+                "question_number": question_number,
+                "submission_url": submission_url,
+                "audio_url": state["audio_data"].original_audio_url,
+                "total_questions": state.get("total_questions", 1)
+            }
             
             # Publish to question analysis ready topic using topic name
             message_id = self.pubsub_client.publish_message_by_name(
                 topic_name="QUESTION_ANALYSIS_READY",
-                message=analysis_message.dict()
+                message=message_data
             )
             
             logger.info(f"Published analysis ready message for question {question_number} with ID: {message_id}")

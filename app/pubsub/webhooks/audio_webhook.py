@@ -15,7 +15,7 @@ class AudioWebhook:
         self.pubsub_client = PubSubClient()
         self.audio_service = AudioService()
         
-    async def process_single_question(self, audio_url: str, question_number: int, submission_url: str) -> None:
+    async def process_single_question(self, audio_url: str, question_number: int, submission_url: str, total_questions: int = None) -> None:
         """Process a single question's audio and publish result"""
         try:
             # Process the audio
@@ -33,6 +33,10 @@ class AudioWebhook:
                 "original_audio_url": audio_url
             }
             
+            # Add total_questions if available
+            if total_questions is not None:
+                message_data["total_questions"] = total_questions
+            
             message_id = self.pubsub_client.publish_message_by_name(
                 topic_name="AUDIO_CONVERSION_DONE",
                 message=message_data
@@ -47,6 +51,7 @@ class AudioWebhook:
         """Process submission for audio - used by coordinator"""
         audio_urls = message_data.get("audio_urls", [])
         submission_url = message_data.get("submission_url")
+        total_questions = message_data.get("total_questions")
         
         if not audio_urls or not submission_url:
             logger.error("Missing required fields in submission message")
@@ -60,7 +65,8 @@ class AudioWebhook:
             task = self.process_single_question(
                 audio_url=audio_url,
                 question_number=question_number,
-                submission_url=submission_url
+                submission_url=submission_url,
+                total_questions=total_questions
             )
             tasks.append(task)
         
