@@ -11,6 +11,7 @@ from app.services.grammar_service import analyze_grammar
 from app.services.lexical_service import analyze_lexical_resources
 from app.services.pronunciation_service import PronunciationService
 from app.models.analysis_model import AudioDoneMessage, TranscriptionDoneMessage, QuestionAnalysisReadyMessage
+from app.core.results_store import results_store
 
 logger = logging.getLogger(__name__)
 
@@ -454,6 +455,9 @@ class AnalysisWebhook:
             question_results = message_data["question_results"]
             
             logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
+            
+            # Store results for testing/retrieval
+            results_store.store_result(submission_url, message_data)
             
             # TODO: Implement final submission processing here:
             # - Calculate overall scores/grades
