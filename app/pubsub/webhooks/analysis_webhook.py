@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Dict, Any
 from fastapi import Request, HTTPException
 from app.pubsub.client import PubSubClient
@@ -18,7 +19,38 @@ class AnalysisWebhook:
     def __init__(self):
         self.pubsub_client = PubSubClient()
         self.analysis_coordinator = AnalysisCoordinatorService()
+        # State tracking for analysis coordination
+        self._analysis_state: Dict[str, Dict] = {}
         
+    def _get_analysis_state_key(self, submission_url: str, question_number: int) -> str:
+        """Generate a unique key for analysis state tracking"""
+        return f"analysis:{submission_url}:{question_number}"
+        
+    def _get_or_create_analysis_state(self, submission_url: str, question_number: int) -> Dict:
+        """Get or create analysis state for a question"""
+        key = self._get_analysis_state_key(submission_url, question_number)
+        if key not in self._analysis_state:
+            self._analysis_state[key] = {
+                "grammar_done": False,
+                "pronunciation_done": False,
+                "lexical_done": False,
+                "fluency_done": False,
+                "wav_path": None,
+                "transcript": None,
+                "audio_url": None,
+                "pronunciation_result": None,
+                "grammar_result": None,
+                "lexical_result": None,
+                "fluency_result": None
+            }
+        return self._analysis_state[key]
+        
+    def _cleanup_analysis_state(self, submission_url: str, question_number: int):
+        """Clean up analysis state after completion"""
+        key = self._get_analysis_state_key(submission_url, question_number)
+        if key in self._analysis_state:
+            del self._analysis_state[key]
+
     async def handle_audio_conversion_done_webhook(self, request: Request) -> Dict[str, str]:
         """Handle audio conversion completed webhook from Pub/Sub push"""
         try:
@@ -73,7 +105,11 @@ class AnalysisWebhook:
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     
     async def handle_question_analysis_ready_webhook(self, request: Request) -> Dict[str, str]:
-        """Handle question ready for analysis webhook from Pub/Sub push"""
+        """Handle question ready for analysis webhook from Pub/Sub push
+        
+        PHASE 1: Run Grammar, Pronunciation, and Lexical in PARALLEL
+        (Fluency will be triggered separately when pronunciation completes)
+        """
         try:
             parsed_message = await parse_pubsub_message(request)
             message_data = parsed_message["data"]
@@ -84,72 +120,124 @@ class AnalysisWebhook:
             submission_url = message_data["submission_url"]
             audio_url = message_data["audio_url"]
             
-            logger.info(f"Starting analysis for question {question_number}")
+            logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical)")
             
-            # Run all analysis services in parallel
-            analysis_results = {}
+            # Initialize analysis state
+            state = self._get_or_create_analysis_state(submission_url, question_number)
+            state["wav_path"] = wav_path
+            state["transcript"] = transcript
+            state["audio_url"] = audio_url
             
-            # 1. Pronunciation Analysis
+            # Create tasks for parallel execution (Grammar, Pronunciation, Lexical only)
+            tasks = []
+            
+            # 1. Pronunciation Analysis Task
+            async def pronunciation_task():
+                try:
+                    pronunciation_result = await PronunciationService.analyze_pronunciation(wav_path, transcript)
+                    state["pronunciation_result"] = pronunciation_result
+                    state["pronunciation_done"] = True
+                    
+                    # Publish pronunciation done - this will trigger fluency analysis
+                    self.pubsub_client.publish_message_by_name(
+                        "PRONOUN_DONE",
+                        {
+                            "question_number": question_number,
+                            "submission_url": submission_url,
+                            "wav_path": wav_path,
+                            "transcript": transcript,
+                            "audio_url": audio_url,
+                            "result": pronunciation_result
+                        }
+                    )
+                    logger.info(f"Pronunciation analysis completed for question {question_number}")
+                except Exception as e:
+                    logger.error(f"Pronunciation analysis failed for question {question_number}: {str(e)}")
+                    state["pronunciation_result"] = {"error": str(e)}
+                    state["pronunciation_done"] = True
+            
+            # 2. Grammar Analysis Task
+            async def grammar_task():
+                try:
+                    grammar_result = await analyze_grammar(transcript)
+                    state["grammar_result"] = grammar_result
+                    state["grammar_done"] = True
+                    
+                    # Publish grammar done
+                    self.pubsub_client.publish_message_by_name(
+                        "GRAMMER_DONE",
+                        {
+                            "question_number": question_number,
+                            "submission_url": submission_url,
+                            "result": grammar_result
+                        }
+                    )
+                    logger.info(f"Grammar analysis completed for question {question_number}")
+                except Exception as e:
+                    logger.error(f"Grammar analysis failed for question {question_number}: {str(e)}")
+                    state["grammar_result"] = {"error": str(e)}
+                    state["grammar_done"] = True
+            
+            # 3. Lexical Analysis Task
+            async def lexical_task():
+                try:
+                    sentences = [s.strip() for s in transcript.split('.') if s.strip()]
+                    lexical_result = await analyze_lexical_resources(sentences)
+                    state["lexical_result"] = lexical_result
+                    state["lexical_done"] = True
+                    
+                    # Publish lexical done
+                    self.pubsub_client.publish_message_by_name(
+                        "LEXICAL_DONE",
+                        {
+                            "question_number": question_number,
+                            "submission_url": submission_url,
+                            "result": [feedback.dict() for feedback in lexical_result]
+                        }
+                    )
+                    logger.info(f"Lexical analysis completed for question {question_number}")
+                except Exception as e:
+                    logger.error(f"Lexical analysis failed for question {question_number}: {str(e)}")
+                    state["lexical_result"] = {"error": str(e)}
+                    state["lexical_done"] = True
+            
+            # Add tasks to list
+            tasks.extend([pronunciation_task(), grammar_task(), lexical_task()])
+            
+            # Run all Phase 1 tasks in parallel
+            await asyncio.gather(*tasks)
+            
+            logger.info(f"PHASE 1 analysis completed for question {question_number}")
+            return {"status": "success", "message": "Phase 1 analysis completed (Grammar, Pronunciation, Lexical)"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error handling question analysis ready webhook: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+    async def handle_pronunciation_done_webhook(self, request: Request) -> Dict[str, str]:
+        """Handle pronunciation completion and trigger Fluency analysis (PHASE 2)"""
+        try:
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            question_number = message_data["question_number"]
+            submission_url = message_data["submission_url"]
+            pronunciation_result = message_data["result"]
+            transcript = message_data["transcript"]
+            
+            logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency with pronunciation data)")
+            
+            # Get analysis state
+            state = self._get_or_create_analysis_state(submission_url, question_number)
+            
+            # Run Fluency Analysis with pronunciation word_details
             try:
-                pronunciation_result = await PronunciationService.analyze_pronunciation(wav_path, transcript)
-                analysis_results["pronunciation"] = pronunciation_result
-                
-                # Publish pronunciation done
-                self.pubsub_client.publish_message_by_name(
-                    "PRONOUN_DONE",
-                    {
-                        "question_number": question_number,
-                        "submission_url": submission_url,
-                        "result": pronunciation_result
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Pronunciation analysis failed: {str(e)}")
-                analysis_results["pronunciation"] = {"error": str(e)}
-            
-            # 2. Grammar Analysis
-            try:
-                grammar_result = await analyze_grammar(transcript)
-                analysis_results["grammar"] = grammar_result
-                
-                # Publish grammar done
-                self.pubsub_client.publish_message_by_name(
-                    "GRAMMER_DONE",
-                    {
-                        "question_number": question_number,
-                        "submission_url": submission_url,
-                        "result": grammar_result
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Grammar analysis failed: {str(e)}")
-                analysis_results["grammar"] = {"error": str(e)}
-            
-            # 3. Lexical Analysis
-            try:
-                sentences = [s.strip() for s in transcript.split('.') if s.strip()]
-                lexical_result = await analyze_lexical_resources(sentences)
-                analysis_results["lexical"] = lexical_result
-                
-                # Publish lexical done
-                self.pubsub_client.publish_message_by_name(
-                    "LEXICAL_DONE",
-                    {
-                        "question_number": question_number,
-                        "submission_url": submission_url,
-                        "result": [feedback.dict() for feedback in lexical_result]
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Lexical analysis failed: {str(e)}")
-                analysis_results["lexical"] = {"error": str(e)}
-            
-            # 4. Fluency Analysis
-            try:
-                # Get word details from pronunciation if available
-                word_details = analysis_results.get("pronunciation", {}).get("word_details", [])
+                word_details = pronunciation_result.get("word_details", [])
                 fluency_result = await get_fluency_coherence_analysis(transcript, word_details)
-                analysis_results["fluency"] = fluency_result
+                state["fluency_result"] = fluency_result
+                state["fluency_done"] = True
                 
                 # Publish fluency done
                 self.pubsub_client.publish_message_by_name(
@@ -160,9 +248,39 @@ class AnalysisWebhook:
                         "result": fluency_result
                     }
                 )
+                logger.info(f"Fluency analysis completed for question {question_number}")
+                
             except Exception as e:
-                logger.error(f"Fluency analysis failed: {str(e)}")
-                analysis_results["fluency"] = {"error": str(e)}
+                logger.error(f"Fluency analysis failed for question {question_number}: {str(e)}")
+                state["fluency_result"] = {"error": str(e)}
+                state["fluency_done"] = True
+            
+            # Check if all analyses are complete
+            await self._check_and_publish_completion(submission_url, question_number)
+            
+            return {"status": "success", "message": "Phase 2 analysis completed (Fluency)"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error handling pronunciation done webhook: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+    async def _check_and_publish_completion(self, submission_url: str, question_number: int):
+        """Check if all analyses are complete and publish final results"""
+        state = self._get_or_create_analysis_state(submission_url, question_number)
+        
+        # Check if all analyses are complete
+        if (state["grammar_done"] and state["pronunciation_done"] and 
+            state["lexical_done"] and state["fluency_done"]):
+            
+            # Compile all results
+            analysis_results = {
+                "pronunciation": state["pronunciation_result"],
+                "grammar": state["grammar_result"],
+                "lexical": state["lexical_result"],
+                "fluency": state["fluency_result"]
+            }
             
             # Publish analysis complete
             self.pubsub_client.publish_message_by_name(
@@ -174,15 +292,59 @@ class AnalysisWebhook:
                 }
             )
             
-            logger.info(f"Successfully completed all analysis for question {question_number}")
-            return {"status": "success", "message": "Question analysis completed"}
+            logger.info(f"ALL analysis completed for question {question_number} - published to analysis-complete-topic")
             
-        except HTTPException:
-            raise
+            # Clean up state
+            self._cleanup_analysis_state(submission_url, question_number)
+
+    async def handle_fluency_done_webhook(self, request: Request) -> Dict[str, str]:
+        """Handle fluency analysis completion"""
+        try:
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            question_number = message_data["question_number"]
+            submission_url = message_data["submission_url"]
+            
+            logger.info(f"Fluency analysis acknowledged for question {question_number}")
+            return {"status": "success", "message": "Fluency analysis completion acknowledged"}
+            
         except Exception as e:
-            logger.error(f"Error handling question analysis ready webhook: {str(e)}")
+            logger.error(f"Error handling fluency done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-    
+
+    async def handle_grammar_done_webhook(self, request: Request) -> Dict[str, str]:
+        """Handle grammar analysis completion"""
+        try:
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            question_number = message_data["question_number"]
+            submission_url = message_data["submission_url"]
+            
+            logger.info(f"Grammar analysis acknowledged for question {question_number}")
+            return {"status": "success", "message": "Grammar analysis completion acknowledged"}
+            
+        except Exception as e:
+            logger.error(f"Error handling grammar done webhook: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+    async def handle_lexical_done_webhook(self, request: Request) -> Dict[str, str]:
+        """Handle lexical analysis completion"""
+        try:
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            question_number = message_data["question_number"]
+            submission_url = message_data["submission_url"]
+            
+            logger.info(f"Lexical analysis acknowledged for question {question_number}")
+            return {"status": "success", "message": "Lexical analysis completion acknowledged"}
+            
+        except Exception as e:
+            logger.error(f"Error handling lexical done webhook: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
     async def handle_analysis_complete_webhook(self, request: Request) -> Dict[str, str]:
         """Handle analysis completion webhook from Pub/Sub push"""
         try:
@@ -194,7 +356,7 @@ class AnalysisWebhook:
             analysis_results = message_data["analysis_results"]
             
             # Here you could store final results, send notifications, etc.
-            logger.info(f"Analysis completed for question {question_number} in submission {submission_url}")
+            logger.info(f"Final analysis completed for question {question_number} in submission {submission_url}")
             
             # TODO: Implement final result storage/notification logic here
             # For example: store to database, send notification to frontend, etc.

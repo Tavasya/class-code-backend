@@ -65,8 +65,7 @@ async def handle_fluency_done_webhook(request: Request) -> Dict[str, str]:
     Triggered by fluency-done-topic-sub.
     """
     logger.info("Received fluency done webhook")
-    # Currently just acknowledging - could be used for additional processing
-    return {"status": "success", "message": "Fluency analysis completion acknowledged"}
+    return await analysis_webhook.handle_fluency_done_webhook(request)
 
 @router.post("/grammar-done")
 async def handle_grammar_done_webhook(request: Request) -> Dict[str, str]:
@@ -75,8 +74,7 @@ async def handle_grammar_done_webhook(request: Request) -> Dict[str, str]:
     Triggered by grammer-done-topic-sub.
     """
     logger.info("Received grammar done webhook")
-    # Currently just acknowledging - could be used for additional processing
-    return {"status": "success", "message": "Grammar analysis completion acknowledged"}
+    return await analysis_webhook.handle_grammar_done_webhook(request)
 
 @router.post("/lexical-done")
 async def handle_lexical_done_webhook(request: Request) -> Dict[str, str]:
@@ -85,18 +83,17 @@ async def handle_lexical_done_webhook(request: Request) -> Dict[str, str]:
     Triggered by lexical-done-topic-sub.
     """
     logger.info("Received lexical done webhook")
-    # Currently just acknowledging - could be used for additional processing
-    return {"status": "success", "message": "Lexical analysis completion acknowledged"}
+    return await analysis_webhook.handle_lexical_done_webhook(request)
 
 @router.post("/pronunciation-done")
 async def handle_pronunciation_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for pronunciation analysis completion.
     Triggered by pronoun-done-topic-sub.
+    NOW TRIGGERS FLUENCY ANALYSIS (Phase 2).
     """
-    logger.info("Received pronunciation done webhook")
-    # Currently just acknowledging - could be used for additional processing
-    return {"status": "success", "message": "Pronunciation analysis completion acknowledged"}
+    logger.info("Received pronunciation done webhook - triggering fluency analysis")
+    return await analysis_webhook.handle_pronunciation_done_webhook(request)
 
 @router.post("/analysis-complete")
 async def handle_analysis_complete_webhook(request: Request) -> Dict[str, str]:
