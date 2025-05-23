@@ -16,6 +16,26 @@ ASSEMBLYAI_TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript"
 class TranscriptionService:
     """Service for handling audio transcription"""
     
+    def __init__(self):
+        pass
+
+    async def process_single_transcription(self, audio_url: str, question_number: int, submission_url: str) -> dict:
+        """Process a single audio URL for transcription"""
+        try:
+            logger.info(f"Processing audio URL: {audio_url} for question {question_number}")
+            
+            # Transcribe the audio directly from URL
+            result = await self.transcribe_audio_from_url(audio_url)
+            
+            return {
+                "text": result["text"],
+                "error": result["error"],
+                "question_number": question_number
+            }
+        except Exception as e:
+            logger.error(f"Error processing audio URL {audio_url} for question {question_number}: {str(e)}")
+            raise
+
     @staticmethod
     async def upload_to_assemblyai(file_path: str) -> str:
         """Upload audio file to AssemblyAI"""
@@ -100,7 +120,6 @@ class TranscriptionService:
                                 logger.error(f"AssemblyAI transcription error: {error_message}")
                                 raise Exception(f"AssemblyAI transcription failed: {error_message}")
                         
-        
         except Exception as e:
             logger.exception("Error getting transcript from AssemblyAI")
             raise Exception(f"Failed to get transcript from AssemblyAI: {str(e)}")

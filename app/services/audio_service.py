@@ -2,8 +2,27 @@ import os
 import aiohttp
 import tempfile
 import subprocess
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AudioService:
+    def __init__(self):
+        pass
+
+    async def process_single_audio(self, audio_url: str, question_number: int, submission_url: str) -> dict:
+        """Process a single audio URL"""
+        try:
+            wav_path = await self.convert_to_wav(audio_url)
+            
+            return {
+                "wav_path": wav_path,
+                "question_number": question_number
+            }
+        except Exception as e:
+            logger.error(f"Error processing audio URL {audio_url} for question {question_number}: {str(e)}")
+            raise
+
     async def convert_to_wav(self, audio_url: str) -> str:
         """Download audio from Supabase and convert to WAV for speech analysis"""
         # Download from Supabase
