@@ -10,7 +10,7 @@ import time
 import sys
 
 # Configuration
-BASE_URL = "http://localhost:8000"
+BASE_URL = "https://classconnect-staging-107872842385.us-west2.run.app"
 TEST_SUBMISSION = {
     "audio_urls": [
         "https://zyaobehxpcwxlyljzknw.supabase.co/storage/v1/object/public/audio_recordings/ef09cf11-6a08-4fc9-8f33-9722b4d9dcdc/83/0_1744680795502.webm",

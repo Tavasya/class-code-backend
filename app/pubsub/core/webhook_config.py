@@ -22,6 +22,7 @@ WEBHOOK_ENDPOINTS = {
     "LEXICAL_DONE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/lexical-done",
     "PRONUNCIATION_DONE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/pronunciation-done",
     "ANALYSIS_COMPLETE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/analysis-complete",
+    "SUBMISSION_ANALYSIS_COMPLETE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/submission-analysis-complete",
 }
 
 # Log webhook configuration
@@ -69,5 +70,9 @@ SUBSCRIPTION_CONFIGS = {
     "analysis-complete-topic-sub": {
         "topic": "analysis-complete-topic",
         "push_endpoint": WEBHOOK_ENDPOINTS["ANALYSIS_COMPLETE"]
+    },
+    "submission-analyis-complete-topic-sub": {
+        "topic": "submission-analyis-complete-topic",
+        "push_endpoint": WEBHOOK_ENDPOINTS["SUBMISSION_ANALYSIS_COMPLETE"]
     }
 } 

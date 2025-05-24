@@ -5,14 +5,13 @@ import os
 import re
 from typing import Dict, List, Any
 from app.models.fluency_model import FluencyRequest, FluencyResponse, WordDetail
+from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # OpenAI API configuration
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 MODEL = "gpt-4"
 
 async def call_api_with_retry(prompt: str, expected_format: str = "dict", max_retries: int = 2) -> Any:
