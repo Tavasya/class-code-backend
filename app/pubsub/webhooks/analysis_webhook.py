@@ -454,38 +454,52 @@ class AnalysisWebhook:
 
     async def handle_analysis_complete_webhook(self, request: Request) -> Dict[str, str]:
         """Handle analysis completion and check for submission completion"""
+        logger.info(f"🔍 DEBUG: Entering handle_analysis_complete_webhook")
         try:
             parsed_message = await parse_pubsub_message(request)
             message_data = parsed_message["data"]
+            logger.info(f"🔍 DEBUG: Parsed message data keys: {list(message_data.keys())}")
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             analysis_results = message_data["analysis_results"]
             total_questions = message_data.get("total_questions", 1)
             
+            logger.info(f"🔍 DEBUG: Processing question {question_number} for submission {submission_url} with total_questions={total_questions}")
             logger.info(f"Question {question_number} analysis completed for submission {submission_url}")
             
             # Update submission-level state
             submission_state = self._get_or_create_submission_state(submission_url, total_questions)
+            logger.info(f"🔍 DEBUG: Current submission state before update: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
+            
             submission_state["question_results"][question_number] = analysis_results
             submission_state["completed_questions"] += 1
             
+            logger.info(f"🔍 DEBUG: Updated submission state: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
             logger.info(f"Submission {submission_url}: {submission_state['completed_questions']}/{submission_state['total_questions']} questions complete")
             
             # Check if submission is complete
             if submission_state["completed_questions"] >= submission_state["total_questions"]:
+                logger.info(f"🔍 DEBUG: Submission complete! Calling _publish_submission_complete for {submission_url}")
                 await self._publish_submission_complete(submission_state)
+            else:
+                logger.info(f"🔍 DEBUG: Submission not yet complete. Need {submission_state['total_questions'] - submission_state['completed_questions']} more questions for {submission_url}")
                 
             return {"status": "success", "message": "Question analysis processed"}
             
         except Exception as e:
+            logger.error(f"💥 ERROR in handle_analysis_complete_webhook: {str(e)}")
             logger.error(f"Error handling analysis complete webhook: {str(e)}")
+            import traceback
+            logger.error(f"🔍 DEBUG: Full traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
             
     async def _publish_submission_complete(self, submission_state: Dict):
         """Publish submission completion with all aggregated results"""
+        logger.info(f"🔍 DEBUG: Entering _publish_submission_complete for submission: {submission_state.get('submission_url', 'unknown')}")
         try:
             submission_url = submission_state["submission_url"]
+            logger.info(f"🔍 DEBUG: About to compile final results for {submission_url}")
             
             # Compile final submission results
             final_results = {
@@ -496,6 +510,7 @@ class AnalysisWebhook:
                 "timestamp": datetime.now().isoformat()
             }
             
+            logger.info(f"🔍 DEBUG: About to publish SUBMISSION_ANALYSIS_COMPLETE message for {submission_url}")
             # Publish to submission complete topic
             message_id = self.pubsub_client.publish_message_by_name(
                 "SUBMISSION_ANALYSIS_COMPLETE",
@@ -505,10 +520,14 @@ class AnalysisWebhook:
             logger.info(f"🎉 Published submission completion for {submission_url} with {submission_state['completed_questions']} questions - Message ID: {message_id}")
             
             # Clean up submission state
+            logger.info(f"🔍 DEBUG: Cleaning up submission state for {submission_url}")
             self._cleanup_submission_state(submission_url)
                 
         except Exception as e:
+            logger.error(f"💥 ERROR in _publish_submission_complete: {str(e)}")
             logger.error(f"Error publishing submission completion: {str(e)}")
+            import traceback
+            logger.error(f"🔍 DEBUG: Full traceback in _publish_submission_complete: {traceback.format_exc()}")
             raise
             
     async def handle_submission_analysis_complete_webhook(self, request: Request) -> Dict[str, str]:
