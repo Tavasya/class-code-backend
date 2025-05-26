@@ -423,8 +423,13 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            total_questions = message_data.get("total_questions", 1)
             
             logger.info(f"Fluency analysis acknowledged for question {question_number}")
+            
+            # Check if all analyses are complete now that fluency is done
+            await self._check_and_publish_completion(submission_url, question_number, total_questions)
+            
             return {"status": "success", "message": "Fluency analysis completion acknowledged"}
             
         except Exception as e:
@@ -439,8 +444,13 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            total_questions = message_data.get("total_questions", 1)
             
             logger.info(f"Grammar analysis acknowledged for question {question_number}")
+            
+            # Check if all analyses are complete now that grammar is done
+            await self._check_and_publish_completion(submission_url, question_number, total_questions)
+            
             return {"status": "success", "message": "Grammar analysis completion acknowledged"}
             
         except Exception as e:
@@ -455,8 +465,13 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            total_questions = message_data.get("total_questions", 1)
             
             logger.info(f"Lexical analysis acknowledged for question {question_number}")
+            
+            # Check if all analyses are complete now that lexical is done
+            await self._check_and_publish_completion(submission_url, question_number, total_questions)
+            
             return {"status": "success", "message": "Lexical analysis completion acknowledged"}
             
         except Exception as e:
