@@ -1,18 +1,56 @@
-from app.core.config import supabase
+from app.core.config import supabase, SUPABASE_URL
 import logging
 from typing import List, Dict, Any, Optional
+import json
 
 logger = logging.getLogger(__name__)
 
 class DatabaseService:
     def __init__(self):
         self.supabase = supabase
+        self.supabase_url = SUPABASE_URL
+        # Extract project reference from URL (e.g., "drcsbokflpzbhuzsksws" from the URL)
+        self.supabase_project = SUPABASE_URL.split("//")[1].split(".")[0] if SUPABASE_URL else "unknown"
+        
+        logger.info(f"DatabaseService initialized with Supabase instance: {self.supabase_project} ({self.supabase_url})")
+
+    def _log_operation_start(self, operation: str, submission_url: str = None, **kwargs):
+        """Log the start of a database operation with full context"""
+        context = f"Supabase Project: {self.supabase_project} | URL: {self.supabase_url}"
+        if submission_url:
+            context += f" | Submission URL: {submission_url}"
+        for key, value in kwargs.items():
+            context += f" | {key}: {value}"
+        logger.info(f"🚀 Starting {operation} - {context}")
+
+    def _log_operation_success(self, operation: str, submission_url: str = None, **kwargs):
+        """Log successful database operation with full context"""
+        context = f"Supabase Project: {self.supabase_project}"
+        if submission_url:
+            context += f" | Submission URL: {submission_url}"
+        for key, value in kwargs.items():
+            context += f" | {key}: {value}"
+        logger.info(f"✅ {operation} SUCCESS - {context}")
+
+    def _log_operation_error(self, operation: str, error: str, submission_url: str = None, **kwargs):
+        """Log failed database operation with full context"""
+        context = f"Supabase Project: {self.supabase_project} | URL: {self.supabase_url}"
+        if submission_url:
+            context += f" | Submission URL: {submission_url}"
+        for key, value in kwargs.items():
+            context += f" | {key}: {value}"
+        logger.error(f"❌ {operation} FAILED - {context} | Error: {error}")
 
     def list_recordings(self, path_prefix: str) -> List[str]:
         """List all audio file public URLs in the 'recordings' bucket under a given path_prefix."""
+        operation = "LIST_RECORDINGS"
+        
         if not path_prefix:
-            logger.warning("path_prefix is required to list specific recordings.")
+            self._log_operation_error(operation, "path_prefix is required", path_prefix=path_prefix)
             return []
+            
+        self._log_operation_start(operation, bucket="recordings", path_prefix=path_prefix)
+        
         try:
             response = self.supabase.storage.from_('recordings').list(path=path_prefix)
             recording_urls = []
@@ -21,72 +59,82 @@ class DatabaseService:
                     file_path_in_bucket = f"{path_prefix}/{file_object['name']}"
                     public_url = self.supabase.storage.from_('recordings').get_public_url(file_path_in_bucket)
                     recording_urls.append(public_url)
-            logger.info(f"Found {len(recording_urls)} files in 'recordings' bucket under path '{path_prefix}'.")
+            
+            self._log_operation_success(operation, 
+                                      bucket="recordings", 
+                                      path_prefix=path_prefix, 
+                                      files_found=len(recording_urls),
+                                      urls=recording_urls[:3] if recording_urls else [])  # Log first 3 URLs for verification
             return recording_urls
         except Exception as e:
-            logger.error(f"Error listing recordings under '{path_prefix}': {str(e)}")
+            self._log_operation_error(operation, str(e), bucket="recordings", path_prefix=path_prefix)
             return []
 
     def insert_submission(self, submission_url: str, question_results: Dict[str, Any], recordings: Optional[List[str]] = None) -> Optional[str]:
         """Insert a new submission row with section_feedback and recordings."""
+        operation = "INSERT_SUBMISSION"
+        
+        self._log_operation_start(operation, 
+                                submission_url=submission_url,
+                                questions_count=len(question_results) if question_results else 0,
+                                recordings_count=len(recordings) if recordings else 0,
+                                table="submissions")
+        
         try:
             section_feedback = {
                 "submission_url": submission_url,
                 "question_results": question_results
             }
-            # Ensure all required fields from the table definition are considered
-            # assignment_id, student_id, attempt, grade, valid_transcrip are nullable or have defaults
-            data_to_insert = {
-                "section_feedback": section_feedback,
-                "recordings": recordings or [],
-                "status": "completed",  # Changed from "pending" as analysis is complete
-                "submitted_at": "now()", # Utilizes Supabase/Postgres now()
-                "submission_url": submission_url # Assuming submission_url itself should be stored if there's a dedicated column.
-                                             # The schema image does not show a 'submission_url' column,
-                                             # but it's good practice if it exists.
-                                             # If not, remove this line. For now, I'll assume it might be useful
-                                             # or implicitly mapped if `id` is not the submission_url.
-                                             # Based on the schema, `id` is a uuid. `submission_url` seems to be a business key.
-                                             # Let's check if there's a submission_url column.
-                                             # The schema shows `id uuid`, `assignment_id uuid`, `student_id uuid`. No `submission_url` text column.
-                                             # `section_feedback` already contains `submission_url`.
-                                             # So, no dedicated `submission_url` top-level column needed in insert data.
-            }
-
-            # Corrected data_to_insert without a top-level submission_url, as it's in section_feedback
-            # and not a direct column in the provided schema.
+            
             final_data_to_insert = {
                 "section_feedback": section_feedback,
                 "recordings": recordings or [],
                 "status": "completed",
                 "submitted_at": "now()"
-                # assignment_id, student_id, attempt etc. will use defaults or be NULL
             }
+            
+            # Log the data being inserted (truncated for readability)
+            logger.info(f"📝 Data to insert for {submission_url}: status=completed, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(section_feedback)) if section_feedback else 0} bytes")
 
             result = self.supabase.table('submissions').insert(final_data_to_insert).execute()
             
             if result.data and len(result.data) > 0:
                 submission_db_id = result.data[0]['id']
-                logger.info(f"Inserted submission for {submission_url}. DB ID: {submission_db_id}")
+                self._log_operation_success(operation,
+                                          submission_url=submission_url,
+                                          db_id=submission_db_id,
+                                          table="submissions",
+                                          status="completed")
                 return submission_db_id
             else:
-                logger.error(f"Failed to insert submission for {submission_url}. Response: {result.error or 'No data returned'}")
+                error_msg = result.error if hasattr(result, 'error') and result.error else 'No data returned from insert operation'
+                self._log_operation_error(operation, error_msg, submission_url=submission_url, table="submissions")
+                logger.error(f"📊 Full Supabase response: {result}")
                 return None
         except Exception as e:
-            logger.error(f"Error inserting submission for {submission_url}: {str(e)}")
+            self._log_operation_error(operation, str(e), submission_url=submission_url, table="submissions")
             return None
 
     def update_section_feedback(self, submission_id: str, section_feedback: Dict[str, Any]) -> bool:
         """Update the section_feedback column for a submission."""
+        operation = "UPDATE_SECTION_FEEDBACK"
+        
+        self._log_operation_start(operation,
+                                submission_id=submission_id,
+                                table="submissions",
+                                feedback_size=len(json.dumps(section_feedback)) if section_feedback else 0)
+        
         try:
             result = self.supabase.table('submissions').update({
                 "section_feedback": section_feedback
             }).eq('id', submission_id).execute()
+            
             if result.error:
-                logger.error(f"Error updating section_feedback for submission {submission_id}: {result.error}")
+                self._log_operation_error(operation, str(result.error), submission_id=submission_id, table="submissions")
                 return False
-            logger.info(f"Updated section_feedback for submission {submission_id}")
+            
+            self._log_operation_success(operation, submission_id=submission_id, table="submissions")
             return True
         except Exception as e:
-            logger.error(f"Error updating section_feedback for submission {submission_id}: {str(e)}")
+            self._log_operation_error(operation, str(e), submission_id=submission_id, table="submissions")
             return False

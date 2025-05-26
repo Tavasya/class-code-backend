@@ -522,35 +522,53 @@ class AnalysisWebhook:
             question_results = message_data["question_results"]
             
             logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
+            logger.info(f"📊 Question results summary for {submission_url}: {list(question_results.keys()) if question_results else 'No results'}")
             
             # Store results for testing/retrieval
             results_store.store_result(submission_url, message_data)
+            logger.info(f"💾 Stored results in memory cache for submission: {submission_url}")
             
-            # NEW: Store final results to database
+            # Store final results to database
+            logger.info(f"🔄 Beginning Supabase database operations for submission: {submission_url}")
             try:
                 db_service = DatabaseService()
+                logger.info(f"🏗️ DatabaseService initialized for submission: {submission_url}")
                 
                 # 1. List recording URLs from Supabase Storage for this submission
-                # Assuming submission_url can be used as a prefix/folder in the 'recordings' bucket
+                logger.info(f"🎵 Fetching recordings from Supabase Storage for submission: {submission_url}")
                 recording_urls = db_service.list_recordings(path_prefix=submission_url)
+                
                 if not recording_urls:
-                    logger.warning(f"No recordings found in bucket 'recordings' for submission_url prefix: {submission_url}")
+                    logger.warning(f"⚠️ No recordings found in Supabase Storage 'recordings' bucket for submission: {submission_url}")
+                else:
+                    logger.info(f"🎵 Found {len(recording_urls)} recordings in Supabase Storage for submission: {submission_url}")
+                    # Log first few URLs for verification
+                    for i, url in enumerate(recording_urls[:3]):
+                        logger.info(f"🎵 Recording {i+1}: {url}")
 
                 # 2. Insert the submission into the 'submissions' table
+                logger.info(f"💽 Inserting submission into Supabase 'submissions' table: {submission_url}")
                 submission_db_id = db_service.insert_submission(
                     submission_url=submission_url,
                     question_results=question_results,
-                    recordings=recording_urls # Pass the fetched public URLs
+                    recordings=recording_urls
                 )
                 
                 if submission_db_id:
-                    logger.info(f"Successfully stored submission {submission_url} to database with ID: {submission_db_id}")
+                    logger.info(f"✅ SUCCESS: Stored submission {submission_url} to Supabase database with ID: {submission_db_id}")
+                    logger.info(f"📋 Database record created: table=submissions, id={submission_db_id}, status=completed, recordings_count={len(recording_urls or [])}")
                 else:
-                    logger.error(f"Failed to store submission {submission_url} to database.")
+                    logger.error(f"❌ FAILED: Could not store submission {submission_url} to Supabase database - insert_submission returned None")
+                    logger.error(f"🔍 Check Supabase connection, permissions, and table schema for submission: {submission_url}")
                     
             except Exception as e:
-                logger.error(f"Error during database operation for submission {submission_url}: {str(e)}")
+                logger.error(f"💥 EXCEPTION during Supabase database operation for submission {submission_url}: {str(e)}")
+                logger.error(f"🔍 Exception type: {type(e).__name__}")
+                import traceback
+                logger.error(f"📋 Full traceback for submission {submission_url}: {traceback.format_exc()}")
 
+            logger.info(f"🏁 Completed all operations for submission: {submission_url}")
+            
             # TODO: Implement further final submission processing here:
             # - Calculate overall scores/grades
             # - Send notifications to students/teachers
@@ -560,5 +578,9 @@ class AnalysisWebhook:
             return {"status": "success", "message": f"Submission analysis complete: {completed_questions} questions processed"}
             
         except Exception as e:
-            logger.error(f"Error handling submission analysis complete webhook: {str(e)}")
+            logger.error(f"💥 CRITICAL ERROR handling submission analysis complete webhook: {str(e)}")
+            if 'submission_url' in locals():
+                logger.error(f"🆔 Failed submission URL: {submission_url}")
+            import traceback
+            logger.error(f"📋 Full webhook error traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") 
