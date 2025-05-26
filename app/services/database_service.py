@@ -89,12 +89,12 @@ class DatabaseService:
             final_data_to_insert = {
                 "section_feedback": section_feedback,
                 "recordings": recordings or [],
-                "status": "completed",
+                "status": "graded",
                 "submitted_at": "now()"
             }
             
             # Log the data being inserted (truncated for readability)
-            logger.info(f"📝 Data to insert for {submission_url}: status=completed, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(section_feedback)) if section_feedback else 0} bytes")
+            logger.info(f"📝 Data to insert for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(section_feedback)) if section_feedback else 0} bytes")
 
             result = self.supabase.table('submissions').insert(final_data_to_insert).execute()
             
@@ -104,7 +104,7 @@ class DatabaseService:
                                           submission_url=submission_url,
                                           db_id=submission_db_id,
                                           table="submissions",
-                                          status="completed")
+                                          status="graded")
                 return submission_db_id
             else:
                 error_msg = result.error if hasattr(result, 'error') and result.error else 'No data returned from insert operation'

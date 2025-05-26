@@ -586,7 +586,7 @@ class AnalysisWebhook:
                 
                 if submission_db_id:
                     logger.info(f"✅ SUCCESS: Stored submission {submission_url} to Supabase database with ID: {submission_db_id}")
-                    logger.info(f"📋 Database record created: table=submissions, id={submission_db_id}, status=completed, recordings_count={len(recording_urls or [])}")
+                    logger.info(f"📋 Database record created: table=submissions, id={submission_db_id}, status=graded, recordings_count={len(recording_urls or [])}")
                 else:
                     logger.error(f"❌ FAILED: Could not store submission {submission_url} to Supabase database - insert_submission returned None")
                     logger.error(f"🔍 Check Supabase connection, permissions, and table schema for submission: {submission_url}")
