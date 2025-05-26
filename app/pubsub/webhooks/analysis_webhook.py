@@ -12,6 +12,7 @@ from app.services.lexical_service import analyze_lexical_resources
 from app.services.pronunciation_service import PronunciationService
 from app.models.analysis_model import AudioDoneMessage, TranscriptionDoneMessage, QuestionAnalysisReadyMessage
 from app.core.results_store import results_store
+from app.services.database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +461,6 @@ class AnalysisWebhook:
             message_data = parsed_message["data"]
             
             submission_url = message_data["submission_url"]
-            total_questions = message_data["total_questions"]
             completed_questions = message_data["completed_questions"]
             question_results = message_data["question_results"]
             
@@ -469,9 +469,33 @@ class AnalysisWebhook:
             # Store results for testing/retrieval
             results_store.store_result(submission_url, message_data)
             
-            # TODO: Implement final submission processing here:
+            # NEW: Store final results to database
+            try:
+                db_service = DatabaseService()
+                
+                # 1. List recording URLs from Supabase Storage for this submission
+                # Assuming submission_url can be used as a prefix/folder in the 'recordings' bucket
+                recording_urls = db_service.list_recordings(path_prefix=submission_url)
+                if not recording_urls:
+                    logger.warning(f"No recordings found in bucket 'recordings' for submission_url prefix: {submission_url}")
+
+                # 2. Insert the submission into the 'submissions' table
+                submission_db_id = db_service.insert_submission(
+                    submission_url=submission_url,
+                    question_results=question_results,
+                    recordings=recording_urls # Pass the fetched public URLs
+                )
+                
+                if submission_db_id:
+                    logger.info(f"Successfully stored submission {submission_url} to database with ID: {submission_db_id}")
+                else:
+                    logger.error(f"Failed to store submission {submission_url} to database.")
+                    
+            except Exception as e:
+                logger.error(f"Error during database operation for submission {submission_url}: {str(e)}")
+
+            # TODO: Implement further final submission processing here:
             # - Calculate overall scores/grades
-            # - Store final results to database  
             # - Send notifications to students/teachers
             # - Update student progress tracking
             # - Generate reports/analytics
