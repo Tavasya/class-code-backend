@@ -152,3 +152,52 @@ class DatabaseService:
         except Exception as e:
             self._log_operation_error(operation, str(e), submission_id=submission_id, table="submissions")
             return False
+
+    def _transform_to_new_format(self, question_results: Dict[str, Any], recordings: List[str]) -> List[Dict[str, Any]]:
+        """Transform old question_results format to new standardized array format"""
+        transformed_results = []
+        
+        for question_id, analysis_results in question_results.items():
+            # Get audio URL for this question from recordings
+            audio_url = ""
+            if recordings:
+                # Try to find recording for this question
+                for recording in recordings:
+                    if f"question_{question_id}" in recording or f"q{question_id}" in recording:
+                        audio_url = recording
+                        break
+                # If no specific match, use first recording as fallback
+                if not audio_url and recordings:
+                    audio_url = recordings[0]
+            
+            # Extract transcript from pronunciation result if available
+            transcript = ""
+            if "pronunciation" in analysis_results and isinstance(analysis_results["pronunciation"], dict):
+                transcript = analysis_results["pronunciation"].get("transcript", "")
+            
+            # Build section_feedback from analysis results
+            section_feedback = {}
+            
+            # Add each analysis type if it exists and has the expected format
+            for analysis_type in ["fluency", "grammar", "lexical", "pronunciation"]:
+                if analysis_type in analysis_results:
+                    result = analysis_results[analysis_type]
+                    if isinstance(result, dict) and "grade" in result and "issues" in result:
+                        section_feedback[analysis_type] = result
+                    else:
+                        # Handle old format or error cases
+                        section_feedback[analysis_type] = {
+                            "grade": 0,
+                            "issues": [f"Error in {analysis_type} analysis: {result.get('error', 'Unknown error')}"]
+                        }
+            
+            transformed_result = {
+                "audio_url": audio_url,
+                "transcript": transcript,
+                "question_id": int(question_id),
+                "section_feedback": section_feedback
+            }
+            
+            transformed_results.append(transformed_result)
+        
+        return transformed_results
