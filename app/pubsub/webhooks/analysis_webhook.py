@@ -591,20 +591,20 @@ class AnalysisWebhook:
                     for i, url in enumerate(recording_urls[:3]):
                         logger.info(f"🎵 Recording {i+1}: {url}")
 
-                # 2. Insert the submission into the 'submissions' table
-                logger.info(f"💽 Inserting submission into Supabase 'submissions' table: {submission_url}")
-                submission_db_id = db_service.insert_submission(
+                # 2. Update the existing submission with analysis results
+                logger.info(f"💽 Updating existing submission in Supabase 'submissions' table: {submission_url}")
+                submission_db_id = db_service.update_submission_results(
                     submission_url=submission_url,
                     question_results=question_results,
                     recordings=recording_urls
                 )
                 
                 if submission_db_id:
-                    logger.info(f"✅ SUCCESS: Stored submission {submission_url} to Supabase database with ID: {submission_db_id}")
-                    logger.info(f"📋 Database record created: table=submissions, id={submission_db_id}, status=graded, recordings_count={len(recording_urls or [])}")
+                    logger.info(f"✅ SUCCESS: Updated submission {submission_url} in Supabase database with ID: {submission_db_id}")
+                    logger.info(f"📋 Database record updated: table=submissions, id={submission_db_id}, status=graded, recordings_count={len(recording_urls or [])}")
                 else:
-                    logger.error(f"❌ FAILED: Could not store submission {submission_url} to Supabase database - insert_submission returned None")
-                    logger.error(f"🔍 Check Supabase connection, permissions, and table schema for submission: {submission_url}")
+                    logger.error(f"❌ FAILED: Could not update submission {submission_url} in Supabase database - update_submission_results returned None")
+                    logger.error(f"🔍 Check if submission {submission_url} exists in database and has correct permissions")
                     
             except Exception as e:
                 logger.error(f"💥 EXCEPTION during Supabase database operation for submission {submission_url}: {str(e)}")

@@ -70,9 +70,9 @@ class DatabaseService:
             self._log_operation_error(operation, str(e), bucket="recordings", path_prefix=path_prefix)
             return []
 
-    def insert_submission(self, submission_url: str, question_results: Dict[str, Any], recordings: Optional[List[str]] = None) -> Optional[str]:
-        """Insert a new submission row with section_feedback and recordings."""
-        operation = "INSERT_SUBMISSION"
+    def update_submission_results(self, submission_url: str, question_results: Dict[str, Any], recordings: Optional[List[str]] = None) -> Optional[str]:
+        """Update an existing submission with analysis results and recordings."""
+        operation = "UPDATE_SUBMISSION_RESULTS"
         
         self._log_operation_start(operation, 
                                 submission_url=submission_url,
@@ -81,25 +81,42 @@ class DatabaseService:
                                 table="submissions")
         
         try:
+            # First, check if the submission exists
+            logger.info(f"🔍 Looking for existing submission with ID: {submission_url}")
+            existing_result = self.supabase.table('submissions').select("id, status").eq('id', submission_url).execute()
+            
+            if not existing_result.data or len(existing_result.data) == 0:
+                self._log_operation_error(operation, f"No submission found with ID: {submission_url}", submission_url=submission_url, table="submissions")
+                return None
+            
+            submission_record = existing_result.data[0]
+            logger.info(f"✅ Found existing submission: {submission_record['id']} with status: {submission_record['status']}")
+            
+            # Prepare the section_feedback data
             section_feedback = {
                 "submission_url": submission_url,
                 "question_results": question_results
             }
             
-            final_data_to_insert = {
+            # Prepare update data
+            update_data = {
                 "section_feedback": section_feedback,
-                "recordings": recordings or [],
-                "status": "graded",
-                "submitted_at": "now()"
+                "status": "graded"
             }
             
-            # Log the data being inserted (truncated for readability)
-            logger.info(f"📝 Data to insert for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(section_feedback)) if section_feedback else 0} bytes")
+            # Add recordings if provided
+            if recordings:
+                update_data["recordings"] = recordings
+            
+            # Log the data being updated
+            logger.info(f"📝 Data to update for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(section_feedback)) if section_feedback else 0} bytes")
 
-            result = self.supabase.table('submissions').insert(final_data_to_insert).execute()
+            # Update the submission
+            result = self.supabase.table('submissions').update(update_data).eq('id', submission_url).execute()
             
             if result.data and len(result.data) > 0:
-                submission_db_id = result.data[0]['id']
+                updated_submission = result.data[0]
+                submission_db_id = updated_submission['id']
                 self._log_operation_success(operation,
                                           submission_url=submission_url,
                                           db_id=submission_db_id,
@@ -107,7 +124,7 @@ class DatabaseService:
                                           status="graded")
                 return submission_db_id
             else:
-                error_msg = result.error if hasattr(result, 'error') and result.error else 'No data returned from insert operation'
+                error_msg = result.error if hasattr(result, 'error') and result.error else 'No data returned from update operation'
                 self._log_operation_error(operation, error_msg, submission_url=submission_url, table="submissions")
                 logger.error(f"📊 Full Supabase response: {result}")
                 return None
