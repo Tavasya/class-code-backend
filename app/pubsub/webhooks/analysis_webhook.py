@@ -369,11 +369,17 @@ class AnalysisWebhook:
 
     async def _check_and_publish_completion(self, submission_url: str, question_number: int, total_questions: int = None):
         """Check if all analyses are complete and publish final results"""
+        logger.info(f"🔍 DEBUG: Entering _check_and_publish_completion for question {question_number}, submission {submission_url}")
+        
         state = self._get_or_create_analysis_state(submission_url, question_number)
+        
+        logger.info(f"🔍 DEBUG: Analysis state check - grammar_done: {state['grammar_done']}, pronunciation_done: {state['pronunciation_done']}, lexical_done: {state['lexical_done']}, fluency_done: {state['fluency_done']}")
         
         # Check if all analyses are complete
         if (state["grammar_done"] and state["pronunciation_done"] and 
             state["lexical_done"] and state["fluency_done"]):
+            
+            logger.info(f"🔍 DEBUG: All analyses complete! Compiling results for question {question_number}")
             
             # Compile all results
             analysis_results = {
@@ -394,6 +400,8 @@ class AnalysisWebhook:
             if total_questions is not None:
                 message_data["total_questions"] = total_questions
             
+            logger.info(f"🔍 DEBUG: About to publish ANALYSIS_COMPLETE message for question {question_number}")
+            
             self.pubsub_client.publish_message_by_name(
                 "ANALYSIS_COMPLETE",
                 message_data
@@ -402,7 +410,10 @@ class AnalysisWebhook:
             logger.info(f"ALL analysis completed for question {question_number} - published to analysis-complete-topic")
             
             # Clean up state
+            logger.info(f"🔍 DEBUG: Cleaning up analysis state for question {question_number}")
             self._cleanup_analysis_state(submission_url, question_number)
+        else:
+            logger.info(f"🔍 DEBUG: Not all analyses complete yet for question {question_number}. Missing: {[name for name, done in [('grammar', state['grammar_done']), ('pronunciation', state['pronunciation_done']), ('lexical', state['lexical_done']), ('fluency', state['fluency_done'])] if not done]}")
 
     async def handle_fluency_done_webhook(self, request: Request) -> Dict[str, str]:
         """Handle fluency analysis completion"""
