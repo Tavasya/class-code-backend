@@ -66,10 +66,13 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
 
     return None
 
-async def analyze_lexical_resources(sentences: List[str]) -> List[LexicalFeedback]:
-    """Analyze lexical resources in sentences and return feedback"""
+async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
+    """Analyze lexical resources in sentences and return feedback in standardized format"""
     if not sentences:
-        return []
+        return {
+            "grade": 100,
+            "issues": []
+        }
 
     try:
         prompt = """You are an expert in English lexical resources specializing in collocations, idioms, and natural word usage.
@@ -113,31 +116,52 @@ async def analyze_lexical_resources(sentences: List[str]) -> List[LexicalFeedbac
         lexical_analysis = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
         
         if lexical_analysis is None:
-            return []
+            return {
+                "grade": 50,
+                "issues": [{"type": "lexical", "sentence": "", "suggestion": {"explanation": "Unable to analyze lexical resources due to API issues.", "resource_type": "error", "original_phrase": "", "suggested_phrase": ""}}]
+            }
 
-        # Convert the API response to our model format
-        feedback_list = []
+        # Convert the API response to standardized format
+        all_issues = []
+        total_corrections = 0
+        
         for i, sentence_corrections in enumerate(lexical_analysis):
-            if i < len(sentences):
-                corrections = [
-                    LexicalCorrection(
-                        original_phrase=corr["original_phrase"],
-                        suggested_phrase=corr["suggested_phrase"],
-                        explanation=corr["explanation"],
-                        resource_type=corr["resource_type"]
-                    )
-                    for corr in sentence_corrections
-                ]
-                
-                feedback_list.append(
-                    LexicalFeedback(
-                        sentence=sentences[i],
-                        corrections=corrections
-                    )
-                )
+            if i < len(sentences) and sentence_corrections:
+                for correction in sentence_corrections:
+                    all_issues.append({
+                        "type": "lexical",
+                        "sentence": sentences[i],
+                        "suggestion": {
+                            "explanation": correction.get("explanation", ""),
+                            "resource_type": correction.get("resource_type", "word usage"),
+                            "original_phrase": correction.get("original_phrase", ""),
+                            "suggested_phrase": correction.get("suggested_phrase", "")
+                        }
+                    })
+                    total_corrections += 1
 
-        return feedback_list
+        # Calculate grade based on number of lexical issues
+        if total_corrections == 0:
+            grade = 100
+        elif total_corrections <= 1:
+            grade = 95
+        elif total_corrections <= 2:
+            grade = 90
+        elif total_corrections <= 3:
+            grade = 85
+        elif total_corrections <= 4:
+            grade = 80
+        else:
+            grade = max(75 - (total_corrections - 4) * 5, 50)
+
+        return {
+            "grade": grade,
+            "issues": all_issues
+        }
 
     except Exception as e:
         logger.exception(f"Error in lexical analysis: {str(e)}")
-        return [] 
+        return {
+            "grade": 0,
+            "issues": [{"type": "lexical", "sentence": "", "suggestion": {"explanation": f"Error analyzing lexical resources: {str(e)}", "resource_type": "error", "original_phrase": "", "suggested_phrase": ""}}]
+        } 

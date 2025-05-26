@@ -92,15 +92,12 @@ class DatabaseService:
             submission_record = existing_result.data[0]
             logger.info(f"✅ Found existing submission: {submission_record['id']} with status: {submission_record['status']}")
             
-            # Prepare the section_feedback data
-            section_feedback = {
-                "submission_url": submission_url,
-                "question_results": question_results
-            }
+            # Transform question_results to the new format
+            transformed_results = self._transform_to_new_format(question_results, recordings or [])
             
-            # Prepare update data
+            # Prepare update data with the transformed results
             update_data = {
-                "section_feedback": section_feedback,
+                "section_feedback": transformed_results,
                 "status": "graded"
             }
             
@@ -109,7 +106,7 @@ class DatabaseService:
                 update_data["recordings"] = recordings
             
             # Log the data being updated
-            logger.info(f"📝 Data to update for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(section_feedback)) if section_feedback else 0} bytes")
+            logger.info(f"📝 Data to update for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes")
 
             # Update the submission
             result = self.supabase.table('submissions').update(update_data).eq('id', submission_url).execute()

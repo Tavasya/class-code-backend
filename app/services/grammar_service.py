@@ -232,52 +232,79 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
     
     if not transcript or not transcript.strip():
         return {
-            "grammar_corrections": {},
-            "vocabulary_suggestions": {}
+            "grade": 100,
+            "issues": []
         }
         
     try:
         sentences = split_into_sentences(transcript)
         logger.info(f"Analyzing {len(sentences)} sentences")
         
-        grammar_results = {}
-        vocab_results = {}
-        
         # 1. Grammar corrections
         grammar_corrections = await check_grammar(sentences)
         
+        # 2. Vocabulary suggestions for sentences without grammar issues
+        vocab_candidates = []
+        grammar_issues = []
+        
+        # Process grammar corrections
         for i, corrections in enumerate(grammar_corrections):
             if corrections:
-                grammar_results[f"sentence_{i+1}"] = {
-                    "original": sentences[i],
-                    "corrections": corrections
-                }
+                for correction in corrections:
+                    grammar_issues.append({
+                        "original": sentences[i],
+                        "correction": {
+                            "explanation": correction.get("explanation", ""),
+                            "original_phrase": correction.get("original_phrase", ""),
+                            "suggested_correction": correction.get("suggested_correction", "")
+                        }
+                    })
+            else:
+                # No grammar issues, candidate for vocabulary suggestions
+                vocab_candidates.append((i, sentences[i]))
         
-        # 2. Vocabulary suggestions
-        vocab_candidates = [
-            (i, sent) for i, sent in enumerate(sentences)
-            if f"sentence_{i+1}" not in grammar_results
-        ]
-        
+        # Get vocabulary suggestions for sentences without grammar issues
+        vocab_issues = []
         if vocab_candidates:
             vocabulary_suggestions = await suggest_vocabulary([sent for _, sent in vocab_candidates])
             
-            for i, suggestions in enumerate(vocabulary_suggestions):
+            for j, suggestions in enumerate(vocabulary_suggestions):
                 if suggestions:
-                    orig_idx, sent = vocab_candidates[i]
-                    vocab_results[f"sentence_{orig_idx+1}"] = {
-                        "original": sent,
-                        "suggestions": suggestions
-                    }
+                    orig_idx, sent = vocab_candidates[j]
+                    for suggestion in suggestions:
+                        vocab_issues.append({
+                            "original": sent,
+                            "correction": {
+                                "explanation": f"Consider using more advanced vocabulary: '{suggestion.get('original_word', '')}' could be '{', '.join(suggestion.get('advanced_alternatives', []))}'",
+                                "original_phrase": suggestion.get('original_word', ''),
+                                "suggested_correction": ', '.join(suggestion.get('advanced_alternatives', []))
+                            }
+                        })
+        
+        # Combine all issues
+        all_issues = grammar_issues + vocab_issues
+        
+        # Calculate grade based on number of issues
+        total_issues = len(all_issues)
+        if total_issues == 0:
+            grade = 100
+        elif total_issues <= 2:
+            grade = 90
+        elif total_issues <= 4:
+            grade = 80
+        elif total_issues <= 6:
+            grade = 70
+        else:
+            grade = max(60 - (total_issues - 6) * 5, 0)
         
         return {
-            "grammar_corrections": grammar_results,
-            "vocabulary_suggestions": vocab_results
+            "grade": grade,
+            "issues": all_issues
         }
         
     except Exception as e:
         logger.exception("Error in language analysis")
         return {
-            "grammar_corrections": {"error": str(e)},
-            "vocabulary_suggestions": {}
+            "grade": 0,
+            "issues": [{"original": "", "correction": {"explanation": f"Error analyzing grammar: {str(e)}", "original_phrase": "", "suggested_correction": ""}}]
         } 

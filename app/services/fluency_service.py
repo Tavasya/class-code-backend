@@ -136,40 +136,46 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
         """
     
     prompt = f"""
-    You are an expert in speech assessment focusing on fluency and coherence. Answer in 2nd person. Analyze the following transcript from a language learner:
+    You are an expert in speech assessment focusing on fluency and coherence. Analyze the following transcript from a language learner:
     
     "{transcript}"
     
     {timing_info}
     
-    Provide a detailed analysis of the speaker's fluency and coherence with numerical scores (0-100) and specific observations.
+    Provide a detailed analysis of the speaker's fluency and coherence. Calculate an overall grade (0-100) and provide specific observations as issues.
     
     Return ONLY a JSON object with the following structure:
     {{
-        "fluency_metrics": {{
-            "speech_rate": [0-100 score],
-            "hesitation_ratio": [0-100 score],
-            "pause_pattern_score": [0-100 score],
-            "overall_fluency_score": [0-100 score]
-        }},
-        "coherence_metrics": {{
-            "topic_consistency": [0-100 score],
-            "logical_flow": [0-100 score],
-            "idea_development": [0-100 score],
-            "overall_coherence_score": [0-100 score]
-        }},
-        "key_findings": [
-            "3-5 specific observations about fluency and coherence"
-        ],
-        "improvement_suggestions": [
-            "2-3 concrete and actionable suggestions for improvement"
+        "grade": [0-100 overall fluency and coherence score],
+        "issues": [
+            "Specific observation about speech rate and fluency",
+            "Observation about pause patterns and hesitation",
+            "Comment on topic consistency and logical flow",
+            "Note about idea development and coherence",
+            "Actionable improvement suggestion"
         ]
     }}
+    
+    The grade should be based on:
+    - Speech rate and smoothness (25%)
+    - Pause patterns and hesitation (25%) 
+    - Topic consistency and logical flow (25%)
+    - Idea development and coherence (25%)
+    
+    Issues should be 4-6 specific, actionable observations written in 2nd person.
     """
     
     analysis = await call_api_with_retry(prompt, expected_format="dict")
     if not analysis:
         raise ValueError("Failed to get valid analysis from API")
+    
+    # Ensure the response has the correct structure
+    if "grade" not in analysis or "issues" not in analysis:
+        # Fallback to default structure if API doesn't return expected format
+        return {
+            "grade": 50,
+            "issues": ["Unable to analyze fluency due to API response format issues."]
+        }
     
     return analysis
 

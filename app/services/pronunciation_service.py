@@ -34,7 +34,7 @@ class PronunciationService:
             session_id: Optional session ID for file lifecycle management
             
         Returns:
-            Pronunciation assessment results
+            Pronunciation assessment results in standardized format
         """
         try:
             # Validate that we have a local file path, not a URL
@@ -77,16 +77,22 @@ class PronunciationService:
                 json_result = result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
                 
                 if not json_result:
+                    # Mark service as complete even on error
+                    if session_id:
+                        try:
+                            await file_manager.mark_service_complete(session_id, "pronunciation")
+                        except Exception as e:
+                            logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                    
                     return {
-                        "status": "error",
-                        "error": "No pronunciation assessment result returned",
-                        "transcript": reference_text
+                        "grade": 0,
+                        "issues": [{"type": "suggestion", "message": "No pronunciation assessment result returned from Azure Speech Services."}]
                     }
                 
                 # Parse the JSON result
                 azure_result = json.loads(json_result)
                 
-                # Process the results
+                # Process the results using existing method
                 processed_result = PronunciationService.process_pronunciation_result(azure_result, reference_text)
                 
                 # Get improvement suggestion
@@ -96,7 +102,10 @@ class PronunciationService:
                     processed_result["filler_words"]
                 )
                 
-                processed_result["improvement_suggestion"] = improvement_suggestion
+                # Transform to standardized format
+                standardized_result = PronunciationService._transform_to_standardized_format(
+                    processed_result, improvement_suggestion
+                )
                 
                 # Mark pronunciation service as complete for this session
                 if session_id:
@@ -106,7 +115,7 @@ class PronunciationService:
                     except Exception as e:
                         logger.warning(f"Failed to mark pronunciation service complete for session {session_id}: {str(e)}")
                 
-                return processed_result
+                return standardized_result
                 
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logger.warning(f"No speech recognized: {result.no_match_details}")
@@ -118,9 +127,8 @@ class PronunciationService:
                         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 return {
-                    "status": "error",
-                    "error": f"No speech recognized: {result.no_match_details.reason}",
-                    "transcript": reference_text
+                    "grade": 0,
+                    "issues": [{"type": "suggestion", "message": f"No speech recognized: {result.no_match_details.reason}"}]
                 }
                 
             elif result.reason == speechsdk.ResultReason.Canceled:
@@ -136,10 +144,13 @@ class PronunciationService:
                     except Exception as e:
                         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
+                error_msg = f"Recognition canceled: {cancellation.reason}"
+                if hasattr(cancellation, 'error_details'):
+                    error_msg += f", {cancellation.error_details}"
+                
                 return {
-                    "status": "error",
-                    "error": f"Recognition canceled: {cancellation.reason}, {cancellation.error_details if hasattr(cancellation, 'error_details') else ''}",
-                    "transcript": reference_text
+                    "grade": 0,
+                    "issues": [{"type": "suggestion", "message": error_msg}]
                 }
                 
         except Exception as e:
@@ -153,9 +164,8 @@ class PronunciationService:
                     logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
             
             return {
-                "status": "error",
-                "error": str(e),
-                "transcript": reference_text
+                "grade": 0,
+                "issues": [{"type": "suggestion", "message": str(e)}]
             }
 
     @staticmethod
@@ -378,3 +388,59 @@ class PronunciationService:
         
         else:
             return "Continue practicing natural intonation and rhythm to sound more fluent."
+
+    @staticmethod
+    def _transform_to_standardized_format(processed_result: Dict[str, Any], improvement_suggestion: str) -> Dict[str, Any]:
+        """Transform the processed Azure result to standardized format"""
+        issues = []
+        
+        # Add word scores as the first issue
+        word_details = processed_result.get("word_details", [])
+        if word_details:
+            words_data = []
+            for word in word_details:
+                words_data.append({
+                    "word": word.get("word", ""),
+                    "score": word.get("accuracy_score", 0),
+                    "duration": word.get("duration", 0),
+                    "timestamp": word.get("offset", 0),
+                    "error_type": word.get("error_type", "None")
+                })
+            
+            issues.append({
+                "type": "word_scores",
+                "words": words_data
+            })
+        
+        # Add improvement suggestion
+        if improvement_suggestion:
+            issues.append({
+                "type": "suggestion",
+                "message": improvement_suggestion
+            })
+        
+        # Add prosody score if available
+        prosody_score = processed_result.get("prosody_score", 0)
+        if prosody_score > 0:
+            issues.append({
+                "type": "prosody",
+                "score": prosody_score,
+                "message": "Work on natural rhythm and intonation patterns in speech."
+            })
+        
+        # Add fluency score if available
+        fluency_score = processed_result.get("fluency_score", 0)
+        if fluency_score > 0:
+            issues.append({
+                "type": "fluency",
+                "score": fluency_score,
+                "message": "Focus on speaking more smoothly and reducing pauses between words."
+            })
+        
+        # Use overall pronunciation score as the grade
+        grade = processed_result.get("overall_pronunciation_score", 0)
+        
+        return {
+            "grade": grade,
+            "issues": issues
+        }
