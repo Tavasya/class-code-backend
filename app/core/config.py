@@ -27,6 +27,7 @@ CORS_ORIGINS = [
 # # Default Pub/Sub topics and subscriptions
 # DEFAULT_TOPIC = "audio-analysis"
 # DEFAULT_SUBSCRIPTION = "audio-analysis-sub"
+#delpy gclooud
 
 # Supabase Configuration
 SUPABASE_URL = "https://drcsbokflpzbhuzsksws.supabase.co"
