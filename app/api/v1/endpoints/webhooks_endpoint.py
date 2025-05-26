@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request
 from typing import Dict
-from app.pubsub.webhooks.audio_webhook import AudioWebhook
-from app.pubsub.webhooks.transcription_webhook import TranscriptionWebhook
+from app.pubsub.webhooks.submission_webhook import SubmissionWebhook
 from app.pubsub.webhooks.analysis_webhook import AnalysisWebhook
 import logging
 
@@ -9,27 +8,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Initialize webhook handlers
-audio_webhook = AudioWebhook()
-transcription_webhook = TranscriptionWebhook()
+submission_webhook = SubmissionWebhook()
 analysis_webhook = AnalysisWebhook()
 
-@router.post("/student-submission-audio")
-async def handle_student_submission_audio_webhook(request: Request) -> Dict[str, str]:
+@router.post("/student-submission")
+async def handle_student_submission_webhook(request: Request) -> Dict[str, str]:
     """
-    Webhook endpoint for student submission audio processing.
-    Triggered by student-submission-topic-sub for audio processing.
+    Unified webhook endpoint for student submission processing.
+    Handles BOTH audio and transcription processing in parallel.
+    Triggered by student-submission-topic-sub.
     """
-    logger.info("Received student submission webhook for audio processing")
-    return await audio_webhook.handle_student_submission_webhook(request)
-
-@router.post("/student-submission-transcription")
-async def handle_student_submission_transcription_webhook(request: Request) -> Dict[str, str]:
-    """
-    Webhook endpoint for student submission transcription processing.
-    Triggered by student-submission-topic-sub for transcription processing.
-    """
-    logger.info("Received student submission webhook for transcription processing")
-    return await transcription_webhook.handle_student_submission_webhook(request)
+    logger.info("Received student submission webhook - starting parallel audio and transcription processing")
+    return await submission_webhook.handle_student_submission_webhook(request)
 
 @router.post("/audio-conversion-done")
 async def handle_audio_conversion_done_webhook(request: Request) -> Dict[str, str]:

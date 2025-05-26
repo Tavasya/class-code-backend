@@ -242,8 +242,11 @@ async def simulate_full_flow_async():
             print(f"❌ Submission failed: {str(e)}")
             return
         
-        # Step 2: Simulate audio and transcription webhooks
-        print("\n2️⃣ PHASE 0: AUDIO & TRANSCRIPTION PROCESSING")
+        # Wait a moment for parallel processing to start
+        time.sleep(2)
+        
+        # Step 3: Simulate submission processing (unified audio and transcription)
+        print("\n3️⃣ SIMULATING UNIFIED SUBMISSION PROCESSING")
         print("-" * 40)
         submission_data = {
             "audio_urls": TEST_SUBMISSION["audio_urls"],
@@ -251,20 +254,17 @@ async def simulate_full_flow_async():
             "total_questions": len(TEST_SUBMISSION["audio_urls"])
         }
         
-        # Simulate parallel audio and transcription processing
-        audio_success = simulate_webhook_call("student-submission-audio", submission_data, "Audio Processing")
-        transcription_success = simulate_webhook_call("student-submission-transcription", submission_data, "Transcription Processing")
+        # Use the new unified submission webhook (handles both audio and transcription)
+        submission_success = simulate_webhook_call("student-submission", submission_data, "Unified Submission Processing")
         
-        if not (audio_success and transcription_success):
-            print("❌ Audio/Transcription processing failed, stopping test")
-            return
+        if not submission_success:
+            print("❌ Submission processing failed - continuing anyway for testing")
+            
+        # Wait a moment for parallel processing to start
+        time.sleep(2)
         
-        # Wait for audio/transcription to complete
-        print("\n⏳ Waiting for audio/transcription processing...")
-        time.sleep(5)
-        
-        # Step 3: Download real audio and register with file manager
-        print("\n3️⃣ PHASE 0: REAL AUDIO DOWNLOAD & REGISTRATION")
+        # Step 4: Download real audio and register with file manager
+        print("\n4️⃣ REAL AUDIO DOWNLOAD & REGISTRATION")
         print("-" * 40)
         
         # Download and convert the actual audio file
@@ -279,8 +279,8 @@ async def simulate_full_flow_async():
         # Register file session with file manager
         await register_test_file_session(session_id, wav_path)
         
-        # Step 4: Simulate audio/transcription completion coordination
-        print("\n4️⃣ PHASE 0: COMPLETION COORDINATION")
+        # Step 5: Simulate audio/transcription completion coordination
+        print("\n5️⃣ PHASE 0: COMPLETION COORDINATION")
         print("-" * 40)
         
         # Audio conversion done (now with real session_id and wav_path)
@@ -305,8 +305,8 @@ async def simulate_full_flow_async():
         }
         simulate_webhook_call("transcription-done", transcription_done_data, "Transcription Done")
         
-        # Step 5: Wait for analysis coordination and Phase 1
-        print("\n5️⃣ PHASE 1: ANALYSIS READY & PARALLEL ANALYSIS")
+        # Step 6: Wait for analysis coordination and Phase 1
+        print("\n6️⃣ PHASE 1: ANALYSIS READY & PARALLEL ANALYSIS")
         print("-" * 40)
         print("⏳ Waiting for analysis coordination...")
         time.sleep(3)
@@ -327,8 +327,8 @@ async def simulate_full_flow_async():
         print("\n⏳ Waiting for Phase 1 analysis (Grammar, Pronunciation, Lexical)...")
         time.sleep(8)
         
-        # Step 6: Simulate Phase 2 - Pronunciation Done triggers Fluency
-        print("\n6️⃣ PHASE 2: FLUENCY ANALYSIS (triggered by pronunciation)")
+        # Step 7: Simulate Phase 2 - Pronunciation Done triggers Fluency
+        print("\n7️⃣ PHASE 2: FLUENCY ANALYSIS (triggered by pronunciation)")
         print("-" * 40)
         
         # Simulate pronunciation done to trigger fluency (with session_id)
@@ -357,8 +357,8 @@ async def simulate_full_flow_async():
         print("\n⏳ Waiting for fluency analysis...")
         time.sleep(5)
         
-        # Step 7: Simulate individual analysis completions
-        print("\n7️⃣ PHASE 3: INDIVIDUAL ANALYSIS ACKNOWLEDGMENTS")  
+        # Step 8: Simulate individual analysis completions
+        print("\n8️⃣ PHASE 3: INDIVIDUAL ANALYSIS ACKNOWLEDGMENTS")  
         print("-" * 40)
         
         # Simulate all individual analysis webhooks
@@ -373,8 +373,8 @@ async def simulate_full_flow_async():
         simulate_webhook_call("lexical-done", base_result_data, "Lexical Done") 
         simulate_webhook_call("fluency-done", base_result_data, "Fluency Done")
         
-        # Step 8: Final analysis complete
-        print("\n8️⃣ PHASE 4: ANALYSIS COMPLETION")
+        # Step 9: Final analysis complete
+        print("\n9️⃣ PHASE 4: ANALYSIS COMPLETION")
         print("-" * 40)
         
         analysis_complete_data = {
@@ -390,8 +390,8 @@ async def simulate_full_flow_async():
         }
         simulate_webhook_call("analysis-complete", analysis_complete_data, "Analysis Complete")
         
-        # Step 9: Wait and check for final results
-        print("\n9️⃣ CHECKING FINAL RESULTS")
+        # Step 10: Wait and check for final results
+        print("\n10️⃣ CHECKING FINAL RESULTS")
         print("-" * 40)
         print("⏳ Waiting for final submission completion...")
         time.sleep(3)

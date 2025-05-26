@@ -178,7 +178,7 @@ class AnalysisWebhook:
                     
                     # Publish pronunciation done - this will trigger fluency analysis
                     self.pubsub_client.publish_message_by_name(
-                        "PRONOUN_DONE",
+                        "PRONUNCIATION_DONE",
                         {
                             "question_number": question_number,
                             "submission_url": submission_url,

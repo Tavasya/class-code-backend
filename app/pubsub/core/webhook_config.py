@@ -12,8 +12,7 @@ WEBHOOK_AUTH_TOKEN = os.getenv("PUBSUB_WEBHOOK_AUTH_TOKEN", None)
 BASE_WEBHOOK_URL = os.getenv("BASE_WEBHOOK_URL", "https://your-app-domain.com")
 
 WEBHOOK_ENDPOINTS = {
-    "STUDENT_SUBMISSION_AUDIO": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/student-submission-audio",
-    "STUDENT_SUBMISSION_TRANSCRIPTION": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/student-submission-transcription",
+    "STUDENT_SUBMISSION": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/student-submission",
     "AUDIO_CONVERSION_DONE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/audio-conversion-done",
     "TRANSCRIPTION_DONE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/transcription-done",
     "QUESTION_ANALYSIS_READY": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/question-analysis-ready",
@@ -31,13 +30,9 @@ logger.info(f"Base webhook URL: {BASE_WEBHOOK_URL}")
 
 # Google Cloud Pub/Sub subscription configuration for push
 SUBSCRIPTION_CONFIGS = {
-    "student-submission-topic-audio-sub": {
+    "student-submission-topic-sub": {
         "topic": "student-submission-topic",
-        "push_endpoint": WEBHOOK_ENDPOINTS["STUDENT_SUBMISSION_AUDIO"]
-    },
-    "student-submission-topic-transcription-sub": {
-        "topic": "student-submission-topic", 
-        "push_endpoint": WEBHOOK_ENDPOINTS["STUDENT_SUBMISSION_TRANSCRIPTION"]
+        "push_endpoint": WEBHOOK_ENDPOINTS["STUDENT_SUBMISSION"]
     },
     "audio-conversion-service-sub": {
         "topic": "audio-conversion-done-topic",
