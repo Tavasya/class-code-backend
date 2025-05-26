@@ -8,6 +8,7 @@ class AudioDoneMessage(BaseModel):
     question_number: int
     submission_url: str
     original_audio_url: str
+    session_id: Optional[str] = None  # For file lifecycle management
     total_questions: Optional[int] = None
 
 
@@ -28,4 +29,5 @@ class QuestionAnalysisReadyMessage(BaseModel):
     question_number: int
     submission_url: str
     audio_url: str
+    session_id: Optional[str] = None  # For file lifecycle management
     total_questions: Optional[int] = 1 

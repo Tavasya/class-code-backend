@@ -1,41 +1,38 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from app.pubsub.client import PubSubClient
-from app.models.analysis_model import AudioDoneMessage, TranscriptionDoneMessage, QuestionAnalysisReadyMessage
+from app.models.analysis_model import AudioDoneMessage, TranscriptionDoneMessage
 
 logger = logging.getLogger(__name__)
 
 class AnalysisCoordinatorService:
     def __init__(self):
         self.pubsub_client = PubSubClient()
-        # State map to track progress of each question
-        self._state_map: Dict[str, Dict] = {}
-        
+        # State tracking for coordination
+        self._coordination_state: Dict[str, Dict] = {}
+    
     def _get_state_key(self, submission_url: str, question_number: int) -> str:
-        """Generate a unique key for a question state"""
-        return f"{submission_url}:{question_number}"
+        """Generate a unique key for state tracking"""
+        return f"coord:{submission_url}:{question_number}"
         
     def _get_or_create_state(self, submission_url: str, question_number: int, total_questions: int = None) -> Dict:
-        """Get or create state for a question"""
+        """Get or create coordination state for a question"""
         key = self._get_state_key(submission_url, question_number)
-        if key not in self._state_map:
-            self._state_map[key] = {
+        if key not in self._coordination_state:
+            self._coordination_state[key] = {
                 "audio_done": False,
                 "transcript_done": False,
                 "audio_data": None,
                 "transcript_data": None,
                 "total_questions": total_questions
             }
-        elif total_questions is not None:
-            # Update total_questions if provided
-            self._state_map[key]["total_questions"] = total_questions
-        return self._state_map[key]
+        return self._coordination_state[key]
         
     def _cleanup_state(self, submission_url: str, question_number: int):
-        """Clean up state after processing"""
+        """Clean up coordination state after completion"""
         key = self._get_state_key(submission_url, question_number)
-        if key in self._state_map:
-            del self._state_map[key]
+        if key in self._coordination_state:
+            del self._coordination_state[key]
             
     async def handle_audio_done(self, message: AudioDoneMessage) -> None:
         """Handle audio conversion completion"""
@@ -85,7 +82,10 @@ class AnalysisCoordinatorService:
     ) -> None:
         """Publish message when both audio and transcript are ready"""
         try:
-            # Get message data with total_questions
+            # Get session_id from audio data (if available)
+            session_id = getattr(state["audio_data"], 'session_id', None)
+            
+            # Get message data with total_questions and session_id
             message_data = {
                 "wav_path": state["audio_data"].wav_path,
                 "transcript": state["transcript_data"].text,
@@ -94,6 +94,11 @@ class AnalysisCoordinatorService:
                 "audio_url": state["audio_data"].original_audio_url,
                 "total_questions": state.get("total_questions", 1)
             }
+            
+            # Add session_id if available for file lifecycle management
+            if session_id:
+                message_data["session_id"] = session_id
+                logger.info(f"Including session_id {session_id} in analysis ready message")
             
             # Publish to question analysis ready topic using topic name
             message_id = self.pubsub_client.publish_message_by_name(

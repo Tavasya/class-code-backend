@@ -25,9 +25,10 @@ class AudioWebhook:
                 submission_url=submission_url
             )
             
-            # Publish the result
+            # Publish the result with session_id
             message_data = {
                 "wav_path": result["wav_path"],
+                "session_id": result["session_id"],  # Include session ID for file lifecycle management
                 "question_number": question_number,
                 "submission_url": submission_url,
                 "original_audio_url": audio_url
@@ -41,7 +42,7 @@ class AudioWebhook:
                 topic_name="AUDIO_CONVERSION_DONE",
                 message=message_data
             )
-            logger.info(f"Published audio conversion result for question {question_number} with message ID: {message_id}")
+            logger.info(f"Published audio conversion result for question {question_number} with session {result['session_id']} - Message ID: {message_id}")
             
         except Exception as e:
             logger.error(f"Error processing audio for question {question_number}: {str(e)}")

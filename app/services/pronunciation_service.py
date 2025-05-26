@@ -7,7 +7,7 @@ import tempfile
 import azure.cognitiveservices.speech as speechsdk
 from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
-from app.services.audio_service import AudioService
+from app.services.file_manager_service import file_manager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -24,32 +24,31 @@ class PronunciationService:
     """Service for handling pronunciation assessment"""
     
     @staticmethod
-    async def analyze_pronunciation(audio_file: str, reference_text: str) -> Dict[str, Any]:
+    async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze pronunciation using Azure Speech Services with a provided reference text
         
         Args:
-            audio_file: Path or URL to the audio file
+            audio_file: Path to the local audio file (no longer accepts URLs)
             reference_text: Transcript text to use as reference
+            session_id: Optional session ID for file lifecycle management
             
         Returns:
             Pronunciation assessment results
         """
-        local_file_path = None
-        
         try:
-            # Check if audio_file is a URL and process using AudioService
+            # Validate that we have a local file path, not a URL
             if audio_file.startswith(('http://', 'https://')):
-                logger.info(f"Detected URL, using AudioService to process: {audio_file}")
-                audio_service = AudioService()
-                file_to_process = await audio_service.convert_to_wav(audio_file)
-                local_file_path = file_to_process  # Mark for cleanup
-            else:
-                file_to_process = audio_file
+                raise ValueError("PronunciationService now only accepts local file paths, not URLs. "
+                               "Audio URLs should be converted to local files by AudioService first.")
+            
+            # Verify file exists
+            if not os.path.exists(audio_file):
+                raise FileNotFoundError(f"Audio file not found: {audio_file}")
             
             # Set up the Speech config
             speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
-            audio_config = speechsdk.AudioConfig(filename=file_to_process)
+            audio_config = speechsdk.AudioConfig(filename=audio_file)
             
             # Configure pronunciation assessment with the reference text
             pron_config = speechsdk.PronunciationAssessmentConfig(
@@ -67,7 +66,7 @@ class PronunciationService:
             pron_config.apply_to(recognizer)
             
             # Run recognition
-            logger.info(f"Starting pronunciation assessment on {file_to_process} with reference text")
+            logger.info(f"Starting pronunciation assessment on {audio_file} with reference text")
             result = recognizer.recognize_once()
             
             # Process result based on recognition outcome
@@ -98,10 +97,26 @@ class PronunciationService:
                 )
                 
                 processed_result["improvement_suggestion"] = improvement_suggestion
+                
+                # Mark pronunciation service as complete for this session
+                if session_id:
+                    try:
+                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                        logger.info(f"Marked pronunciation service complete for session {session_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to mark pronunciation service complete for session {session_id}: {str(e)}")
+                
                 return processed_result
                 
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logger.warning(f"No speech recognized: {result.no_match_details}")
+                # Still mark service as complete even if no match
+                if session_id:
+                    try:
+                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                    except Exception as e:
+                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                
                 return {
                     "status": "error",
                     "error": f"No speech recognized: {result.no_match_details.reason}",
@@ -114,6 +129,13 @@ class PronunciationService:
                 if cancellation.reason == speechsdk.CancellationReason.Error:
                     logger.error(f"Error details: {cancellation.error_details}")
                 
+                # Mark service as complete even on error
+                if session_id:
+                    try:
+                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                    except Exception as e:
+                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                
                 return {
                     "status": "error",
                     "error": f"Recognition canceled: {cancellation.reason}, {cancellation.error_details if hasattr(cancellation, 'error_details') else ''}",
@@ -122,20 +144,19 @@ class PronunciationService:
                 
         except Exception as e:
             logger.exception("Error in analyze_pronunciation")
+            
+            # Mark service as complete even on error to prevent hanging
+            if session_id:
+                try:
+                    await file_manager.mark_service_complete(session_id, "pronunciation")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
+            
             return {
                 "status": "error",
                 "error": str(e),
                 "transcript": reference_text
             }
-            
-        finally:
-            # Clean up temporary file if created
-            if local_file_path and os.path.exists(local_file_path):
-                try:
-                    os.unlink(local_file_path)
-                    logger.info(f"Cleaned up temporary file: {local_file_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to clean up temporary file {local_file_path}: {str(e)}")
 
     @staticmethod
     def process_pronunciation_result(azure_result, reference_text):

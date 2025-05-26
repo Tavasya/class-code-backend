@@ -88,7 +88,8 @@ class AnalysisWebhook:
                 wav_path=message_data["wav_path"],
                 question_number=message_data["question_number"],
                 submission_url=message_data["submission_url"],
-                original_audio_url=message_data["original_audio_url"]
+                original_audio_url=message_data["original_audio_url"],
+                session_id=message_data.get("session_id")
             )
             
             # Handle in coordinator
@@ -145,15 +146,19 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             audio_url = message_data["audio_url"]
+            session_id = message_data.get("session_id")
             total_questions = message_data.get("total_questions", 1)
             
             logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical)")
+            if session_id:
+                logger.info(f"Using session {session_id} for file lifecycle management")
             
             # Initialize analysis state
             state = self._get_or_create_analysis_state(submission_url, question_number)
             state["wav_path"] = wav_path
             state["transcript"] = transcript
             state["audio_url"] = audio_url
+            state["session_id"] = session_id
             state["total_questions"] = total_questions
             
             # Create tasks for parallel execution (Grammar, Pronunciation, Lexical only)
@@ -162,7 +167,11 @@ class AnalysisWebhook:
             # 1. Pronunciation Analysis Task
             async def pronunciation_task():
                 try:
-                    pronunciation_result = await PronunciationService.analyze_pronunciation(wav_path, transcript)
+                    pronunciation_result = await PronunciationService.analyze_pronunciation(
+                        wav_path, 
+                        transcript, 
+                        session_id=session_id
+                    )
                     state["pronunciation_result"] = pronunciation_result
                     state["pronunciation_done"] = True
                     
@@ -175,6 +184,7 @@ class AnalysisWebhook:
                             "wav_path": wav_path,
                             "transcript": transcript,
                             "audio_url": audio_url,
+                            "session_id": session_id,
                             "total_questions": total_questions,
                             "result": pronunciation_result
                         }
