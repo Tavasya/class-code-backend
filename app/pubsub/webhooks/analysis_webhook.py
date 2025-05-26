@@ -226,7 +226,9 @@ class AnalysisWebhook:
                 try:
                     sentences = [s.strip() for s in transcript.split('.') if s.strip()]
                     lexical_result = await analyze_lexical_resources(sentences)
-                    state["lexical_result"] = lexical_result
+                    # Convert to dict format for storage and serialization
+                    lexical_result_dict = [feedback.dict() for feedback in lexical_result]
+                    state["lexical_result"] = lexical_result_dict
                     state["lexical_done"] = True
                     
                     # Publish lexical done
@@ -236,7 +238,7 @@ class AnalysisWebhook:
                             "question_number": question_number,
                             "submission_url": submission_url,
                             "total_questions": total_questions,
-                            "result": [feedback.dict() for feedback in lexical_result]
+                            "result": lexical_result_dict
                         }
                     )
                     logger.info(f"Lexical analysis completed for question {question_number}")
