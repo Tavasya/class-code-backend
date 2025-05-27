@@ -92,7 +92,8 @@ class AnalysisWebhook:
                 question_number=message_data["question_number"],
                 submission_url=message_data["submission_url"],
                 original_audio_url=message_data["original_audio_url"],
-                session_id=message_data.get("session_id")
+                session_id=message_data.get("session_id"),
+                total_questions=message_data.get("total_questions")
             )
             
             # Handle in coordinator
@@ -119,7 +120,8 @@ class AnalysisWebhook:
                 error=message_data.get("error"),
                 question_number=message_data["question_number"],
                 submission_url=message_data["submission_url"],
-                audio_url=message_data["audio_url"]
+                audio_url=message_data["audio_url"],
+                total_questions=message_data.get("total_questions")
             )
             
             # Handle in coordinator
