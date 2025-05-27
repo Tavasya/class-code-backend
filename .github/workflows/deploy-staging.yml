@@ -40,6 +40,9 @@ jobs:
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --platform=managed \
+            --min-instances=0 \
+            --max-instances=3 \
+            --concurrency=80 \
             --timeout=40m \
             --allow-unauthenticated \
             --set-env-vars=AZURE_SPEECH_KEY=CA4BV9f9rvEKQL22h6L383ucFVNHl9HvkS9bYsBR8xI6cdJm85fHJQQJ99BEACYeBjFXJ3w3AAAYACOGS9sl,AZURE_SPEECH_REGION=eastus,OPENAI_API_KEY=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,SUPABASE_URL=https://drcsbokflpzbhuzsksws.supabase.co,SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyY3Nib2tmbHB6Ymh1enNrc3dzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU5NDU5MDEsImV4cCI6MjA2MTUyMTkwMX0.yooduUfC1Xecr4LAaIeVA1-BLMe6STQHbzprNt2h6Zs,ASSEMBLYAI_API_KEY=2dbe40dc3dc0413ebf929da37dd61441
