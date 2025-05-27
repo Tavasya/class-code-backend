@@ -92,7 +92,7 @@ class AnalysisCoordinatorService:
                 "question_number": question_number,
                 "submission_url": submission_url,
                 "audio_url": state["audio_data"].original_audio_url,
-                "total_questions": state.get("total_questions", 1)
+                "total_questions": state.get("total_questions")
             }
             
             # Add session_id if available for file lifecycle management

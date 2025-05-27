@@ -30,4 +30,4 @@ class QuestionAnalysisReadyMessage(BaseModel):
     submission_url: str
     audio_url: str
     session_id: Optional[str] = None  # For file lifecycle management
-    total_questions: Optional[int] = 1 
+    total_questions: Optional[int] = None 

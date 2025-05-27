@@ -150,7 +150,14 @@ class AnalysisWebhook:
             submission_url = message_data["submission_url"]
             audio_url = message_data["audio_url"]
             session_id = message_data.get("session_id")
-            total_questions = message_data.get("total_questions", 1)
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for analysis ready question {question_number}, submission {submission_url}")
+                # For analysis ready, we don't have existing submission state yet, so we'll use None
+                # The downstream handlers will need to handle this case
+                logger.warning(f"⚠️ Cannot recover total_questions at analysis ready stage for question {question_number}")
             
             logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical)")
             if session_id:
@@ -271,7 +278,18 @@ class AnalysisWebhook:
             submission_url = message_data["submission_url"]
             pronunciation_result = message_data["result"]
             transcript = message_data["transcript"]
-            total_questions = message_data.get("total_questions", 1)
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for fluency question {question_number}, submission {submission_url}")
+                # Try to infer from existing submission state if available
+                existing_state_key = self._get_submission_state_key(submission_url)
+                if existing_state_key in self._submission_state:
+                    total_questions = self._submission_state[existing_state_key]["total_questions"]
+                    logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
+                else:
+                    total_questions = 1  # Last resort fallback
             
             logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency with pronunciation data)")
             
@@ -423,7 +441,18 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
-            total_questions = message_data.get("total_questions", 1)
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for fluency question {question_number}, submission {submission_url}")
+                # Try to infer from existing submission state if available
+                existing_state_key = self._get_submission_state_key(submission_url)
+                if existing_state_key in self._submission_state:
+                    total_questions = self._submission_state[existing_state_key]["total_questions"]
+                    logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
+                else:
+                    total_questions = 1  # Last resort fallback
             
             logger.info(f"Fluency analysis acknowledged for question {question_number}")
             
@@ -444,7 +473,18 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
-            total_questions = message_data.get("total_questions", 1)
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for grammar question {question_number}, submission {submission_url}")
+                # Try to infer from existing submission state if available
+                existing_state_key = self._get_submission_state_key(submission_url)
+                if existing_state_key in self._submission_state:
+                    total_questions = self._submission_state[existing_state_key]["total_questions"]
+                    logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
+                else:
+                    total_questions = 1  # Last resort fallback
             
             logger.info(f"Grammar analysis acknowledged for question {question_number}")
             
@@ -465,7 +505,18 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
-            total_questions = message_data.get("total_questions", 1)
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for lexical question {question_number}, submission {submission_url}")
+                # Try to infer from existing submission state if available
+                existing_state_key = self._get_submission_state_key(submission_url)
+                if existing_state_key in self._submission_state:
+                    total_questions = self._submission_state[existing_state_key]["total_questions"]
+                    logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
+                else:
+                    total_questions = 1  # Last resort fallback
             
             logger.info(f"Lexical analysis acknowledged for question {question_number}")
             
@@ -489,7 +540,19 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             analysis_results = message_data["analysis_results"]
-            total_questions = message_data.get("total_questions", 1)
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for question {question_number}, submission {submission_url}")
+                # Try to infer from existing submission state if available
+                existing_state_key = self._get_submission_state_key(submission_url)
+                if existing_state_key in self._submission_state:
+                    total_questions = self._submission_state[existing_state_key]["total_questions"]
+                    logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
+                else:
+                    logger.error(f"❌ Cannot determine total_questions for submission {submission_url}")
+                    total_questions = 1  # Last resort fallback
             
             logger.info(f"🔍 DEBUG: Processing question {question_number} for submission {submission_url} with total_questions={total_questions}")
             logger.info(f"Question {question_number} analysis completed for submission {submission_url}")
