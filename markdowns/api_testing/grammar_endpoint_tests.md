@@ -1,312 +1,321 @@
-# Grammar Endpoint API Test Plan
+# Grammar Endpoint API Test Implementation
 
-## Files to Reference
+## Files Referenced
+- `tests/test_grammar_endpoint.py` - Complete test implementation
 - `app/api/v1/endpoints/grammar_endpoint.py` - Grammar endpoint implementation
 - `app/models/grammer_model.py` - Request/response models (note: typo in filename)
 - `app/services/grammar_service.py` - Grammar analysis service
 - `app/core/config.py` - Configuration and dependencies
 
-## 1. Valid Grammar Analysis
+## Test Structure
 
-### Scenario: Successful Grammar Analysis
-**Preconditions:**
-- Mock `analyze_grammar` service function
-- Valid transcript with sufficient length
-- Clean application state
-- Mock successful analysis result
+### Test Class: `TestGrammarEndpoint`
+All tests are organized under a single test class with proper mocking setup.
 
-**User Actions:**
-1. Send POST request to `/api/v1/grammar/analysis`
-2. Include valid payload:
-   ```json
-   {
-     "transcript": "This is a good sentence with proper grammar and vocabulary usage."
-   }
-   ```
+### Mock Setup
+```python
+@pytest.fixture
+def mock_analyze_grammar():
+    """Mock analyze_grammar service function for testing"""
+    with patch('app.api.v1.endpoints.grammar_endpoint.analyze_grammar') as mock:
+        yield mock
+```
 
-**Expected Assertions:**
+## 1. Valid Grammar Analysis Tests
+
+### `test_successful_grammar_analysis`
+**Purpose:** Test successful grammar analysis with valid transcript
+
+**Mock Setup:**
+- Returns structured grammar corrections and vocabulary suggestions
+- Uses proper nested dictionary format matching `GrammarResponse` schema
+
+**Test Data:**
+```json
+{
+  "transcript": "This is a good sentence with proper grammar and vocabulary usage.",
+  "question_number": 1
+}
+```
+
+**Expected Response Structure:**
+```json
+{
+  "grammar_corrections": {
+    "sentence_1": {
+      "original_phrase": "was learning",
+      "suggested_correction": "were learning", 
+      "explanation": "subject-verb agreement"
+    }
+  },
+  "vocabulary_suggestions": {
+    "word_1": {
+      "original_word": "good",
+      "context": "good understanding",
+      "advanced_alternatives": ["excellent", "thorough", "comprehensive"],
+      "level": "B1"
+    }
+  }
+}
+```
+
+**Assertions:**
 - HTTP status code 200
-- Response matches `GrammarResponse` schema
-- `analyze_grammar` service function called with correct transcript
-- Response contains:
-  - `status`: "success"
-  - `grammar_corrections`: array of corrections
-  - `vocabulary_suggestions`: array of suggestions
-- Logging indicates analysis completion with statistics
+- Response contains `status: "success"`
+- All required fields present (`grammar_corrections`, `vocabulary_suggestions`, `error`)
+- Service called with correct transcript
+- `error` field is `None`
 
-### Scenario: Complex Transcript Analysis
-**Preconditions:**
-- Mock `analyze_grammar` service function
-- Valid complex transcript
-- Clean application state
+### `test_complex_transcript_analysis`
+**Purpose:** Test analysis of complex transcript with multiple grammar and vocabulary issues
 
-**User Actions:**
-1. Send POST request with complex transcript:
-   ```json
-   {
-     "transcript": "The student was learning English language very quickly and they demonstrate good understanding of grammatical rules. However, there is still room for improvement in vocabulary choices and sentence structure."
-   }
-   ```
+**Test Data:**
+- Long, complex transcript with multiple sentences
+- Multiple grammar corrections expected
+- Multiple vocabulary suggestions expected
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 200
-- Service processes complex transcript correctly
-- Grammar corrections include sentence-level issues
-- Vocabulary suggestions provide appropriate alternatives
-- Response statistics logged correctly
+- Response contains 2 grammar corrections
+- Response contains 2 vocabulary suggestions
+- Service called exactly once
 
-## 2. Input Validation
+## 2. Input Validation Tests
 
-### Scenario: Transcript Too Short
-**Preconditions:**
-- Mock `analyze_grammar` service function
-- Clean application state
+### `test_transcript_too_short`
+**Purpose:** Test validation error for transcript under 10 characters
 
-**User Actions:**
-1. Send POST request with short transcript:
-   ```json
-   {
-     "transcript": "Short"
-   }
-   ```
+**Test Data:**
+```json
+{
+  "transcript": "Short",
+  "question_number": 1
+}
+```
 
-**Expected Assertions:**
-- HTTP status code 400
-- HTTPException with detail: "Transcript is too short for analysis (minimum 10 characters)"
+**Assertions:**
+- HTTP status code 400 (fixed with HTTPException handling)
+- Error message: "Transcript is too short for analysis (minimum 10 characters)"
 - Service function not called
-- Error logged appropriately
 
-### Scenario: Empty Transcript
-**Preconditions:**
-- Mock `analyze_grammar` service function
-- Clean application state
+### `test_empty_transcript`
+**Purpose:** Test validation error for empty transcript
 
-**User Actions:**
-1. Send POST request with empty transcript:
-   ```json
-   {
-     "transcript": ""
-   }
-   ```
+**Test Data:**
+```json
+{
+  "transcript": "",
+  "question_number": 1
+}
+```
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 400
-- HTTPException indicating transcript too short
+- Error message contains "Transcript is too short for analysis"
 - Service function not called
-- No processing attempted
 
-### Scenario: Whitespace-Only Transcript
-**Preconditions:**
-- Mock `analyze_grammar` service function
-- Clean application state
+### `test_whitespace_only_transcript`
+**Purpose:** Test validation error for whitespace-only transcript
 
-**User Actions:**
-1. Send POST request with whitespace transcript:
-   ```json
-   {
-     "transcript": "   \n\t   "
-   }
-   ```
+**Test Data:**
+```json
+{
+  "transcript": "   \n\t   ",
+  "question_number": 1
+}
+```
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 400
-- HTTPException for insufficient content after stripping
+- Error message contains "Transcript is too short for analysis"
 - Service function not called
-- Whitespace handling working correctly
 
-## 3. Service Integration
+## 3. Service Integration Tests
 
-### Scenario: Service Returns Grammar Corrections
-**Preconditions:**
-- Mock `analyze_grammar` to return corrections
-- Valid transcript
-- Clean application state
+### `test_service_returns_grammar_corrections`
+**Purpose:** Test service returning detailed grammar corrections and vocabulary suggestions
 
-**User Actions:**
-1. Send valid grammar analysis request
-2. Service returns:
-   ```json
-   {
-     "grammar_corrections": [
-       {"error": "subject-verb disagreement", "suggestion": "was -> were"},
-       {"error": "missing article", "suggestion": "add 'the' before 'student'"}
-     ],
-     "vocabulary_suggestions": [
-       {"word": "good", "suggestion": "excellent", "context": "quality"}
-     ]
-   }
-   ```
+**Mock Response:**
+- 2 grammar corrections with detailed explanations
+- 1 vocabulary suggestion with alternatives
+- Proper nested dictionary structure
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 200
-- Response contains all corrections and suggestions
-- Statistics logged correctly (2 grammar issues, 1 vocabulary suggestion)
-- Response structure matches expected format
+- Correct number of corrections and suggestions
+- Specific correction keys present in response
+- Response follows expected schema
 
-### Scenario: Service Throws Exception
-**Preconditions:**
-- Mock `analyze_grammar` to raise exception
-- Valid transcript
-- Clean application state
+### `test_service_throws_exception`
+**Purpose:** Test handling of service exceptions
 
-**User Actions:**
-1. Send valid grammar analysis request
-2. Service raises `Exception("Analysis service unavailable")`
+**Mock Setup:**
+- Service raises `Exception("Analysis service unavailable")`
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 500
-- HTTPException with detail: "Error analyzing grammar: Analysis service unavailable"
-- Exception logged with full context
-- No partial response returned
+- Error message: "Error analyzing grammar: Analysis service unavailable"
 
-## 4. Response Format Validation
+## 4. Response Format Validation Tests
 
-### Scenario: Complete Grammar Response
-**Preconditions:**
-- Mock successful service response with full data
-- Valid transcript
-- Clean application state
+### `test_complete_grammar_response_format`
+**Purpose:** Verify response follows `GrammarResponse` schema exactly
 
-**User Actions:**
-1. Send valid request expecting complete response
-
-**Expected Assertions:**
-- Response follows `GrammarResponse` schema exactly
-- All required fields present and valid types
-- Arrays properly formatted
-- No null values where not expected
+**Assertions:**
+- All required fields present (`status`, `grammar_corrections`, `vocabulary_suggestions`, `error`)
+- Correct field types (string, dict, dict, None)
 - Response serializes correctly to JSON
 
-### Scenario: Empty Corrections Response
-**Preconditions:**
-- Mock service returning no corrections
-- Valid transcript with perfect grammar
-- Clean application state
+### `test_empty_corrections_response`
+**Purpose:** Test response when no corrections are needed
 
-**User Actions:**
-1. Send request with grammatically correct transcript
+**Mock Setup:**
+- Service returns empty dictionaries for both corrections and suggestions
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 200
-- Response contains empty arrays for corrections and suggestions
-- Statistics logged showing 0 issues found
-- Success status maintained
+- Status remains "success"
+- Empty dictionaries for corrections and suggestions
+- Length assertions verify empty responses
 
-## 5. Logging and Monitoring
+## 5. Logging and Monitoring Tests
 
-### Scenario: Request Logging
-**Preconditions:**
-- Mock `analyze_grammar` service
-- Valid transcript
-- Logging configuration enabled
+### `test_request_logging`
+**Purpose:** Verify request processing is logged correctly
 
-**User Actions:**
-1. Send grammar analysis request
+**Mock Setup:**
+- Patches logger at endpoint level
+- Returns valid analysis results
 
-**Expected Assertions:**
+**Assertions:**
 - Request logged with transcript length
-- Processing completion logged with statistics
-- Log levels appropriate for each message
-- No sensitive data logged
+- Completion logged with statistics (grammar issues count, vocabulary suggestions count)
+- Specific log message format verification
 
-### Scenario: Error Logging
-**Preconditions:**
-- Mock service to raise exception
-- Valid transcript
-- Logging configuration enabled
+### `test_error_logging`
+**Purpose:** Verify errors are logged appropriately
 
-**User Actions:**
-1. Send request that triggers service exception
+**Mock Setup:**
+- Service raises exception
+- Logger patched to verify calls
 
-**Expected Assertions:**
-- Exception logged with full context
-- Error logged at appropriate level
-- No data corruption in logs
-- Stack trace included for debugging
+**Assertions:**
+- Exception logged with `logger.exception()`
+- Specific error message: "Error in grammar analysis endpoint"
 
-## 6. Error Handling
+## 6. Error Handling Tests
 
-### Scenario: Malformed Request Body
-**Preconditions:**
-- Mock `analyze_grammar` service
-- Clean application state
+### `test_malformed_request_body`
+**Purpose:** Test handling of request missing required transcript field
 
-**User Actions:**
-1. Send POST request with missing transcript field:
-   ```json
-   {
-     "invalid_field": "some text"
-   }
-   ```
+**Test Data:**
+```json
+{
+  "invalid_field": "some text",
+  "question_number": 1
+}
+```
 
-**Expected Assertions:**
-- HTTP status code 422 (Validation Error)
-- Pydantic validation error response
+**Assertions:**
+- HTTP status code 422 (Pydantic validation error)
 - Service function not called
-- Error details specify missing required field
 
-### Scenario: Invalid JSON
-**Preconditions:**
-- Mock `analyze_grammar` service
-- Clean application state
+### `test_missing_question_number`
+**Purpose:** Test request with missing question_number (should use default)
 
-**User Actions:**
-1. Send POST request with malformed JSON
+**Test Data:**
+```json
+{
+  "transcript": "This is a test transcript without question number."
+}
+```
 
-**Expected Assertions:**
-- HTTP status code 400 or 422
-- JSON parsing error handled gracefully
-- Service function not called
-- Appropriate error response returned
+**Assertions:**
+- HTTP status code 200 (question_number has default value)
+- Service called successfully
 
-## 7. Performance Considerations
+## 7. Performance and Edge Case Tests
 
-### Scenario: Large Transcript Processing
-**Preconditions:**
-- Mock `analyze_grammar` service with processing delay
-- Very large transcript (>1000 characters)
-- Clean application state
+### `test_large_transcript_processing`
+**Purpose:** Test processing of large transcript (>1000 characters)
 
-**User Actions:**
-1. Send request with large transcript
+**Test Setup:**
+- Creates transcript of ~1250 characters using string multiplication
+- Mock returns proper response structure
 
-**Expected Assertions:**
-- Request processed within reasonable time limits
-- Service handles large input appropriately
-- Memory usage remains reasonable
-- Response includes processing time in logs
+**Assertions:**
+- HTTP status code 200
+- Service called with large transcript
+- Response structure maintained
 
-### Scenario: Concurrent Analysis Requests
-**Preconditions:**
-- Mock `analyze_grammar` service
-- Multiple valid transcripts
-- Clean application state
+### `test_concurrent_analysis_requests`
+**Purpose:** Test multiple concurrent grammar analysis requests
 
-**User Actions:**
-1. Send multiple grammar analysis requests simultaneously
+**Test Setup:**
+- Sends two different requests simultaneously
+- Each with different transcript and question_number
 
-**Expected Assertions:**
-- All requests processed successfully
+**Assertions:**
+- Both requests return HTTP 200
+- Service called exactly twice
 - No race conditions or conflicts
-- Consistent response quality
-- Proper request isolation
 
-## Integration Points to Verify
+## Key Implementation Details
 
-1. **Service Integration**
-   - Proper service function calling
-   - Parameter passing accuracy (transcript)
-   - Response handling and mapping
-   - Error propagation working correctly
+### Exception Handling Fix
+The endpoint was updated to properly handle HTTPException:
+```python
+except HTTPException:
+    # Re-raise HTTPException to preserve status code
+    raise
+except Exception as e:
+    logger.exception("Error in grammar analysis endpoint")
+    raise HTTPException(
+        status_code=500,
+        detail=f"Error analyzing grammar: {str(e)}"
+    )
+```
 
-2. **Model Validation**
-   - Request model validation enforced
-   - Response model serialization working
-   - Type conversion handled correctly
-   - Required field enforcement
+### Mock Data Structure
+All mocks follow the expected response format:
+```python
+{
+    "grammar_corrections": {
+        "key": {
+            "original_phrase": "...",
+            "suggested_correction": "...",
+            "explanation": "..."
+        }
+    },
+    "vocabulary_suggestions": {
+        "key": {
+            "original_word": "...",
+            "context": "...",
+            "advanced_alternatives": [...],
+            "level": "..."
+        }
+    }
+}
+```
 
-3. **Logging Integration**
-   - Request processing logged
-   - Error cases logged appropriately
-   - Statistics captured and logged
-   - Performance metrics tracked 
+### Test Coverage
+- ✅ Successful analysis scenarios
+- ✅ Input validation (short, empty, whitespace)
+- ✅ Service integration and error handling
+- ✅ Response format validation
+- ✅ Logging verification
+- ✅ Malformed requests
+- ✅ Large transcript processing
+- ✅ Concurrent request handling
+
+## Running the Tests
+```bash
+# Run all grammar endpoint tests
+pytest tests/test_grammar_endpoint.py -v
+
+# Run specific test
+pytest tests/test_grammar_endpoint.py::TestGrammarEndpoint::test_successful_grammar_analysis -v
+
+# Run with coverage
+pytest tests/test_grammar_endpoint.py --cov=app.api.v1.endpoints.grammar_endpoint
+``` 

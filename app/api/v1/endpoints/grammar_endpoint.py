@@ -43,6 +43,9 @@ async def analyze_grammar_endpoint(request: GrammarRequest):
         
         return response
         
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code
+        raise
     except Exception as e:
         logger.exception("Error in grammar analysis endpoint")
         raise HTTPException(
