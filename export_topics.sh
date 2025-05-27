@@ -1,15 +1,7 @@
-# export_topics.sh
-#!/bin/bash
+PROJECT_ID="local-dev"  # or any fake project ID
 
-REAL_PROJECT_ID="classconnect-455912"
-FAKE_PROJECT_ID="fake-project"
+TOPICS=('student-submission-topic', 'transcription-done-topic', 'fluency-done-topic', 'pronoun-done-topic', 'submission-analyis-complete-topic', 'audio-conversion-done-topic', 'analysis-complete-topic', 'question-analysis-ready-topic', 'lexical-done-topic', 'grammer-done-topic')
 
-# Pull list of topic names from real project
-TOPICS=$(gcloud pubsub topics list --project=$REAL_PROJECT_ID --format="value(name)")
-
-# Create each topic in the emulator under the fake project
-for FULL_TOPIC in $TOPICS; do
-  TOPIC_ID=$(basename $FULL_TOPIC)
-  echo "Creating topic: $TOPIC_ID"
-  gcloud pubsub topics create "$TOPIC_ID" --project="$FAKE_PROJECT_ID"
+for TOPIC in "${TOPICS[@]}"; do
+  gcloud pubsub topics create "$TOPIC" --project="$PROJECT_ID"
 done

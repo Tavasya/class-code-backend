@@ -158,17 +158,33 @@ class DatabaseService:
         transformed_results = []
         
         for question_id, analysis_results in question_results.items():
-            # Get audio URL for this question from recordings
+            # OPTION 1: Prioritize original_audio_url from analysis results
             audio_url = ""
-            if recordings:
+            
+            # First, try to get the original audio URL from analysis results
+            if isinstance(analysis_results, dict) and "original_audio_url" in analysis_results:
+                audio_url = analysis_results["original_audio_url"]
+                logger.info(f"📎 Using original_audio_url from analysis results for question {question_id}: {audio_url}")
+            
+            # Fallback: Get audio URL from recordings list (old method)
+            if not audio_url and recordings:
                 # Try to find recording for this question
                 for recording in recordings:
                     if f"question_{question_id}" in recording or f"q{question_id}" in recording:
                         audio_url = recording
                         break
-                # If no specific match, use first recording as fallback
-                if not audio_url and recordings:
-                    audio_url = recordings[0]
+                # If no specific match, use recording by index (question_id - 1)
+                if not audio_url:
+                    try:
+                        question_index = int(question_id) - 1
+                        if 0 <= question_index < len(recordings):
+                            audio_url = recordings[question_index]
+                            logger.info(f"📎 Using recording by index for question {question_id}: {audio_url}")
+                    except (ValueError, IndexError):
+                        # If question_id is not a number or index is out of range, use first recording
+                        if recordings:
+                            audio_url = recordings[0]
+                            logger.info(f"📎 Using first recording as fallback for question {question_id}: {audio_url}")
             
             # Extract transcript from pronunciation result if available
             transcript = ""

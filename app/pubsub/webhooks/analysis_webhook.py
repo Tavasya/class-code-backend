@@ -380,12 +380,13 @@ class AnalysisWebhook:
             
             logger.info(f"🔍 DEBUG: All analyses complete! Compiling results for question {question_number}")
             
-            # Compile all results
+            # Compile all results including the original audio URL
             analysis_results = {
                 "pronunciation": state["pronunciation_result"],
                 "grammar": state["grammar_result"],
                 "lexical": state["lexical_result"],
-                "fluency": state["fluency_result"]
+                "fluency": state["fluency_result"],
+                "original_audio_url": state.get("audio_url")  # Include original audio URL
             }
             
             # Publish analysis complete with total_questions
@@ -578,17 +579,28 @@ class AnalysisWebhook:
                 db_service = DatabaseService()
                 logger.info(f"🏗️ DatabaseService initialized for submission: {submission_url}")
                 
-                # 1. List recording URLs from Supabase Storage for this submission
-                logger.info(f"🎵 Fetching recordings from Supabase Storage for submission: {submission_url}")
-                recording_urls = db_service.list_recordings(path_prefix=submission_url)
+                # OPTION 1: Extract original audio URLs from question results instead of searching storage
+                logger.info(f"🎵 Extracting original audio URLs from question results for submission: {submission_url}")
+                recording_urls = []
                 
-                if not recording_urls:
-                    logger.warning(f"⚠️ No recordings found in Supabase Storage 'recordings' bucket for submission: {submission_url}")
-                else:
-                    logger.info(f"🎵 Found {len(recording_urls)} recordings in Supabase Storage for submission: {submission_url}")
+                for question_num, analysis_results in question_results.items():
+                    if isinstance(analysis_results, dict) and "original_audio_url" in analysis_results:
+                        original_url = analysis_results["original_audio_url"]
+                        if original_url:
+                            recording_urls.append(original_url)
+                            logger.info(f"🎵 Found original URL for question {question_num}: {original_url}")
+                        else:
+                            logger.warning(f"⚠️ Question {question_num} has empty original_audio_url")
+                    else:
+                        logger.warning(f"⚠️ Question {question_num} missing original_audio_url in analysis results")
+                
+                if recording_urls:
+                    logger.info(f"🎵 Successfully extracted {len(recording_urls)} original audio URLs for submission: {submission_url}")
                     # Log first few URLs for verification
                     for i, url in enumerate(recording_urls[:3]):
                         logger.info(f"🎵 Recording {i+1}: {url}")
+                else:
+                    logger.warning(f"⚠️ No original audio URLs found in question results for submission: {submission_url}")
 
                 # 2. Update the existing submission with analysis results
                 logger.info(f"💽 Updating existing submission in Supabase 'submissions' table: {submission_url}")
