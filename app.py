@@ -204,7 +204,7 @@ async def process_submission(urls: List[str], submission_id: str):
                 temp_file = await download_audio(url)
                 
                 # 1. Pronunciation analysis (existing)
-                pronun_result = await pronoun.analyze_audio_file(temp_file)
+                    pronun_result = await pronoun.analyze_audio_file(temp_file)
                 
                 # ---------- NORMALISE PRONUNCIATION SHAPE ----------
                 pronun_result.setdefault(
@@ -234,7 +234,7 @@ async def process_submission(urls: List[str], submission_id: str):
                     # ----- 1️⃣ GRAMMAR -------------------------------------------------
                     for sent_key, sent in gram_result["grammar_corrections"].items():
                         results["grammar_analysis"][f"recording_{i+1}_sentence_{local_sent_idx}"] = {
-                            "original": sent.get("original", sent.get("sentence", "")),
+                                    "original": sent.get("original", sent.get("sentence", "")),
                             "corrections": sent.get("corrections", [])
                         }
                         local_sent_idx += 1
@@ -348,8 +348,8 @@ async def process_submission(urls: List[str], submission_id: str):
                     logger.info(f"Transcript validation: {senetences_count} sentences found, valid_transcript={valid_transcript}")
                     
                     # Update the grade for this specific submission
-                    update_result = supabase.table("submissions").update({
-                        "grade": final_grade,
+            update_result = supabase.table("submissions").update({
+                "grade": final_grade,
                         "valid_transcript": valid_transcript
                     }).eq("submission_uid", submission_id).execute()
                     
@@ -372,7 +372,7 @@ async def process_submission(urls: List[str], submission_id: str):
                         logger.warning(f"Could not find class for assignment {assignment_id}")
                 else:
                     logger.warning(f"Could not find submission record for {submission_id}")
-            except Exception as e:
+        except Exception as e:
                 logger.error(f"Error updating grade after analysis: {str(e)}")
         else:
             logger.warning(f"Analysis completed but upload may have failed for {submission_id}")
