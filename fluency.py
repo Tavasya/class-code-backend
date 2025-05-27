@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # OpenAI API configuration
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 MODEL = "gpt-4o-mini"
 

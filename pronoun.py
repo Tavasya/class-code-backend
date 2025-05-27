@@ -15,16 +15,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Azure Speech config - retrieve from environment variables for security
-SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "CPhzqHVeoa5YnFTLqimhoVB8tiM0aYdtnAnumfNJtVkv3AzHV18PJQQJ99BDACYeBjFXJ3w3AAAYACOGaN2q")
+SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "CA4BV9f9rvEKQL22h6L383ucFVNHl9HvkS9bYsBR8xI6cdJm85fHJQQJ99BEACYeBjFXJ3w3AAAYACOGS9sl")
 REGION = os.environ.get("AZURE_SPEECH_REGION", "eastus")
 
 # AssemblyAI API config
-ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY", "793e69da37b04250a9473ff974eb7157")
+ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
+if not ASSEMBLYAI_API_KEY:
+    logger.error("ASSEMBLYAI_API_KEY environment variable is not set")
+    raise ValueError("ASSEMBLYAI_API_KEY environment variable is required")
 ASSEMBLYAI_UPLOAD_URL = "https://api.assemblyai.com/v2/upload"
 ASSEMBLYAI_TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript"
 
 # OpenAI API config for improvement suggestions
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "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")
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 async def convert_webm_to_wav(webm_file: str) -> str:

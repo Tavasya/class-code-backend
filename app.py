@@ -116,18 +116,79 @@ async def process_submission(urls: List[str], submission_id: str):
                 temp_file = await download_audio(url)
                 
                 # 1. Pronunciation analysis
-                pronun_result = await pronoun.analyze_audio_file(temp_file)
-                pronun_result.setdefault(
-                    "overall_pronunciation_score",
-                    round(sum(w["accuracy_score"] for w in pronun_result.get("word_details", [])) /
-                          max(len(pronun_result.get("word_details", [])), 1))
-                )
-                pronunciation_score = pronun_result.get("overall_pronunciation_score", 0)
-                pronunciation_issues = [
-                    w for w in pronun_result.get("word_details", [])
-                    if w.get("accuracy_score", 100) < 60
-                ]
-                audio_transcript = pronun_result.get("transcript", "")
+                try:
+                    pronun_result = await pronoun.analyze_audio_file(temp_file)
+                    pronunciation_score = pronun_result.get("overall_pronunciation_score", 0)
+                    pronunciation_issues = []
+                    
+                    # Add word-level feedback for all words
+                    word_details = pronun_result.get("word_details", [])
+                    if word_details:  # Only add if we have word details
+                        word_feedback = []
+                        for word in word_details:
+                            word_feedback.append({
+                                "word": word.get("word", ""),
+                                "score": word.get("accuracy_score", 0),
+                                "error_type": word.get("error_type", "None"),
+                                "timestamp": word.get("offset", 0),
+                                "duration": word.get("duration", 0)
+                            })
+                        
+                        # Add word-level feedback as a single issue
+                        pronunciation_issues.append({
+                            "type": "word_scores",
+                            "words": word_feedback
+                        })
+                        
+                        # Add overall feedback
+                        if pronun_result.get("improvement_suggestion"):
+                            pronunciation_issues.append({
+                                "type": "suggestion",
+                                "message": pronun_result.get("improvement_suggestion")
+                            })
+                        
+                        # Add prosody feedback if score is low
+                        if pronun_result.get("prosody_score", 100) < 85:
+                            pronunciation_issues.append({
+                                "type": "prosody",
+                                "score": pronun_result.get("prosody_score"),
+                                "message": "Work on natural rhythm and intonation patterns in speech."
+                            })
+                        
+                        # Add fluency feedback if score is low
+                        if pronun_result.get("fluency_score", 100) < 85:
+                            pronunciation_issues.append({
+                                "type": "fluency",
+                                "score": pronun_result.get("fluency_score"),
+                                "message": "Focus on speaking more smoothly and reducing pauses between words."
+                            })
+                        
+                        # Add overall performance feedback
+                        if pronunciation_score >= 90:
+                            pronunciation_issues.append({
+                                "type": "positive",
+                                "message": "Excellent pronunciation with clear articulation and accurate word stress."
+                            })
+                        elif pronunciation_score >= 80:
+                            pronunciation_issues.append({
+                                "type": "positive",
+                                "message": "Good pronunciation with minor areas for improvement."
+                            })
+                    else:
+                        # If no word details, add raw data for debugging
+                        pronunciation_issues.append({
+                            "type": "raw_data",
+                            "data": pronun_result
+                        })
+                except Exception as e:
+                    logger.error(f"Error in pronunciation analysis: {str(e)}")
+                    pronunciation_score = 0
+                    pronunciation_issues = [{
+                        "type": "error",
+                        "message": f"Azure Speech Service Error: {str(e)}"
+                    }]
+                
+                audio_transcript = pronun_result.get("transcript", "") if 'pronun_result' in locals() else ""
                 
                 # 2. Grammar and lexical analysis
                 grammar_issues = []
@@ -135,6 +196,8 @@ async def process_submission(urls: List[str], submission_id: str):
                 lexical_grade = 100
                 if audio_transcript:
                     gram_result = await grammar.analyze_grammar(audio_transcript)
+                    
+                    # Process grammar corrections
                     for sent_key, sent in gram_result["grammar_corrections"].items():
                         corrections = sent.get("corrections", [])
                         if corrections:
@@ -143,9 +206,28 @@ async def process_submission(urls: List[str], submission_id: str):
                                     "original": sent.get("original", sent.get("sentence", "")),
                                     "correction": correction
                                 })
+                    
+                    # Process vocabulary suggestions
+                    if "vocabulary_suggestions" in gram_result:
+                        for sent in gram_result["vocabulary_suggestions"].values():
+                            for suggestion in sent.get("suggestions", []):
+                                lexical_issues.append({
+                                    "type": "vocabulary",
+                                    "sentence": sent.get("sentence", ""),
+                                    "suggestion": suggestion
+                                })
+                    
+                    # Process lexical resources
                     if "lexical_resources" in gram_result:
                         for sent in gram_result["lexical_resources"].values():
-                            lexical_issues.extend(sent.get("suggestions", []))
+                            for suggestion in sent.get("suggestions", []):
+                                lexical_issues.append({
+                                    "type": "lexical",
+                                    "sentence": sent.get("sentence", ""),
+                                    "suggestion": suggestion
+                                })
+                    
+                    # Calculate lexical grade based on number of issues
                     lexical_grade = 100 - min(100, len(lexical_issues) * 10)
                 
                 # 3. Fluency analysis
@@ -424,8 +506,8 @@ async def test_transcription_length(url: str):
         
         
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8081))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 8082))
+    uvicorn.run(app, host="0.0.0.0", port=8082)
     
 
 

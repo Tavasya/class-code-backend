@@ -1,0 +1,45 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - feature/rebuild
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: classconnect-rebuild
+  REGION: ${{ secrets.REGION }}
+  REPO_NAME: classconnectrepo
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        
+      - name: Build and push container
+        run: |
+          gcloud builds submit --region=${{ env.REGION }} \
+            --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+      
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --timeout=40m \
+            --allow-unauthenticated \
+            --set-env-vars=AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }},AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_KEY=${{ secrets.SUPABASE_KEY }},ASSEMBLYAI_API_KEY=${{ secrets.ASSEMBLYAI_API_KEY }} 
