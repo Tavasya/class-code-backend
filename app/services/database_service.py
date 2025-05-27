@@ -186,10 +186,18 @@ class DatabaseService:
                             audio_url = recordings[0]
                             logger.info(f"📎 Using first recording as fallback for question {question_id}: {audio_url}")
             
-            # Extract transcript from pronunciation result if available
+            # Extract transcript from multiple possible sources
             transcript = ""
-            if "pronunciation" in analysis_results and isinstance(analysis_results["pronunciation"], dict):
+
+            # Option 1: Look for transcript at the top level of analysis results (new architecture)
+            if isinstance(analysis_results, dict) and "transcript" in analysis_results:
+                transcript = analysis_results["transcript"] or ""
+                logger.info(f"📝 Using transcript from analysis results for question {question_id}")
+
+            # Option 2: Fallback to pronunciation result (old architecture)  
+            if not transcript and "pronunciation" in analysis_results and isinstance(analysis_results["pronunciation"], dict):
                 transcript = analysis_results["pronunciation"].get("transcript", "")
+                logger.info(f"📝 Using transcript from pronunciation results for question {question_id}")
             
             # Build section_feedback from analysis results
             section_feedback = {}

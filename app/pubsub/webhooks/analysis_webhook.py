@@ -406,7 +406,8 @@ class AnalysisWebhook:
                 "grammar": state["grammar_result"],
                 "lexical": state["lexical_result"],
                 "fluency": state["fluency_result"],
-                "original_audio_url": state.get("audio_url")  # Include original audio URL
+                "original_audio_url": state.get("audio_url"),  # Include original audio URL
+                "transcript": state.get("transcript")  # Include transcript from transcription service
             }
             
             # Publish analysis complete with total_questions
