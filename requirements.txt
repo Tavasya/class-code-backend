@@ -10,3 +10,5 @@ google-cloud-pubsub
 pytest
 httpx
 pytest-asyncio
+pytest-mock
+pytest-cov
