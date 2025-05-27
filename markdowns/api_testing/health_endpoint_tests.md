@@ -3,15 +3,20 @@
 ## Files to Reference
 - `app/api/v1/endpoints/health.py` - Health endpoint implementation
 - `app/core/config.py` - Configuration and Supabase connection
-- `app/models/schemas.py` - HealthResponse model
-- `app/core/config.py` - Environment configuration
+- `app/main.py` - FastAPI application instance
+
+## Test Setup
+- Uses `TestClient` from FastAPI for endpoint testing
+- Mocks `supabase` from `app.core.config` module
+- All tests use the endpoint `/api/v1/health/`
+- Uses `patch.dict` for environment variable testing
 
 ## 1. Basic Health Check
 
 ### Scenario: Successful Health Check
+**Test Method:** `test_health_check_success`
 **Preconditions:**
-- Mock Supabase client connected
-- Environment variables set
+- Mock Supabase client with `MagicMock()`
 - Clean application state
 
 **User Actions:**
@@ -19,34 +24,33 @@
 
 **Expected Assertions:**
 - HTTP status code 200
-- Response matches `HealthResponse` schema
-- Response contains required fields:
-  - `status`: "STAGE BRANCH ISS HEALTHYY"
-  - `timestamp`: Valid ISO format datetime
-  - `environment`: Current environment value
-  - `supabase`: "connected"
-
-### Scenario: Missing Environment Variable
-**Preconditions:**
-- Mock Supabase client connected
-- `ENVIRONMENT` environment variable not set
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- HTTP status code 200
-- Response contains:
-  - `environment`: "development" (default value)
-  - Other fields present and valid
+- Response data contains: `"status": "STAGE BRANCH ISS HEALTHYY"`
+- Response contains `"timestamp"` field
+- Response contains `"environment"` field
+- Response data contains: `"supabase": "connected"`
 
 ## 2. Supabase Connection Status
 
 ### Scenario: Supabase Connected
+**Test Method:** `test_supabase_connected`
 **Preconditions:**
-- Mock Supabase client successfully initialized
-- Valid Supabase configuration
+- Mock Supabase client with `MagicMock()`
+- Clean application state
+
+**User Actions:**
+1. Send GET request to `/api/v1/health/`
+
+**Expected Assertions:**
+- Response data contains: `"supabase": "connected"`
+- Supabase client properly mocked and detected as connected
+
+## 3. Environment Configuration
+
+### Scenario: Default Environment When Not Set
+**Test Method:** `test_environment_default`
+**Preconditions:**
+- Mock Supabase client with `MagicMock()`
+- Clear all environment variables using `patch.dict(os.environ, {}, clear=True)`
 - Clean application state
 
 **User Actions:**
@@ -54,14 +58,14 @@
 
 **Expected Assertions:**
 - HTTP status code 200
-- Response contains:
-  - `supabase`: "connected"
-- Supabase client properly initialized
+- Response data contains: `"environment": "development"`
+- Default environment value used when ENVIRONMENT variable not set
 
-### Scenario: Supabase Not Connected
+### Scenario: Custom Environment Setting
+**Test Method:** `test_environment_custom`
 **Preconditions:**
-- Mock Supabase client as None
-- Missing or invalid Supabase configuration
+- Mock Supabase client with `MagicMock()`
+- Set environment variable using `patch.dict(os.environ, {"ENVIRONMENT": "production"})`
 - Clean application state
 
 **User Actions:**
@@ -69,136 +73,33 @@
 
 **Expected Assertions:**
 - HTTP status code 200
-- Response contains:
-  - `supabase`: "not connected"
-- Health check still succeeds despite Supabase issue
+- Response data contains: `"environment": "production"`
+- Custom environment variable value properly read and returned
 
-## 3. Response Format Validation
-
-### Scenario: Response Schema Compliance
-**Preconditions:**
-- Mock all dependencies
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- Response follows `HealthResponse` model exactly
-- All required fields present
-- Field types match model definition
-- No extra fields in response
-
-### Scenario: Timestamp Format Validation
-**Preconditions:**
-- Mock datetime.now()
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- `timestamp` field is valid ISO 8601 format
-- Timestamp represents current time
-- Timezone information included
-
-## 4. Environment Configuration
-
-### Scenario: Development Environment
-**Preconditions:**
-- Set `ENVIRONMENT=development`
-- Mock dependencies
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- Response contains:
-  - `environment`: "development"
-
-### Scenario: Production Environment
-**Preconditions:**
-- Set `ENVIRONMENT=production`
-- Mock dependencies
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- Response contains:
-  - `environment`: "production"
-
-### Scenario: Staging Environment
-**Preconditions:**
-- Set `ENVIRONMENT=staging`
-- Mock dependencies
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- Response contains:
-  - `environment`: "staging"
-
-## 5. Error Handling
-
-### Scenario: Internal Server Error
-**Preconditions:**
-- Mock datetime.now() to raise exception
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-
-**Expected Assertions:**
-- HTTP status code 500
-- Error response returned
-- Exception handled gracefully
-
-## 6. Performance and Reliability
-
-### Scenario: Response Time Validation
-**Preconditions:**
-- Mock all dependencies
-- Clean application state
-
-**User Actions:**
-1. Send GET request to `/api/v1/health/`
-2. Measure response time
-
-**Expected Assertions:**
-- Response time under 100ms
-- Consistent response times across multiple calls
-
-### Scenario: Concurrent Health Checks
-**Preconditions:**
-- Mock all dependencies
-- Clean application state
-
-**User Actions:**
-1. Send multiple concurrent GET requests to `/api/v1/health/`
-
-**Expected Assertions:**
-- All requests return HTTP 200
-- No race conditions or errors
-- Consistent responses across all calls
-
-## Integration Points to Verify
+## Integration Points Verified
 
 1. **Configuration Integration**
-   - Environment variable reading
-   - Default value handling
-   - Supabase client status detection
+   - Environment variable reading with `os.environ.get("ENVIRONMENT", "development")`
+   - Default value handling for missing environment variables
+   - Supabase client status detection from `app.core.config.supabase`
 
-2. **Response Model Integration**
-   - Pydantic model validation
-   - Proper serialization
-   - Schema compliance
+2. **Response Format**
+   - Consistent response structure across all scenarios
+   - Required fields: status, timestamp, environment, supabase
+   - Proper JSON serialization
 
 3. **Dependency Status**
-   - Supabase connection verification
-   - External service health indicators
-   - Graceful handling of dependency failures 
+   - Supabase connection verification through mocking
+   - Graceful handling when dependencies are mocked
+   - Status reporting for external service connections
+
+## Test Coverage Summary
+
+The health endpoint tests cover:
+- ✅ Basic health check functionality
+- ✅ Supabase connection status reporting
+- ✅ Environment variable handling (default and custom)
+- ✅ Response format validation
+- ❌ Error handling scenarios (not implemented)
+- ❌ Performance testing (not implemented)
+- ❌ Concurrent request handling (not implemented) 
