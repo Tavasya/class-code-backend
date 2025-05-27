@@ -41,10 +41,10 @@ jobs:
             --region=${{ env.REGION }} \
             --platform=managed \
             --timeout=40m \
-            --startup-cpu-boost \
+            --cpu-boost \
             --cpu=1 \
             --memory=2Gi \
             --min-instances=0 \
             --max-instances=10 \
             --allow-unauthenticated \
-            --set-env-vars=AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }},AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}}
+            --set-env-vars=AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }},AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
