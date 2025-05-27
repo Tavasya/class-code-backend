@@ -4,16 +4,21 @@
 - `app/api/v1/endpoints/transcription_endpoint.py` - Transcription endpoint implementation
 - `app/models/transcription_model.py` - Request/response models
 - `app/services/transcription_service.py` - Transcription processing service
-- `app/core/config.py` - Configuration and dependencies
+- `app/main.py` - FastAPI application instance
+
+## Test Setup
+- Uses `TestClient` from FastAPI for endpoint testing
+- Mocks `TranscriptionService` with `AsyncMock` for `process_single_transcription` method
+- All tests use the endpoint `/api/v1/transcription/audio_proccessing`
 
 ## 1. Direct Transcription Request
 
-### Scenario: Valid Transcription Request
+### Scenario: Valid Transcription Request with Submission URL
+**Test Method:** `test_direct_transcription_request_success`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription
-- Valid audio URL and parameters
+- Mock TranscriptionService.process_single_transcription returns success response
+- Valid audio URL, question number, and submission URL
 - Clean application state
-- Mock successful transcription result
 
 **User Actions:**
 1. Send POST request to `/api/v1/transcription/audio_proccessing`
@@ -28,15 +33,16 @@
 
 **Expected Assertions:**
 - HTTP status code 200
-- Response matches `TranscriptionResponse` schema
-- `TranscriptionService.process_single_transcription` called with correct parameters
-- Audio URL, question number, and submission URL passed correctly
-- No base64 decoding attempted for direct request
+- Response data contains: `"text": "Hello world, this is a test transcription."`
+- Response data contains: `"error": None`
+- Response data contains: `"question_number": 1`
+- `TranscriptionService.process_single_transcription` called once with parameters: `("https://example.com/speech.mp3", 1, "test-submission-123")`
 
 ### Scenario: Transcription Without Submission URL
+**Test Method:** `test_direct_transcription_without_submission_url`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription
-- Valid audio URL without submission URL
+- Mock TranscriptionService.process_single_transcription returns success response
+- Valid audio URL and question number, no submission URL
 - Clean application state
 
 **User Actions:**
@@ -50,24 +56,33 @@
 
 **Expected Assertions:**
 - HTTP status code 200
-- Service called with None for submission_url parameter
-- Processing continues normally
-- Response indicates successful transcription
+- Response data contains: `"text": "Test transcription without submission URL."`
+- Response data contains: `"question_number": 2`
+- Service called with None for submission_url parameter: `("https://example.com/speech.wav", 2, None)`
 
 ## 2. Pub/Sub Message Processing
 
 ### Scenario: Valid Pub/Sub Transcription Message
+**Test Method:** `test_pubsub_transcription_message_success`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription
-- Valid base64 encoded Pub/Sub message
+- Mock TranscriptionService.process_single_transcription returns success response
+- Valid base64 encoded Pub/Sub message with proper JSON structure
 - Clean application state
 
 **User Actions:**
-1. Send POST request with Pub/Sub format:
+1. Create base64 encoded message data:
+   ```json
+   {
+     "audio_url": "https://example.com/speech.mp3",
+     "question_number": 1,
+     "submission_url": "test-submission"
+   }
+   ```
+2. Send POST request with Pub/Sub format:
    ```json
    {
      "message": {
-       "data": "eyJhdWRpb191cmwiOiJodHRwczovL2V4YW1wbGUuY29tL3NwZWVjaC5tcDMiLCJxdWVzdGlvbl9udW1iZXIiOjEsInN1Ym1pc3Npb25fdXJsIjoidGVzdC1zdWJtaXNzaW9uIn0=",
+       "data": "base64_encoded_data",
        "messageId": "transcription-msg-123",
        "publishTime": "2024-01-01T00:00:00.000Z"
      }
@@ -76,15 +91,16 @@
 
 **Expected Assertions:**
 - HTTP status code 200
-- Base64 data decoded correctly
-- JSON parsed from decoded data
-- TranscriptionService called with decoded parameters
-- Processing logged for question number
+- Response data contains: `"text": "Pub/Sub transcription successful."`
+- Response data contains: `"question_number": 1`
+- Base64 data decoded and JSON parsed correctly
+- TranscriptionService called with decoded parameters: `("https://example.com/speech.mp3", 1, "test-submission")`
 
 ### Scenario: Invalid Base64 in Pub/Sub Message
+**Test Method:** `test_pubsub_invalid_base64_data`
 **Preconditions:**
 - Mock TranscriptionService.process_single_transcription
-- Malformed base64 data
+- Malformed base64 data that cannot be decoded
 - Clean application state
 
 **User Actions:**
@@ -100,18 +116,20 @@
 
 **Expected Assertions:**
 - HTTP status code 500
-- Base64 decoding error handled
-- Error logged appropriately
-- TranscriptionService not called
+- Response contains error message: `"Failed to process audio"` in detail
+- Base64 decoding error handled gracefully
+- TranscriptionService.process_single_transcription not called
 
 ### Scenario: Invalid JSON in Pub/Sub Data
+**Test Method:** `test_pubsub_invalid_json_data`
 **Preconditions:**
 - Mock TranscriptionService.process_single_transcription
-- Valid base64 but invalid JSON content
+- Valid base64 encoding but invalid JSON content
 - Clean application state
 
 **User Actions:**
-1. Send POST request with base64 encoded invalid JSON:
+1. Create base64 encoded invalid JSON: `"invalid-json-content"`
+2. Send POST request with encoded invalid JSON:
    ```json
    {
      "message": {
@@ -123,69 +141,66 @@
 
 **Expected Assertions:**
 - HTTP status code 500
-- JSON parsing error handled
-- Error logged with details
-- TranscriptionService not called
+- Response contains error message: `"Failed to process audio"` in detail
+- JSON parsing error handled gracefully
+- TranscriptionService.process_single_transcription not called
 
 ## 3. Transcription Service Integration
 
-### Scenario: Successful Transcription Processing
-**Preconditions:**
-- Mock TranscriptionService.process_single_transcription to return success
-- Valid transcription request
-- Clean application state
-
-**User Actions:**
-1. Send valid transcription request
-2. Service returns successful transcription result
-
-**Expected Assertions:**
-- HTTP status code 200
-- Response contains transcription success status
-- TranscriptionService method called exactly once
-- Response matches `TranscriptionResponse` schema
-- Processing logged appropriately
-
 ### Scenario: Transcription Service Processing Failure
+**Test Method:** `test_transcription_service_failure`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription to raise exception
+- Mock TranscriptionService.process_single_transcription to raise Exception("Transcription failed")
 - Valid request data
 - Clean application state
 
 **User Actions:**
-1. Send valid transcription request
-2. Service raises `Exception("Transcription failed")`
+1. Send valid transcription request:
+   ```json
+   {
+     "audio_url": "https://example.com/speech.mp3",
+     "question_number": 1,
+     "submission_url": "test-submission"
+   }
+   ```
 
 **Expected Assertions:**
 - HTTP status code 500
-- HTTPException raised with error details: "Failed to process audio: Transcription failed"
-- Error message contains service exception details
-- Exception logged with full context
-- No partial response returned
+- Response contains exact error message: `"Failed to process audio: Transcription failed"`
+- Exception properly caught and handled
+- Error details include service exception message
 
-## 4. Request Format Detection
-
-### Scenario: Pub/Sub vs Direct Request Detection
+### Scenario: Service Returns Error Response
+**Test Method:** `test_transcription_with_error_from_service`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription
+- Mock TranscriptionService.process_single_transcription returns error response
+- Valid request data
 - Clean application state
 
 **User Actions:**
-1. Send direct request (no "message" field)
-2. Send Pub/Sub request (with "message" field)
+1. Send request with poor quality audio:
+   ```json
+   {
+     "audio_url": "https://example.com/poor_quality.mp3",
+     "question_number": 1,
+     "submission_url": "test-submission"
+   }
+   ```
 
 **Expected Assertions:**
-- Direct request: No base64 decoding attempted
-- Pub/Sub request: Base64 decoding performed
-- Both requests result in same service call format
-- Correct request type detected and handled
-- Parameters extracted correctly in both cases
+- HTTP status code 200 (service handles error gracefully)
+- Response data contains: `"text": ""`
+- Response data contains: `"error": "Audio quality too poor for transcription"`
+- Response data contains: `"question_number": 1`
+- Service error properly passed through to response
 
-## 5. Parameter Validation
+## 4. Parameter Validation
 
 ### Scenario: Missing Audio URL
+**Test Method:** `test_missing_audio_url`
 **Preconditions:**
 - Mock TranscriptionService.process_single_transcription
+- Request missing required audio_url field
 - Clean application state
 
 **User Actions:**
@@ -198,14 +213,16 @@
    ```
 
 **Expected Assertions:**
-- HTTP status code 500 (due to KeyError)
-- Error handled in exception block
-- TranscriptionService not called
-- Error logged appropriately
+- HTTP status code 500
+- Response contains error message: `"Failed to process audio"` in detail
+- KeyError handled in exception block
+- TranscriptionService.process_single_transcription not called
 
 ### Scenario: Missing Question Number
+**Test Method:** `test_missing_question_number`
 **Preconditions:**
 - Mock TranscriptionService.process_single_transcription
+- Request missing required question_number field
 - Clean application state
 
 **User Actions:**
@@ -218,205 +235,135 @@
    ```
 
 **Expected Assertions:**
-- HTTP status code 500 (due to KeyError)
-- Error handled in exception block
-- TranscriptionService not called
-- Error logged appropriately
+- HTTP status code 500
+- Response contains error message: `"Failed to process audio"` in detail
+- KeyError handled in exception block
+- TranscriptionService.process_single_transcription not called
 
-## 6. Audio Processing for Transcription
+## 5. Audio Format Support
 
 ### Scenario: Different Audio File Formats
+**Test Method:** `test_different_audio_formats`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription
-- Various audio file URLs
+- Mock TranscriptionService.process_single_transcription for multiple formats
+- Various audio file URLs with different extensions
 - Clean application state
 
 **User Actions:**
 1. Test with different audio formats:
-   - `.mp3` speech file
-   - `.wav` speech file
-   - `.webm` speech file
-   - `.m4a` speech file
+   - `"https://example.com/speech.mp3"` (question_number: 1)
+   - `"https://example.com/speech.wav"` (question_number: 2)
+   - `"https://example.com/speech.webm"` (question_number: 3)
+   - `"https://example.com/speech.m4a"` (question_number: 4)
 
 **Expected Assertions:**
-- All formats processed by service
-- Service called with correct URLs
-- Format-specific handling delegated to service
-- Consistent response structure
+- All requests return HTTP status code 200
+- Each response contains format-specific text: `"Transcription for format {i}"`
+- Each response contains correct question_number
+- Service called with correct URLs for each format
+- All formats processed consistently
 
-### Scenario: Poor Quality Audio
-**Preconditions:**
-- Mock TranscriptionService to handle poor quality audio
-- Audio URL with background noise or unclear speech
-- Clean application state
+## 6. Response Format Validation
 
-**User Actions:**
-1. Send request with poor quality audio URL
-
-**Expected Assertions:**
-- Service attempts transcription
-- Service handles quality issues appropriately
-- Error handling delegated to service layer
-- Appropriate response returned (may include partial transcription)
-
-### Scenario: Silent or Empty Audio
-**Preconditions:**
-- Mock TranscriptionService to handle silent audio
-- Audio URL with no speech content
-- Clean application state
-
-**User Actions:**
-1. Send request with silent audio file
-
-**Expected Assertions:**
-- Service processes silent audio
-- Service returns appropriate response for no speech
-- No transcription errors due to silence
-- Response indicates processing completion
-
-## 7. Logging and Monitoring
-
-### Scenario: Request Processing Logging
-**Preconditions:**
-- Mock TranscriptionService.process_single_transcription
-- Valid transcription request
-- Logging configuration enabled
-
-**User Actions:**
-1. Send transcription request
-
-**Expected Assertions:**
-- Processing start logged with question number
-- Audio URL transcription logged appropriately
-- No sensitive data in logs
-- Log levels appropriate for each message
-
-### Scenario: Error Processing Logging
-**Preconditions:**
-- Mock TranscriptionService to raise exception
-- Valid request triggering error
-- Logging configuration enabled
-
-**User Actions:**
-1. Send request that triggers service exception
-
-**Expected Assertions:**
-- Error logged with full context using logger.exception
-- Exception details included in logs
-- Error level appropriate
-- Stack trace available for debugging
-
-## 8. Response Format Validation
-
-### Scenario: Complete Transcription Response
+### Scenario: Complete TranscriptionResponse Schema
+**Test Method:** `test_response_format_validation`
 **Preconditions:**
 - Mock successful TranscriptionService response
 - Valid transcription request
 - Clean application state
 
 **User Actions:**
-1. Send valid request expecting complete response
+1. Send valid request:
+   ```json
+   {
+     "audio_url": "https://example.com/speech.mp3",
+     "question_number": 5,
+     "submission_url": "test-submission"
+   }
+   ```
 
 **Expected Assertions:**
-- Response follows `TranscriptionResponse` schema exactly
-- All required fields present and valid types
-- Transcription text properly formatted
-- Response serializes correctly to JSON
+- HTTP status code 200
+- Response contains all required fields: `"text"`, `"error"`, `"question_number"`
+- Field type validation:
+  - `data["text"]` is string type
+  - `data["error"]` is None or string type
+  - `data["question_number"]` is None or integer type
+- Response data contains: `"text": "Valid transcription response"`
+- Response data contains: `"question_number": 5`
 
-### Scenario: Service Response Mapping
+## 7. Logging and Monitoring
+
+### Scenario: Successful Processing Logging
+**Test Method:** `test_logging_on_success`
 **Preconditions:**
-- Mock TranscriptionService with specific response format
-- Valid request data
-- Clean application state
+- Mock logger from transcription_endpoint module
+- Mock successful TranscriptionService response
+- Valid transcription request
 
 **User Actions:**
-1. Send valid request with service returning transcription data
+1. Send valid transcription request:
+   ```json
+   {
+     "audio_url": "https://example.com/speech.mp3",
+     "question_number": 1,
+     "submission_url": "test-submission"
+   }
+   ```
 
 **Expected Assertions:**
-- Service response mapped correctly to API response
-- All transcription data preserved in response
-- Response structure matches model definition
-- Type conversion handled appropriately
+- HTTP status code 200
+- Logger.info called with exact message: `"Transcribing audio URL for question 1"`
+- Processing logged appropriately for question number
+- No sensitive data logged
 
-## 9. Performance Considerations
-
-### Scenario: Concurrent Transcription Processing
+### Scenario: Error Processing Logging
+**Test Method:** `test_logging_on_error`
 **Preconditions:**
-- Mock TranscriptionService.process_single_transcription
-- Multiple simultaneous requests
-- Clean application state
+- Mock logger from transcription_endpoint module
+- Mock TranscriptionService to raise Exception("Service error")
+- Valid request triggering error
 
 **User Actions:**
-1. Send multiple transcription requests simultaneously
+1. Send request that triggers service exception:
+   ```json
+   {
+     "audio_url": "https://example.com/speech.mp3",
+     "question_number": 1,
+     "submission_url": "test-submission"
+   }
+   ```
 
 **Expected Assertions:**
-- All requests processed successfully
-- No race conditions or conflicts
-- TranscriptionService instances created properly
-- Consistent response times
+- HTTP status code 500
+- Logger.exception called exactly once
+- Error logged with full context and stack trace
+- Exception details available for debugging
 
-### Scenario: Long Audio File Processing
-**Preconditions:**
-- Mock TranscriptionService with processing delay
-- Long duration audio file URL
-- Clean application state
-
-**User Actions:**
-1. Send request with long audio file
-
-**Expected Assertions:**
-- Request processed within timeout limits
-- Service handles long files appropriately
-- Memory usage remains reasonable
-- Response includes processing status
-
-## 10. Speech Recognition Edge Cases
-
-### Scenario: Multiple Languages
-**Preconditions:**
-- Mock TranscriptionService with language detection
-- Audio with multiple languages
-- Clean application state
-
-**User Actions:**
-1. Send request with multilingual audio
-
-**Expected Assertions:**
-- Service handles language detection
-- Transcription attempts all detected languages
-- Response includes language information if available
-- Processing continues despite language complexity
-
-### Scenario: Technical or Domain-Specific Speech
-**Preconditions:**
-- Mock TranscriptionService with technical vocabulary
-- Audio containing specialized terminology
-- Clean application state
-
-**User Actions:**
-1. Send request with technical speech content
-
-**Expected Assertions:**
-- Service processes specialized vocabulary
-- Transcription quality maintained for technical terms
-- Response includes technical content appropriately
-- No errors due to vocabulary complexity
-
-## Integration Points to Verify
+## Integration Points Verified
 
 1. **Request Processing Flow**
-   - Raw request → Format detection → Data extraction → Service call
-   - Error handling at each processing stage
-   - Consistent response format regardless of input format
+   - Direct request format detection (no "message" field)
+   - Pub/Sub request format detection (with "message" field)
+   - Base64 decoding for Pub/Sub messages
+   - JSON parsing from decoded data
+   - Parameter extraction and validation
 
 2. **TranscriptionService Integration**
-   - Proper service instantiation
-   - Parameter passing accuracy
-   - Response handling and mapping
-   - Error propagation working correctly
+   - Service instantiation through dependency injection
+   - Async method call: `process_single_transcription(audio_url, question_number, submission_url)`
+   - Response mapping from service to API response
+   - Error propagation and handling
 
-3. **Speech Processing Pipeline**
-   - Audio format handling
-   - Speech recognition accuracy
-   - Transcription quality validation
-   - Performance optimization for various audio types 
+3. **Error Handling**
+   - Base64 decoding errors → 500 status with "Failed to process audio"
+   - JSON parsing errors → 500 status with "Failed to process audio"
+   - Missing parameters → 500 status with "Failed to process audio"
+   - Service exceptions → 500 status with "Failed to process audio: {exception_message}"
+   - Service error responses → 200 status with error field populated
+
+4. **Response Format**
+   - Consistent TranscriptionResponse schema
+   - Required fields: text, error, question_number
+   - Proper type validation and serialization
+   - Error responses maintain consistent structure 
