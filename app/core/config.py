@@ -49,3 +49,5 @@ ASSEMBLYAI_API_KEY = "2dbe40dc3dc0413ebf929da37dd61441"
 
 # URLS
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+
+#v1
