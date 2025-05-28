@@ -19,7 +19,7 @@ client = TestClient(app)
 VALID_AUDIO_URL = "https://drcsbokflpzbhuzsksws.supabase.co/storage/v1/object/public/recordings/recordings/e6b419e8-6ae8-4365-afc5-2a111b8a6479/9c2301fe-fa6c-4860-9c59-faa1483b8f88/e6b419e8-6ae8-4365-afc5-2a111b8a6479_9c2301fe-fa6c-4860-9c59-faa1483b8f88_card-1_1747880119202.webm"
 VALID_QUESTION_NUMBER = 1
 VALID_SUBMISSION_URL = "test-submission-123"
-VALID_WAV_PATH = "/../lib/mock-test1.wav"
+VALID_WAV_PATH = "/../lib/mock-test2.wav"
 
 @pytest.fixture(autouse=True)
 def setup_test():
