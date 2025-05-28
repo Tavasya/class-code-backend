@@ -9,13 +9,26 @@ import asyncio
 import tempfile
 import shutil
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock, patch
 from typing import Generator, Dict, Any
 
 # Test environment detection
 IS_CI = os.getenv("CI", "false").lower() == "true"
 IS_TESTING = os.getenv("TESTING", "false").lower() == "true"
 IS_INTEGRATION_TEST = os.getenv("INTEGRATION_TEST", "false").lower() == "true"
+
+# Mock PubSub client to prevent authentication errors during test collection
+@pytest.fixture(scope="session", autouse=True)
+def mock_pubsub_client():
+    """Mock PubSub client to prevent Google Cloud authentication errors during testing."""
+    with patch('app.pubsub.client.pubsub_v1.PublisherClient') as mock_publisher:
+        # Configure the mock publisher
+        mock_publisher_instance = Mock()
+        mock_publisher_instance.topic_path.return_value = "projects/test-project/topics/test-topic"
+        mock_publisher_instance.publish.return_value.result.return_value = "test-message-id"
+        mock_publisher.return_value = mock_publisher_instance
+        
+        yield mock_publisher_instance
 
 @pytest.fixture(scope="session")
 def event_loop():
