@@ -1,0 +1,104 @@
+name: API Testing
+
+on:
+  push:
+    branches: [ "*" ]  # Run on all branches
+  pull_request:
+    branches: [ "*" ]  # Run on all PRs
+    types: [opened, synchronize, reopened]  # Only run on PR open/update, not on merge
+
+# Add permissions configuration
+permissions:
+  issues: write
+  pull-requests: write
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  api-tests:
+    name: Run API Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+          
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Set up test environment variables
+        run: |
+          echo "TESTING=true" >> $GITHUB_ENV
+          echo "ENVIRONMENT=test" >> $GITHUB_ENV
+          
+      - name: Run API tests
+        run: |
+          pytest tests/api_testing/ -v --tb=short --cov=app --cov-report=xml --cov-report=term-missing
+        env:
+          # Mock/test environment variables - these won't hit real APIs
+          SUPABASE_URL: "https://test.supabase.co"
+          SUPABASE_KEY: "test_key"
+          OPENAI_API_KEY: "test_openai_key"
+          AZURE_SPEECH_KEY: "test_azure_key"
+          AZURE_SPEECH_REGION: "test_region"
+          ASSEMBLYAI_API_KEY: "test_assembly_key"
+          # Google Cloud configuration
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          file: ./coverage.xml
+          flags: api-tests
+          name: api-tests-coverage
+          
+      - name: Comment PR with test results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Read test results if available
+            let testSummary = '## 🧪 API Test Results\n\n';
+            testSummary += '✅ API tests completed. Check the workflow logs for detailed results.\n\n';
+            testSummary += `**Workflow:** [${context.workflow}](${context.payload.repository.html_url}/actions/runs/${context.runId})\n`;
+            testSummary += `**Commit:** ${context.sha.substring(0, 7)}\n`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: testSummary
+            }); 

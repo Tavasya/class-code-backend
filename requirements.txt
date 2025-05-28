@@ -7,3 +7,11 @@ typing-extensions
 azure_cognitiveservices-speech
 ffmpeg
 google-cloud-pubsub
+pytest
+httpx
+pytest-asyncio
+pytest-mock
+pytest-cov
+numpy
+python-dotenv
+wave
