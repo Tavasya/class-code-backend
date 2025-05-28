@@ -67,8 +67,10 @@ class TestAnalysisCoordinationChain:
         
         # Verify the published message has correct format
         call_args = mock_pubsub_client.publish_message_by_name.call_args
-        topic_name = call_args[0][0]
-        message_data = call_args[0][1]
+        assert call_args is not None, "publish_message_by_name was not called"
+        args, kwargs = call_args
+        topic_name = args[0]
+        message_data = args[1]
         
         assert topic_name == "QUESTION_ANALYSIS_READY"
         assert message_data["wav_path"] == audio_result["wav_path"]
@@ -129,8 +131,10 @@ class TestAnalysisCoordinationChain:
         mock_pubsub_client.publish_message_by_name.assert_called_once()
         
         call_args = mock_pubsub_client.publish_message_by_name.call_args
-        topic_name = call_args[0][0]
-        message_data = call_args[0][1]
+        assert call_args is not None, "publish_message_by_name was not called"
+        args, kwargs = call_args
+        topic_name = args[0]
+        message_data = args[1]
         
         assert topic_name == "QUESTION_ANALYSIS_READY"
         assert message_data["wav_path"] == audio_result["wav_path"]

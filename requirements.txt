@@ -12,3 +12,6 @@ httpx
 pytest-asyncio
 pytest-mock
 pytest-cov
+numpy
+python-dotenv
+wave
