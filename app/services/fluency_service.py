@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # OpenAI API configuration
-MODEL = "gpt-4"
+MODEL = "gpt-4o-mini"
 
 async def call_api_with_retry(prompt: str, expected_format: str = "dict", max_retries: int = 2) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
