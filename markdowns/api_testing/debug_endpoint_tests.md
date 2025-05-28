@@ -1,382 +1,497 @@
-# Debug Endpoint API Test Plan
+# Debug Endpoint API Test Implementation
 
-## Files to Reference
+## Files Referenced
+- `tests/test_debug_endpoint.py` - Complete test implementation
 - `app/api/v1/endpoints/debug_endpoint.py` - Debug endpoint implementation
 - `app/services/file_manager_service.py` - File manager service integration
 - `app/models/schemas.py` - Response models for debug endpoints
 - `app/core/config.py` - Configuration and dependencies
 
-## 1. Get Active File Sessions
+## Test Structure
 
-### Scenario: Successful File Sessions Retrieval
-**Preconditions:**
-- Mock `file_manager.get_active_sessions` to return sessions data
-- Multiple active file sessions exist
-- Clean application state
-- Mock session information
+### Test Class: `TestDebugEndpoint`
+All tests are organized under a single test class with proper mocking setup.
 
-**User Actions:**
-1. Send GET request to `/api/v1/debug/file-sessions`
+### Mock Setup
+```python
+@pytest.fixture
+def mock_file_manager():
+    """Mock file_manager for testing"""
+    with patch('app.api.v1.endpoints.debug_endpoint.file_manager') as mock:
+        yield mock
+```
 
-**Expected Assertions:**
+## 1. Get Active File Sessions Tests
+
+### `test_get_active_file_sessions_success`
+**Purpose:** Test successful retrieval of active file sessions
+
+**Mock Setup:**
+- Returns multiple active sessions with complete metadata
+- Sessions in different states (active, processing, idle)
+- Includes files, timestamps, and status information
+
+**Test Data:**
+```json
+{
+  "session-001": {
+    "created_at": "2024-01-01T12:00:00Z",
+    "files": ["file1.mp3", "file2.wav"],
+    "status": "active"
+  },
+  "session-002": {
+    "created_at": "2024-01-01T12:05:00Z", 
+    "files": ["file3.mp3"],
+    "status": "processing"
+  },
+  "session-003": {
+    "created_at": "2024-01-01T12:10:00Z",
+    "files": [],
+    "status": "idle"
+  }
+}
+```
+
+**Expected Response Structure:**
+```json
+{
+  "status": "success",
+  "active_sessions": {
+    "session-001": {
+      "created_at": "2024-01-01T12:00:00Z",
+      "files": ["file1.mp3", "file2.wav"],
+      "status": "active"
+    }
+  },
+  "total_active": 3
+}
+```
+
+**Assertions:**
 - HTTP status code 200
-- Response contains:
-  - `status`: "success"
-  - `active_sessions`: dict of session information
-  - `total_active`: number matching session count
-- `file_manager.get_active_sessions` called correctly
-- Session data properly formatted
+- Response contains `status`: "success"
+- `active_sessions` dict with all session data
+- `total_active` count matches session count (3)
+- All session IDs present in response
+- Session details include files, status, and timestamps
+- `file_manager.get_active_sessions` called once
 
-### Scenario: No Active Sessions
-**Preconditions:**
-- Mock `file_manager.get_active_sessions` to return empty dict
-- No active file sessions exist
-- Clean application state
+### `test_get_active_file_sessions_empty`
+**Purpose:** Test retrieval when no active sessions exist
 
-**User Actions:**
-1. Send GET request to `/api/v1/debug/file-sessions`
+**Mock Setup:**
+- Returns empty dict from file manager
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 200
-- Response contains:
-  - `status`: "success"
-  - `active_sessions`: empty dict
-  - `total_active`: 0
-- Empty state handled properly
-- No errors with empty sessions
+- Response `status`: "success"
+- `active_sessions`: empty dict
+- `total_active`: 0
+- Method called correctly
 
-### Scenario: File Manager Error
-**Preconditions:**
-- Mock `file_manager.get_active_sessions` to raise exception
-- File manager service unavailable
-- Clean application state
+### `test_get_active_file_sessions_error`
+**Purpose:** Test handling of file manager error
 
-**User Actions:**
-1. Send GET request to `/api/v1/debug/file-sessions`
+**Mock Setup:**
+- `file_manager.get_active_sessions` raises `Exception("File manager connection failed")`
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 500
-- HTTPException with detail: "Error getting file sessions: [error message]"
-- Error logged appropriately
-- Exception handled gracefully
+- Error message: "Error getting file sessions: File manager connection failed"
+- Method called once
 
-## 2. Force Cleanup Session
+### `test_get_active_file_sessions_large_dataset`
+**Purpose:** Test handling of large number of active sessions (100+ sessions)
 
-### Scenario: Successful Session Cleanup
-**Preconditions:**
-- Mock `file_manager.get_session_info` to return session data
-- Mock `file_manager.force_cleanup_session` for successful cleanup
-- Valid session ID exists
-- Clean application state
+**Mock Setup:**
+- Generates 100 sessions with different statuses
+- Sessions named `session-000` through `session-099`
 
-**User Actions:**
-1. Send POST request to `/api/v1/debug/cleanup-session/test-session-123`
-
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 200
-- Response contains:
-  - `status`: "success"
-  - `message`: "Forced cleanup of session test-session-123"
+- `total_active`: 100
+- All sessions included in response
+- First session (`session-000`) and last session (`session-099`) present
+- Response processed efficiently
+
+## 2. Force Cleanup Session Tests
+
+### `test_force_cleanup_session_success`
+**Purpose:** Test successful session cleanup with validation flow
+
+**Mock Setup:**
+- `file_manager.get_session_info` returns session data
+- `file_manager.force_cleanup_session` as AsyncMock for successful cleanup
+
+**Test Data:**
+```json
+{
+  "session_id": "test-session-123",
+  "created_at": "2024-01-01T12:00:00Z",
+  "files": ["file1.mp3", "file2.wav"],
+  "status": "active"
+}
+```
+
+**Expected Response Structure:**
+```json
+{
+  "status": "success",
+  "message": "Forced cleanup of session test-session-123"
+}
+```
+
+**Assertions:**
+- HTTP status code 200
+- Response contains success status and message
 - `file_manager.get_session_info` called with correct session_id
 - `file_manager.force_cleanup_session` called with correct session_id
-- Session successfully cleaned up
+- Both methods called exactly once
+- Session validation occurs before cleanup
 
-### Scenario: Non-Existent Session Cleanup
-**Preconditions:**
-- Mock `file_manager.get_session_info` to return None
-- Session ID does not exist
-- Clean application state
+### `test_force_cleanup_session_not_found`
+**Purpose:** Test cleanup of non-existent session
 
-**User Actions:**
-1. Send POST request to `/api/v1/debug/cleanup-session/non-existent-session`
+**Mock Setup:**
+- `file_manager.get_session_info` returns None
+- `file_manager.force_cleanup_session` as AsyncMock (not called)
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 404
-- HTTPException with detail: "Session non-existent-session not found"
-- `file_manager.get_session_info` called for validation
-- `file_manager.force_cleanup_session` not called
-- No cleanup attempted
+- Error message: "Session non-existent-session not found"
+- `get_session_info` called for validation
+- `force_cleanup_session` not called
+- Validation flow working correctly
 
-### Scenario: Cleanup Operation Failure
-**Preconditions:**
-- Mock `file_manager.get_session_info` to return session data
-- Mock `file_manager.force_cleanup_session` to raise exception
-- Valid session exists but cleanup fails
-- Clean application state
+### `test_force_cleanup_session_cleanup_failure`
+**Purpose:** Test cleanup operation failure
 
-**User Actions:**
-1. Send POST request to `/api/v1/debug/cleanup-session/failing-session`
+**Mock Setup:**
+- `file_manager.get_session_info` returns session data
+- `file_manager.force_cleanup_session` raises `Exception("Cleanup operation failed")`
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 500
-- HTTPException with detail: "Error cleaning up session: [error message]"
+- Error message: "Error cleaning up session: Cleanup operation failed"
 - Session existence validated first
-- Cleanup attempted but failed
-- Error logged appropriately
+- Both methods called correctly
+- Error message includes specific exception details
 
-## 3. Trigger Periodic Cleanup
+### `test_force_cleanup_session_special_characters`
+**Purpose:** Test cleanup with special characters in session ID
 
-### Scenario: Successful Periodic Cleanup
-**Preconditions:**
-- Mock `file_manager.periodic_cleanup` for successful operation
-- File manager service available
-- Clean application state
+**Test Data:**
+- Session ID: `"test-session-with-special-chars!@#"`
+- URL encoded for request
 
-**User Actions:**
-1. Send POST request to `/api/v1/debug/periodic-cleanup`
+**Mock Setup:**
+- Session exists with special character ID
+- Successful cleanup
 
-**Expected Assertions:**
+**Assertions:**
 - HTTP status code 200
-- Response contains:
-  - `status`: "success"
-  - `message`: "Periodic cleanup completed"
-- `file_manager.periodic_cleanup` called correctly
-- Cleanup operation completed successfully
+- URL decoding handled by FastAPI
+- File manager called with decoded session ID
+- Special characters processed correctly
 
-### Scenario: Periodic Cleanup Failure
-**Preconditions:**
-- Mock `file_manager.periodic_cleanup` to raise exception
-- File manager service encounters error
-- Clean application state
+## 3. Trigger Periodic Cleanup Tests
 
-**User Actions:**
-1. Send POST request to `/api/v1/debug/periodic-cleanup`
+### `test_trigger_periodic_cleanup_success`
+**Purpose:** Test successful periodic cleanup
 
-**Expected Assertions:**
+**Mock Setup:**
+- `file_manager.periodic_cleanup` as AsyncMock for successful operation
+
+**Expected Response Structure:**
+```json
+{
+  "status": "success",
+  "message": "Periodic cleanup completed"
+}
+```
+
+**Assertions:**
+- HTTP status code 200
+- Response contains success status and message
+- `file_manager.periodic_cleanup` called once
+
+### `test_trigger_periodic_cleanup_failure`
+**Purpose:** Test periodic cleanup failure
+
+**Mock Setup:**
+- `file_manager.periodic_cleanup` raises `Exception("Periodic cleanup failed")`
+
+**Assertions:**
 - HTTP status code 500
-- HTTPException with detail: "Error in periodic cleanup: [error message]"
-- Error logged appropriately with context
-- Exception handled gracefully
+- Error message: "Error in periodic cleanup: Periodic cleanup failed"
+- Method called once
+- Error message includes specific exception details
 
-### Scenario: Periodic Cleanup Performance
-**Preconditions:**
-- Mock `file_manager.periodic_cleanup` with processing delay
-- Large number of files to clean up
-- Clean application state
+### `test_trigger_periodic_cleanup_performance`
+**Purpose:** Test periodic cleanup with simulated processing delay
 
-**User Actions:**
-1. Send POST request for periodic cleanup
+**Mock Setup:**
+- Async function with `asyncio.sleep(0.1)` to simulate processing time
 
-**Expected Assertions:**
-- Request processed within reasonable time
-- Cleanup operation handles large workload
-- Response indicates completion
+**Assertions:**
+- HTTP status code 200
+- Request processed successfully despite delay
+- Async operation handled correctly
 - No timeout issues
 
-## 4. File Manager Integration
+## 4. File Manager Integration Tests
 
-### Scenario: File Manager Service Availability
-**Preconditions:**
-- Mock file_manager service methods
-- All service operations available
-- Clean application state
+### `test_file_manager_service_integration`
+**Purpose:** Test integration with file manager service across all endpoints
 
-**User Actions:**
-1. Test all debug endpoints
+**Mock Setup:**
+- All file_manager methods properly mocked
+- Successful responses for all operations
 
-**Expected Assertions:**
-- All file_manager methods called correctly
-- Service integration working properly
+**Test Flow:**
+1. GET `/api/v1/debug/file-sessions`
+2. POST `/api/v1/debug/cleanup-session/test-session`
+3. POST `/api/v1/debug/periodic-cleanup`
+
+**Assertions:**
+- All endpoints return HTTP 200
+- All file_manager methods called correctly:
+  - `get_active_sessions` called for sessions endpoint
+  - `get_session_info` and `force_cleanup_session` called for cleanup endpoint
+  - `periodic_cleanup` called for cleanup endpoint
 - Parameters passed accurately
 - Return values handled appropriately
 
-### Scenario: File Manager Service Degradation
-**Preconditions:**
-- Mock file_manager with intermittent failures
-- Service experiencing issues
-- Clean application state
+### `test_file_manager_service_degradation`
+**Purpose:** Test handling of intermittent file manager failures
 
-**User Actions:**
-1. Send requests during service issues
+**Mock Setup:**
+- `get_active_sessions` raises `Exception("Service temporarily unavailable")`
+- `periodic_cleanup` raises `Exception("Service degraded")`
 
-**Expected Assertions:**
-- Errors handled gracefully
-- Appropriate HTTP error responses
-- Service issues logged
-- System remains stable
+**Assertions:**
+- Both endpoints return HTTP 500
+- Error messages include service error details
+- System remains stable during service issues
 
-## 5. Session Information Validation
+## 5. Session Information Validation Tests
 
-### Scenario: Session Data Format Validation
-**Preconditions:**
-- Mock file_manager with complete session data
-- Valid session with all metadata
-- Clean application state
+### `test_session_data_format_validation`
+**Purpose:** Test validation of session data format with complete metadata
 
-**User Actions:**
-1. Send GET request for file sessions
+**Mock Setup:**
+- Complete session data with all metadata fields
 
-**Expected Assertions:**
-- Session data includes all required fields
-- Session information properly formatted
+**Test Data:**
+```json
+{
+  "session-complete": {
+    "session_id": "session-complete",
+    "created_at": "2024-01-01T12:00:00Z",
+    "last_accessed": "2024-01-01T12:30:00Z",
+    "files": ["file1.mp3", "file2.wav"],
+    "status": "active",
+    "metadata": {
+      "user_id": "user123",
+      "upload_count": 2,
+      "total_size": 1024000
+    }
+  }
+}
+```
+
+**Assertions:**
+- HTTP status code 200
+- All required fields present in session data
+- Data types consistent (lists, dicts, strings)
+- Nested structures maintained
 - Metadata preserved correctly
-- Data types consistent
 
-### Scenario: Session State Consistency
-**Preconditions:**
-- Mock file_manager with various session states
-- Sessions in different lifecycle stages
-- Clean application state
+### `test_session_state_consistency`
+**Purpose:** Test session state consistency across operations
 
-**User Actions:**
-1. Query sessions and perform cleanup operations
+**Mock Setup:**
+- Sessions in different states (active, processing, idle)
+- Consistent state representation
 
-**Expected Assertions:**
+**Test Flow:**
+1. Query sessions via GET endpoint
+2. Cleanup a session via POST endpoint
+
+**Assertions:**
 - Session states accurately reflected
-- State transitions handled correctly
+- Different statuses preserved
 - Consistency maintained across operations
 - No state corruption
 
-## 6. Error Handling and Logging
+## 6. Error Handling Tests
 
-### Scenario: Comprehensive Error Logging
-**Preconditions:**
-- Mock file_manager methods to raise various exceptions
-- Different error scenarios
-- Logging configuration enabled
+### `test_comprehensive_error_logging`
+**Purpose:** Test error logging across different scenarios
 
-**User Actions:**
-1. Trigger various error conditions
+**Test Scenarios:**
+- Database connection failed
+- Disk space insufficient
+- Various service exceptions
 
-**Expected Assertions:**
-- All errors logged with appropriate context
-- Error messages include relevant details
-- Log levels appropriate for error types
-- Stack traces available for debugging
+**Assertions:**
+- All errors result in HTTP 500 responses
+- Error messages include specific exception details
+- Exception handling consistent across endpoints
+- No silent failures
 
-### Scenario: Error Response Consistency
-**Preconditions:**
-- Mock various error conditions
-- Different failure scenarios
-- Clean application state
+### `test_error_response_consistency`
+**Purpose:** Test consistency of error responses across endpoints
 
-**User Actions:**
-1. Test error handling across all endpoints
+**Mock Setup:**
+- Different error conditions (500, 404)
+- Various failure scenarios
 
-**Expected Assertions:**
-- Consistent error response format
-- Appropriate HTTP status codes
+**Test Flow:**
+1. GET endpoint with service error (500)
+2. POST cleanup with non-existent session (404)
+3. POST periodic cleanup with service error (500)
+
+**Assertions:**
+- Appropriate HTTP status codes (404, 500)
+- All responses have `detail` field
 - Error details properly formatted
-- No sensitive information leaked
+- Consistent error response format
 
-## 7. Security and Access Control
+## 7. Performance Tests
 
-### Scenario: Debug Endpoint Access Validation
-**Preconditions:**
-- Debug endpoints available
-- Various access scenarios
-- Clean application state
+### `test_debug_endpoint_performance`
+**Purpose:** Test performance of debug endpoints
 
-**User Actions:**
-1. Access debug endpoints from different contexts
+**Mock Setup:**
+- Normal operations with standard responses
 
-**Expected Assertions:**
-- Debug endpoints accessible (no authentication shown in code)
-- Operations execute correctly
-- No unauthorized access issues
-- Debug functionality working
+**Test Flow:**
+- Time all three endpoints sequentially
 
-### Scenario: Session ID Validation
-**Preconditions:**
-- Mock file_manager for session operations
-- Various session ID formats
-- Clean application state
+**Assertions:**
+- All requests complete successfully (HTTP 200)
+- Total response time < 1 second (with mocks)
+- Efficient operation
 
-**User Actions:**
-1. Test with different session ID formats
+### `test_concurrent_debug_operations`
+**Purpose:** Test concurrent access to debug endpoints
 
-**Expected Assertions:**
-- Session IDs processed correctly
-- Invalid session IDs handled gracefully
-- No injection vulnerabilities
-- Proper validation performed
+**Test Setup:**
+- 10 concurrent requests alternating between endpoints
 
-## 8. Performance and Monitoring
+**Assertions:**
+- All requests return HTTP 200
+- Methods called correct number of times (5 each)
+- No race conditions in test environment
+- Consistent results across requests
 
-### Scenario: Debug Endpoint Performance
-**Preconditions:**
-- Mock file_manager with performance variations
-- Various workload scenarios
-- Clean application state
+## 8. File Management Integration Tests
 
-**User Actions:**
-1. Test endpoints under different loads
+### `test_file_lifecycle_monitoring`
+**Purpose:** Test monitoring of file lifecycle through debug endpoints
 
-**Expected Assertions:**
-- Response times within acceptable limits
-- Memory usage appropriate
-- No performance degradation
-- Scalable operation
+**Mock Setup:**
+- Sessions with files in various lifecycle stages
+- Different file counts per session
 
-### Scenario: Concurrent Debug Operations
-**Preconditions:**
-- Mock file_manager for concurrent access
-- Multiple simultaneous requests
-- Clean application state
+**Test Data:**
+```json
+{
+  "session-uploading": {
+    "status": "uploading",
+    "files": ["temp_file1.mp3"],
+    "lifecycle_stage": "upload_in_progress"
+  },
+  "session-processing": {
+    "status": "processing", 
+    "files": ["file2.wav", "file3.mp3"],
+    "lifecycle_stage": "analysis_in_progress"
+  },
+  "session-completed": {
+    "status": "completed",
+    "files": ["final_file.mp3"],
+    "lifecycle_stage": "analysis_complete"
+  }
+}
+```
 
-**User Actions:**
-1. Send concurrent requests to debug endpoints
+**Assertions:**
+- HTTP status code 200
+- File lifecycle information accurately tracked
+- Lifecycle stages properly represented
+- File counts per session correct
+- Status information consistent
 
-**Expected Assertions:**
-- All requests processed successfully
-- No race conditions
-- Consistent results
-- Proper request isolation
+### `test_resource_management_validation`
+**Purpose:** Test resource management through debug endpoints
 
-## 9. Integration with File Management
+**Mock Setup:**
+- Sessions with different resource usage patterns
+- Resource tracking data included
 
-### Scenario: File Lifecycle Monitoring
-**Preconditions:**
-- Mock file_manager with active file operations
-- Files in various lifecycle stages
-- Clean application state
+**Test Data:**
+```json
+{
+  "session-heavy": {
+    "status": "active",
+    "files": ["large_file1.mp3", "large_file2.wav"],
+    "resource_usage": {
+      "memory_mb": 512,
+      "disk_space_mb": 1024,
+      "cpu_percent": 25.5
+    }
+  },
+  "session-light": {
+    "status": "idle",
+    "files": ["small_file.mp3"],
+    "resource_usage": {
+      "memory_mb": 64,
+      "disk_space_mb": 128,
+      "cpu_percent": 2.1
+    }
+  }
+}
+```
 
-**User Actions:**
-1. Monitor file sessions during operations
+**Test Flow:**
+1. Monitor resource usage via GET endpoint
+2. Cleanup resource-heavy session via POST endpoint
 
-**Expected Assertions:**
-- File lifecycle accurately tracked
-- Session information reflects current state
-- Cleanup operations effective
-- No file leaks
+**Assertions:**
+- Resource usage information available
+- Different usage patterns reflected
+- Resource data properly formatted
+- Cleanup operations target resource-heavy sessions
 
-### Scenario: Resource Management Validation
-**Preconditions:**
-- Mock file_manager with resource tracking
-- Various resource usage scenarios
-- Clean application state
-
-**User Actions:**
-1. Test resource management through debug endpoints
-
-**Expected Assertions:**
-- Resource usage tracked correctly
-- Cleanup operations free resources
-- No resource leaks
-- Efficient resource utilization
-
-## Integration Points to Verify
+## Integration Points Verified
 
 1. **File Manager Service Integration**
    - Proper service method calling
    - Parameter passing accuracy
    - Response handling and mapping
-   - Error propagation working correctly
+   - Mock verification working correctly
 
 2. **Debug Information Accuracy**
-   - Session data reflects actual state
-   - Cleanup operations effective
+   - Session data reflects mocked state
+   - Cleanup operations properly mocked
    - Monitoring information accurate
-   - Debugging functionality useful
+   - Debugging functionality testable
 
 3. **Error Handling and Recovery**
    - Service errors handled gracefully
-   - Appropriate error responses
+   - Appropriate error responses (404, 500)
    - System stability maintained
-   - Recovery mechanisms working
+   - Error messages informative
 
 4. **Performance and Scalability**
-   - Debug operations efficient
-   - Scalable under load
+   - Debug operations efficient with mocks
+   - Scalable under simulated load
    - Resource usage appropriate
-   - Response times acceptable 
+   - Response times acceptable (< 1 second)
+
+5. **API Contract Compliance**
+   - Correct HTTP status codes
+   - Proper error messages
+   - Response format consistency
+   - URL parameter handling (encoding/decoding) 
