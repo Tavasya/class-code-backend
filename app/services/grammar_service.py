@@ -98,6 +98,62 @@ def split_into_sentences(text: str) -> List[str]:
     
     return result
 
+def enhance_grammar_corrections_with_context(sentences: List[str], corrections_per_sentence: List[List[Dict[str, str]]]) -> List[List[Dict[str, str]]]:
+    """Add sentence and phrase context to grammar corrections"""
+    logger.info("Enhancing grammar corrections with context")
+    
+    for sentence_idx, sentence_corrections in enumerate(corrections_per_sentence):
+        if not sentence_corrections or sentence_idx >= len(sentences):
+            continue
+            
+        sentence_text = sentences[sentence_idx]
+        phrase_counts = {}  # Track occurrences of each phrase in this sentence
+        
+        for correction in sentence_corrections:
+            original_phrase = correction.get("original_phrase", "")
+            
+            # Count how many times we've seen this phrase
+            phrase_counts[original_phrase] = phrase_counts.get(original_phrase, 0)
+            
+            # Add context fields
+            correction.update({
+                "sentence_index": sentence_idx,
+                "phrase_index": phrase_counts[original_phrase],
+                "sentence_text": sentence_text
+            })
+            
+            phrase_counts[original_phrase] += 1
+            
+    return corrections_per_sentence
+
+def enhance_vocabulary_suggestions_with_context(sentences: List[str], vocab_suggestions_per_sentence: List[List[Dict[str, Any]]]) -> List[List[Dict[str, Any]]]:
+    """Add sentence and phrase context to vocabulary suggestions"""
+    logger.info("Enhancing vocabulary suggestions with context")
+    
+    for sentence_idx, sentence_suggestions in enumerate(vocab_suggestions_per_sentence):
+        if not sentence_suggestions or sentence_idx >= len(sentences):
+            continue
+            
+        sentence_text = sentences[sentence_idx]
+        word_counts = {}  # Track occurrences of each word in this sentence
+        
+        for suggestion in sentence_suggestions:
+            original_word = suggestion.get("original_word", "")
+            
+            # Count how many times we've seen this word
+            word_counts[original_word] = word_counts.get(original_word, 0)
+            
+            # Add context fields
+            suggestion.update({
+                "sentence_index": sentence_idx,
+                "phrase_index": word_counts[original_word],
+                "sentence_text": sentence_text
+            })
+            
+            word_counts[original_word] += 1
+            
+    return vocab_suggestions_per_sentence
+
 async def check_grammar(sentences: List[str]) -> List[List[Dict[str, str]]]:
     """Check grammar for each sentence and return corrections"""
     logger.info(f"Checking grammar for {len(sentences)} sentences")
@@ -233,58 +289,85 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
     if not transcript or not transcript.strip():
         return {
             "grade": 100,
-            "issues": []
+            "issues": [],
+            "grammar_corrections": {},
+            "vocabulary_suggestions": {},
+            "lexical_resources": {}
         }
         
     try:
         sentences = split_into_sentences(transcript)
         logger.info(f"Analyzing {len(sentences)} sentences")
         
-        # 1. Grammar corrections
+        # 1. Get grammar corrections for all sentences
         grammar_corrections = await check_grammar(sentences)
         
-        # 2. Vocabulary suggestions for sentences without grammar issues
-        vocab_candidates = []
-        grammar_issues = []
+        # 2. Enhance grammar corrections with context
+        enhanced_grammar_corrections = enhance_grammar_corrections_with_context(sentences, grammar_corrections)
         
-        # Process grammar corrections
+        # 3. Get vocabulary suggestions for sentences without grammar issues
+        vocab_candidate_sentences = []
+        vocab_candidate_indices = []
+        
         for i, corrections in enumerate(grammar_corrections):
-            if corrections:
-                for correction in corrections:
-                    grammar_issues.append({
-                        "original": sentences[i],
-                        "correction": {
-                            "explanation": correction.get("explanation", ""),
-                            "original_phrase": correction.get("original_phrase", ""),
-                            "suggested_correction": correction.get("suggested_correction", "")
-                        }
-                    })
-            else:
-                # No grammar issues, candidate for vocabulary suggestions
-                vocab_candidates.append((i, sentences[i]))
+            if not corrections:  # No grammar issues in this sentence
+                vocab_candidate_sentences.append(sentences[i])
+                vocab_candidate_indices.append(i)
         
-        # Get vocabulary suggestions for sentences without grammar issues
-        vocab_issues = []
-        if vocab_candidates:
-            vocabulary_suggestions = await suggest_vocabulary([sent for _, sent in vocab_candidates])
+        # Get vocabulary suggestions only for sentences without grammar issues
+        vocabulary_suggestions = []
+        if vocab_candidate_sentences:
+            vocab_raw = await suggest_vocabulary(vocab_candidate_sentences)
             
-            for j, suggestions in enumerate(vocabulary_suggestions):
-                if suggestions:
-                    orig_idx, sent = vocab_candidates[j]
-                    for suggestion in suggestions:
-                        vocab_issues.append({
-                            "original": sent,
-                            "correction": {
-                                "explanation": f"Consider using more advanced vocabulary: '{suggestion.get('original_word', '')}' could be '{', '.join(suggestion.get('advanced_alternatives', []))}'",
-                                "original_phrase": suggestion.get('original_word', ''),
-                                "suggested_correction": ', '.join(suggestion.get('advanced_alternatives', []))
-                            }
-                        })
+            # Map back to original sentence indices and enhance with context
+            vocabulary_suggestions = [[] for _ in sentences]  # Initialize for all sentences
+            for j, suggestions in enumerate(vocab_raw):
+                original_sentence_idx = vocab_candidate_indices[j]
+                vocabulary_suggestions[original_sentence_idx] = suggestions
+        else:
+            vocabulary_suggestions = [[] for _ in sentences]
         
-        # Combine all issues
+        # 4. Enhance vocabulary suggestions with context
+        enhanced_vocabulary_suggestions = enhance_vocabulary_suggestions_with_context(sentences, vocabulary_suggestions)
+        
+        # 5. Convert to the expected format for backwards compatibility
+        grammar_issues = []
+        vocab_issues = []
+        
+        # Process enhanced grammar corrections
+        for sentence_idx, sentence_corrections in enumerate(enhanced_grammar_corrections):
+            for correction in sentence_corrections:
+                grammar_issues.append({
+                    "original": sentences[sentence_idx],
+                    "correction": {
+                        "explanation": correction.get("explanation", ""),
+                        "original_phrase": correction.get("original_phrase", ""),
+                        "suggested_correction": correction.get("suggested_correction", ""),
+                        "sentence_index": correction.get("sentence_index"),
+                        "phrase_index": correction.get("phrase_index"),
+                        "sentence_text": correction.get("sentence_text")
+                    }
+                })
+        
+        # Process enhanced vocabulary suggestions
+        for sentence_idx, sentence_suggestions in enumerate(enhanced_vocabulary_suggestions):
+            for suggestion in sentence_suggestions:
+                vocab_issues.append({
+                    "original": sentences[sentence_idx],
+                    "correction": {
+                        "explanation": f"Consider using more advanced vocabulary: '{suggestion.get('original_word', '')}' could be '{', '.join(suggestion.get('advanced_alternatives', []))}'",
+                        "original_phrase": suggestion.get('original_word', ''),
+                        "suggested_correction": ', '.join(suggestion.get('advanced_alternatives', [])),
+                        "sentence_index": suggestion.get("sentence_index"),
+                        "phrase_index": suggestion.get("phrase_index"),
+                        "sentence_text": suggestion.get("sentence_text")
+                    }
+                })
+        
+        # 6. Combine all issues for grade calculation
         all_issues = grammar_issues + vocab_issues
         
-        # Calculate grade based on number of issues
+        # 7. Calculate grade based on number of issues
         total_issues = len(all_issues)
         if total_issues == 0:
             grade = 100
@@ -297,14 +380,42 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         else:
             grade = max(60 - (total_issues - 6) * 5, 0)
         
+        # 8. Format enhanced results for new API structure
+        grammar_corrections_dict = {}
+        vocabulary_suggestions_dict = {}
+        
+        for sentence_idx, sentence_corrections in enumerate(enhanced_grammar_corrections):
+            if sentence_corrections:
+                for j, correction in enumerate(sentence_corrections):
+                    key = f"sentence_{sentence_idx}_{j}"
+                    grammar_corrections_dict[key] = {
+                        "original": sentences[sentence_idx],
+                        "corrections": [correction]
+                    }
+        
+        for sentence_idx, sentence_suggestions in enumerate(enhanced_vocabulary_suggestions):
+            if sentence_suggestions:
+                for j, suggestion in enumerate(sentence_suggestions):
+                    key = f"sentence_{sentence_idx}_{j}"
+                    vocabulary_suggestions_dict[key] = {
+                        "original": sentences[sentence_idx],
+                        "suggestions": [suggestion]
+                    }
+        
         return {
             "grade": grade,
-            "issues": all_issues
+            "issues": all_issues,
+            "grammar_corrections": grammar_corrections_dict,
+            "vocabulary_suggestions": vocabulary_suggestions_dict,
+            "lexical_resources": {}  # Placeholder for future lexical integration
         }
         
     except Exception as e:
         logger.exception("Error in language analysis")
         return {
             "grade": 0,
-            "issues": [{"original": "", "correction": {"explanation": f"Error analyzing grammar: {str(e)}", "original_phrase": "", "suggested_correction": ""}}]
+            "issues": [{"original": "", "correction": {"explanation": f"Error analyzing grammar: {str(e)}", "original_phrase": "", "suggested_correction": ""}}],
+            "grammar_corrections": {},
+            "vocabulary_suggestions": {},
+            "lexical_resources": {}
         } 

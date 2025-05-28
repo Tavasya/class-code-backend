@@ -6,6 +6,9 @@ class GrammarCorrection(BaseModel):
     original_phrase: str
     suggested_correction: str
     explanation: str
+    sentence_index: Optional[int] = None
+    phrase_index: Optional[int] = None
+    sentence_text: Optional[str] = None
 
 class VocabularySuggestion(BaseModel):
     """Model for vocabulary suggestions"""
@@ -13,6 +16,9 @@ class VocabularySuggestion(BaseModel):
     context: str
     advanced_alternatives: List[str]
     level: str
+    sentence_index: Optional[int] = None
+    phrase_index: Optional[int] = None
+    sentence_text: Optional[str] = None
 
 class SentenceAnalysis(BaseModel):
     """Model for sentence-level analysis"""
