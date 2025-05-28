@@ -18,6 +18,7 @@ CORS_ORIGINS = [
     "http://localhost:8081",
     "https://app.nativespeaking.ai",
     "http://localhost:5173",
+    "https://native-devserver.vercel.app"
 ]
 
 # # Google Cloud Pub/Sub Configuration
