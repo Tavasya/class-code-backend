@@ -6,6 +6,7 @@ import json
 from app.main import app
 from app.services.audio_service import AudioService
 import logging
+import os
 
 # Configure logging for tests
 logging.basicConfig(level=logging.INFO)
@@ -254,7 +255,7 @@ def test_missing_question_number(mock_audio_service):
     assert "question_number" in response.json()["detail"]
 
 def test_different_audio_formats(mock_audio_service):
-    """Test processing of different audio file formats"""
+    """Test processing of different audio file formats with mocked service"""
     # Setup mock
     mock_service = Mock(spec=AudioService)
     mock_service.process_single_audio.return_value = {
@@ -266,7 +267,8 @@ def test_different_audio_formats(mock_audio_service):
     # Test different audio formats
     formats = [".mp3", ".wav", ".webm", ".m4a"]
     for format in formats:
-        audio_url = f"https://example.com/audio{format}"
+        # Use a URL pattern that matches the actual application
+        audio_url = f"https://drcsbokflpzbhuzsksws.supabase.co/storage/v1/object/public/recordings/recordings/test-user-id/test-submission-id/test-user-id_test-submission-id_card-1_1747880119202{format}"
         
         response = client.post(
             "/api/v1/audio/audio_proccessing",
@@ -314,3 +316,33 @@ def test_invalid_audio_url(mock_audio_service):
     # Assertions
     assert response.status_code == 500
     assert "Invalid audio URL" in response.json()["detail"]
+
+def test_real_audio_conversion():
+    """Test actual audio conversion with real service"""
+    # Use a real audio URL from our storage
+    real_audio_url = VALID_AUDIO_URL  # This is a real .webm file in our storage
+    
+    response = client.post(
+        "/api/v1/audio/audio_proccessing",
+        json={
+            "audio_url": real_audio_url,
+            "question_number": VALID_QUESTION_NUMBER,
+            "submission_url": VALID_SUBMISSION_URL  # Required for session_id generation
+        }
+    )
+
+    # Debug logging
+    logger.info(f"Response status code: {response.status_code}")
+    logger.info(f"Response body: {response.json()}")
+
+    # Assertions
+    assert response.status_code == 200
+    assert "wav_path" in response.json()
+    assert response.json()["question_number"] == VALID_QUESTION_NUMBER
+    
+    # Verify the WAV file was actually created
+    wav_path = response.json()["wav_path"]
+    assert os.path.exists(wav_path), f"WAV file was not created at {wav_path}"
+    
+    # Note: We don't need to clean up the file as FileManagerService will handle it
+    # The file will be automatically cleaned up after 30 minutes or when all services complete
