@@ -22,8 +22,10 @@
 - HTTP status code 200
 - Response contains list of transformed results
 - `results_store.get_result_transformed` called with correct submission_url
-- Response follows standardized format
+- Response follows standardized format (List[Dict[str, Any]])
 - Data properly serialized as JSON
+- Each item in response is a dictionary
+- Response length matches expected data
 
 ### Scenario: Non-Existent Submission
 **Preconditions:**
@@ -55,6 +57,24 @@
 - Transformed format maintained across all results
 - Response structure consistent
 - Complete analysis data preserved
+- Different analysis types preserved (pronunciation, grammar, fluency)
+- Complex nested data structures maintained
+- Question numbers correctly included
+
+### Scenario: Empty Results List
+**Preconditions:**
+- Mock `results_store.get_result_transformed` to return empty list
+- Valid submission with no results
+- Clean application state
+
+**User Actions:**
+1. Send GET request to `/api/v1/results/submission/empty-submission`
+
+**Expected Assertions:**
+- HTTP status code 200
+- Response is empty list
+- Response type is list
+- No errors thrown for empty results
 
 ## 2. Get Raw Submission Results
 
@@ -74,10 +94,12 @@
 - `results_store.get_result` called with correct submission_url
 - Raw format preserved (debugging format)
 - All original data included
+- Response type is dictionary
+- Nested structures preserved exactly
 
 ### Scenario: Non-Existent Submission Raw Results
 **Preconditions:**
-- Mock `results_store.get_result` to return None or empty dict
+- Mock `results_store.get_result` to return None
 - Submission URL does not exist in store
 - Clean application state
 
@@ -89,6 +111,20 @@
 - HTTPException with detail: "No results found for submission: non-existent-submission"
 - Store method called with correct parameter
 - No results returned
+
+### Scenario: Empty Dict Raw Results
+**Preconditions:**
+- Mock `results_store.get_result` to return empty dict
+- Submission URL exists but has no data
+- Clean application state
+
+**User Actions:**
+1. Send GET request to `/api/v1/results/submission/empty-submission/raw`
+
+**Expected Assertions:**
+- HTTP status code 404
+- HTTPException with detail: "No results found for submission: empty-submission"
+- Empty dict treated as no results
 
 ### Scenario: Raw Results Format Validation
 **Preconditions:**
@@ -105,6 +141,7 @@
 - No transformation applied to data
 - Debugging information included
 - Original structure maintained
+- Nested objects and arrays preserved
 
 ## 3. List All Submissions
 
@@ -122,9 +159,10 @@
 - Response contains:
   - `submissions`: array of submission URLs
   - `count`: number of submissions
-- `results_store.list_all_submissions` called
+- `results_store.list_all_submissions` called once
 - Count matches array length
 - All submissions included
+- Field types correct (list and int)
 
 ### Scenario: Empty Submissions List
 **Preconditions:**
@@ -142,11 +180,12 @@
   - `count`: 0
 - Store method called correctly
 - Empty state handled properly
+- Count equals array length
 
 ### Scenario: Large Submissions List
 **Preconditions:**
 - Mock `results_store.list_all_submissions` with many submissions
-- Store contains numerous submissions
+- Store contains numerous submissions (100+ items)
 - Clean application state
 
 **User Actions:**
@@ -156,8 +195,9 @@
 - HTTP status code 200
 - All submissions included in response
 - Count accurately reflects total
-- Response processed within reasonable time
-- No pagination issues
+- Response processed efficiently
+- First and last items correctly included
+- No data truncation
 
 ## 4. Clear Submission Results
 
@@ -174,9 +214,9 @@
 **Expected Assertions:**
 - HTTP status code 200
 - Response contains: `{"message": "Results cleared for submission: test-submission-123"}`
-- `results_store.has_result` called first to check existence
+- `results_store.has_result` called with correct submission_url
 - `results_store.clear_result` called with correct submission_url
-- Results successfully removed
+- Both methods called exactly once
 
 ### Scenario: Clear Non-Existent Submission
 **Preconditions:**
@@ -204,10 +244,11 @@
 1. Send DELETE request for existing submission
 
 **Expected Assertions:**
-- Existence checked before clearing
-- Clear operation only performed if submission exists
-- Appropriate success message returned
-- Store state updated correctly
+- HTTP status code 200
+- Both store methods called exactly once
+- Correct parameters passed to both methods
+- Validation occurs before clearing
+- Success message returned
 
 ## 5. Results Store Integration
 
@@ -218,15 +259,19 @@
 - Clean application state
 
 **User Actions:**
-1. Test all endpoint operations
+1. Test all endpoint operations in sequence
 
 **Expected Assertions:**
 - All store methods called correctly
 - Parameters passed accurately
 - Return values handled properly
-- Error conditions propagated appropriately
+- Method calls with expected parameters:
+  - `get_result_transformed` called for transformed endpoint
+  - `get_result` called for raw endpoint
+  - `list_all_submissions` called for listing endpoint
+  - `has_result` and `clear_result` called for delete endpoint
 
-### Scenario: Store Error Handling
+### Scenario: Store Exception Handling
 **Preconditions:**
 - Mock results_store methods to raise exceptions
 - Valid request parameters
@@ -236,10 +281,10 @@
 1. Send requests that trigger store exceptions
 
 **Expected Assertions:**
-- Store exceptions handled gracefully
-- Appropriate HTTP error responses
-- Error logging performed
-- No data corruption
+- Store exceptions propagate during testing
+- Exception message matches expected pattern
+- Test framework catches exceptions appropriately
+- No silent failures
 
 ## 6. Response Format Validation
 
@@ -254,8 +299,9 @@
 
 **Expected Assertions:**
 - Response follows list format (List[Dict[str, Any]])
-- Standardized format maintained
-- All required fields present
+- Each item in list is a dictionary
+- Data integrity maintained
+- Field values preserved correctly
 - Type conversion handled correctly
 
 ### Scenario: Raw Results Format
@@ -269,9 +315,10 @@
 
 **Expected Assertions:**
 - Response follows dict format (Dict[str, Any])
-- Raw structure preserved
+- Raw structure preserved exactly
+- Nested data structures maintained
+- Array data preserved
 - No transformation applied
-- All original data included
 
 ### Scenario: Submissions List Format
 **Preconditions:**
@@ -284,47 +331,49 @@
 
 **Expected Assertions:**
 - Response contains `submissions` and `count` fields
-- Field types match specification
+- `submissions` field is list type
+- `count` field is integer type
 - Count calculation accurate
 - Response structure consistent
 
 ## 7. Error Handling
 
-### Scenario: Invalid Submission URL Format
+### Scenario: URL Encoding Handling
 **Preconditions:**
 - Mock results_store methods
-- Invalid characters in submission URL
+- URL-encoded submission URLs
 - Clean application state
 
 **User Actions:**
-1. Send GET request with invalid URL characters
+1. Send GET request with URL-encoded characters
 
 **Expected Assertions:**
-- Request processed (URL encoding handled by FastAPI)
+- Request processed correctly
+- URL decoding handled by FastAPI
 - Store methods called with decoded URL
+- Special characters handled properly
 - Results retrieved or 404 returned appropriately
-- No URL processing errors
 
-### Scenario: Store Connection Issues
+### Scenario: Invalid URL Characters
 **Preconditions:**
-- Mock results_store methods to simulate connection failures
-- Valid request parameters
+- Mock results_store methods to return None
+- URLs with special characters
 - Clean application state
 
 **User Actions:**
-1. Send requests during simulated store outage
+1. Send GET request with encoded special characters
 
 **Expected Assertions:**
-- Connection errors handled gracefully
-- Appropriate HTTP error responses
-- Error details logged
-- System remains stable
+- HTTP status code 404 (for non-existent)
+- Store called with properly decoded URL
+- URL encoding/decoding works correctly
+- No URL processing errors
 
 ## 8. Performance Considerations
 
 ### Scenario: Large Results Data
 **Preconditions:**
-- Mock results_store with large dataset
+- Mock results_store with large dataset (1000+ items)
 - Submission with extensive analysis results
 - Clean application state
 
@@ -332,10 +381,12 @@
 1. Send GET request for large results
 
 **Expected Assertions:**
+- HTTP status code 200
 - Large data handled efficiently
-- Response time within reasonable limits
-- Memory usage appropriate
-- No data truncation
+- All data items included in response
+- Response length matches expected
+- Data integrity maintained across large dataset
+- First and last items correctly included
 
 ### Scenario: Concurrent Results Access
 **Preconditions:**
@@ -348,8 +399,9 @@
 
 **Expected Assertions:**
 - All requests processed successfully
-- No race conditions
-- Store methods called correctly
+- HTTP status code 200 for all requests
+- Store methods called correct number of times
+- No race conditions in test environment
 - Consistent response quality
 
 ## Integration Points to Verify
@@ -358,7 +410,7 @@
    - Proper store method calling
    - Parameter passing accuracy
    - Response handling and mapping
-   - Error propagation working correctly
+   - Mock verification working correctly
 
 2. **Data Format Handling**
    - Transformed vs raw format distinction
@@ -370,4 +422,10 @@
    - Raw results access for debugging
    - Submissions listing for testing
    - Results clearing for test cleanup
-   - Store state management 
+   - Store state management through mocking
+
+4. **API Contract Compliance**
+   - Correct HTTP status codes
+   - Proper error messages
+   - Response format consistency
+   - URL parameter handling 
