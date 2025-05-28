@@ -51,4 +51,32 @@ async def trigger_periodic_cleanup() -> Dict[str, str]:
         }
     except Exception as e:
         logger.error(f"Error in manual periodic cleanup: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error in periodic cleanup: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error in periodic cleanup: {str(e)}")
+
+@router.post("/test-enhanced-grammar")
+async def test_enhanced_grammar(transcript: str):
+    """
+    Test endpoint for enhanced grammar and vocabulary analysis with context
+    """
+    try:
+        from app.services.grammar_service import analyze_grammar
+        
+        result = await analyze_grammar(transcript)
+        
+        return {
+            "status": "success",
+            "transcript": transcript,
+            "result": result,
+            "summary": {
+                "grade": result.get("grade", 0),
+                "total_issues": len(result.get("issues", [])),
+                "grammar_corrections_count": len(result.get("grammar_corrections", {})),
+                "vocabulary_suggestions_count": len(result.get("vocabulary_suggestions", {}))
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        } 

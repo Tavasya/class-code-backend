@@ -6,6 +6,9 @@ class LexicalCorrection(BaseModel):
     suggested_phrase: str
     explanation: str
     resource_type: str  # collocation, idiom, or word_usage
+    sentence_index: Optional[int] = None
+    phrase_index: Optional[int] = None
+    sentence_text: Optional[str] = None
 
 class LexicalFeedback(BaseModel):
     sentence: str

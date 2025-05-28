@@ -71,7 +71,8 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
     if not sentences:
         return {
             "grade": 100,
-            "issues": []
+            "issues": [],
+            "enhanced_lexical_analysis": []
         }
 
     try:
@@ -118,14 +119,18 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
         if lexical_analysis is None:
             return {
                 "grade": 50,
-                "issues": [{"type": "lexical", "sentence": "", "suggestion": {"explanation": "Unable to analyze lexical resources due to API issues.", "resource_type": "error", "original_phrase": "", "suggested_phrase": ""}}]
+                "issues": [{"type": "lexical", "sentence": "", "suggestion": {"explanation": "Unable to analyze lexical resources due to API issues.", "resource_type": "error", "original_phrase": "", "suggested_phrase": ""}}],
+                "enhanced_lexical_analysis": []
             }
+
+        # Enhance lexical analysis with context
+        enhanced_lexical_analysis = enhance_lexical_suggestions_with_context(sentences, lexical_analysis)
 
         # Convert the API response to standardized format
         all_issues = []
         total_corrections = 0
         
-        for i, sentence_corrections in enumerate(lexical_analysis):
+        for i, sentence_corrections in enumerate(enhanced_lexical_analysis):
             if i < len(sentences) and sentence_corrections:
                 for correction in sentence_corrections:
                     all_issues.append({
@@ -135,7 +140,10 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
                             "explanation": correction.get("explanation", ""),
                             "resource_type": correction.get("resource_type", "word usage"),
                             "original_phrase": correction.get("original_phrase", ""),
-                            "suggested_phrase": correction.get("suggested_phrase", "")
+                            "suggested_phrase": correction.get("suggested_phrase", ""),
+                            "sentence_index": correction.get("sentence_index"),
+                            "phrase_index": correction.get("phrase_index"),
+                            "sentence_text": correction.get("sentence_text")
                         }
                     })
                     total_corrections += 1
@@ -156,12 +164,42 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
 
         return {
             "grade": grade,
-            "issues": all_issues
+            "issues": all_issues,
+            "enhanced_lexical_analysis": enhanced_lexical_analysis
         }
 
     except Exception as e:
         logger.exception(f"Error in lexical analysis: {str(e)}")
         return {
             "grade": 0,
-            "issues": [{"type": "lexical", "sentence": "", "suggestion": {"explanation": f"Error analyzing lexical resources: {str(e)}", "resource_type": "error", "original_phrase": "", "suggested_phrase": ""}}]
-        } 
+            "issues": [{"type": "lexical", "sentence": "", "suggestion": {"explanation": f"Error analyzing lexical resources: {str(e)}", "resource_type": "error", "original_phrase": "", "suggested_phrase": ""}}],
+            "enhanced_lexical_analysis": []
+        }
+
+def enhance_lexical_suggestions_with_context(sentences: List[str], lexical_analysis_per_sentence: List[List[Dict[str, Any]]]) -> List[List[Dict[str, Any]]]:
+    """Add sentence and phrase context to lexical suggestions"""
+    logger.info("Enhancing lexical suggestions with context")
+    
+    for sentence_idx, sentence_suggestions in enumerate(lexical_analysis_per_sentence):
+        if not sentence_suggestions or sentence_idx >= len(sentences):
+            continue
+            
+        sentence_text = sentences[sentence_idx]
+        phrase_counts = {}  # Track occurrences of each phrase in this sentence
+        
+        for suggestion in sentence_suggestions:
+            original_phrase = suggestion.get("original_phrase", "")
+            
+            # Count how many times we've seen this phrase
+            phrase_counts[original_phrase] = phrase_counts.get(original_phrase, 0)
+            
+            # Add context fields
+            suggestion.update({
+                "sentence_index": sentence_idx,
+                "phrase_index": phrase_counts[original_phrase],
+                "sentence_text": sentence_text
+            })
+            
+            phrase_counts[original_phrase] += 1
+            
+    return lexical_analysis_per_sentence 
