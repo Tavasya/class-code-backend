@@ -5,6 +5,7 @@ on:
     branches: [ "*" ]  # Run on all branches
   pull_request:
     branches: [ "*" ]  # Run on all PRs
+    types: [opened, synchronize, reopened]  # Only run on PR open/update, not on merge
 
 # Add permissions configuration
 permissions:

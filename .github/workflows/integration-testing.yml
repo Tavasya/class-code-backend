@@ -2,7 +2,9 @@ name: Integration Testing
 
 on:
   push:
-    branches: [ "main", "staging" ]  # Run on merges to main/staging branches
+    branches: [ "staging" ]  # Run on pushes to staging
+  pull_request:
+    branches: [ "staging" ]  # Run on PRs targeting staging
   workflow_dispatch:  # Allow manual triggers
     inputs:
       test_category:
