@@ -22,7 +22,8 @@ class FileManagerService:
     def generate_session_id(self, submission_url: str, question_number: int) -> str:
         """Generate a unique session ID for file tracking"""
         timestamp = int(datetime.now().timestamp())
-        return f"session_{hash(submission_url)}_{question_number}_{timestamp}"
+        unique_id = uuid.uuid4().hex[:8]  # 8-character unique identifier
+        return f"session_{hash(submission_url)}_{question_number}_{timestamp}_{unique_id}"
     
     async def register_file_session(
         self, 
