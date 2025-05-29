@@ -40,9 +40,8 @@ class PronunciationService:
                 # Add detailed phoneme information
                 phoneme_details.append({
                     "phoneme": phoneme,
-                    "accuracy_score": phoneme_data.get("PronunciationAssessment", {}).get("AccuracyScore", 0),
-                    "duration": phoneme_data.get("Duration", 0) / 10000000,  # Convert to seconds
-                    "offset": phoneme_data.get("Offset", 0) / 10000000  # Convert to seconds
+                    "accuracy_score": phoneme_data.get("AccuracyScore", 0),
+                    "error_type": phoneme_data.get("ErrorType", "None")
                 })
         
         # Return as IPA string format like "/hɛloʊ/" and detailed phoneme list
@@ -85,9 +84,6 @@ class PronunciationService:
                 granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
                 enable_miscue=True
             )
-            pron_config.phoneme_alphabet = "IPA"
-            pron_config.enable_prosody_assessment()
-            pron_config.n_best_phoneme_count = 5
             
             # Create recognizer
             recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
