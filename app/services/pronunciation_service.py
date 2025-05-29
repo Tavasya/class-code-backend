@@ -420,25 +420,25 @@ class PronunciationService:
         """Transform the processed Azure result to standardized format"""
         issues = []
         
-        # Add word scores as the first issue
-        word_details = processed_result.get("word_details", [])
-        if word_details:
-            words_data = []
-            for word in word_details:
-                words_data.append({
-                    "word": word.get("word", ""),
-                    "score": word.get("accuracy_score", 0),
-                    "duration": word.get("duration", 0),
-                    "timestamp": word.get("offset", 0),
-                    "error_type": word.get("error_type", "None"),
-                    "reference_phonemes": word.get("reference_phonemes", ""),
-                    "phoneme_details": word.get("phoneme_details", [])
-                })
-            
-            issues.append({
-                "type": "word_scores",
-                "words": words_data
-            })
+        # Add word scores as the first issue if they exist and are configured to be an issue type
+        # For now, word_details will be a top-level key in the response, not an "issue".
+        # word_details = processed_result.get("word_details", [])
+        # if word_details:
+        #     words_data = []
+        #     for word in word_details:
+        #         words_data.append({
+        #             "word": word.get("word", ""),
+        #             "score": word.get("accuracy_score", 0),
+        #             "duration": word.get("duration", 0),
+        #             "timestamp": word.get("offset", 0),
+        #             "error_type": word.get("error_type", "None"),
+        #             "reference_phonemes": word.get("reference_phonemes", ""),
+        #             "phoneme_details": word.get("phoneme_details", [])
+        #         })
+        #     issues.append({
+        #         "type": "word_scores",
+        #         "words": words_data
+        #     })
         
         # Add improvement suggestion
         if improvement_suggestion:
@@ -447,28 +447,39 @@ class PronunciationService:
                 "message": improvement_suggestion
             })
         
-        # Add prosody score if available
+        # Add prosody score as an issue if available (optional, can also be top-level)
         prosody_score = processed_result.get("prosody_score", 0)
         if prosody_score > 0:
             issues.append({
-                "type": "prosody",
+                "type": "prosody_feedback", # Renamed to avoid conflict if prosody_score is top-level
                 "score": prosody_score,
                 "message": "Work on natural rhythm and intonation patterns in speech."
             })
         
-        # Add fluency score if available
-        fluency_score = processed_result.get("fluency_score", 0)
-        if fluency_score > 0:
+        # Add Azure's fluency score as an issue if available (optional, can also be top-level)
+        # This is different from our WPM-based fluency service.
+        azure_fluency_score = processed_result.get("fluency_score", 0)
+        if azure_fluency_score > 0:
             issues.append({
-                "type": "fluency",
-                "score": fluency_score,
-                "message": "Focus on speaking more smoothly and reducing pauses between words."
+                "type": "azure_fluency_feedback", # Renamed
+                "score": azure_fluency_score,
+                "message": "Focus on speaking more smoothly and reducing pauses between words (based on Azure's assessment)."
             })
         
-        # Use overall pronunciation score as the grade
-        grade = processed_result.get("overall_pronunciation_score", 0)
-        
-        return {
-            "grade": grade,
-            "issues": issues
+        # Construct the final standardized result dictionary
+        standardized_output = {
+            "grade": processed_result.get("overall_pronunciation_score", 0),
+            "accuracy_score": processed_result.get("accuracy_score", 0),
+            "fluency_score": processed_result.get("fluency_score", 0), # Azure's fluency score
+            "prosody_score": processed_result.get("prosody_score", 0),
+            "completeness_score": processed_result.get("completeness_score", 0),
+            "audio_duration": processed_result.get("audio_duration", 0.0),
+            "word_details": processed_result.get("word_details", []),
+            "critical_errors": processed_result.get("critical_errors", []),
+            "filler_words": processed_result.get("filler_words", []),
+            "transcript": processed_result.get("transcript", ""), # Original reference text
+            "azure_transcript": processed_result.get("azure_transcript", ""), # Text recognized by Azure
+            "issues": issues # Compiled list of textual feedback issues
         }
+        
+        return standardized_output
