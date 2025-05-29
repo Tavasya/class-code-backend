@@ -40,7 +40,7 @@ class PronunciationService:
                 # Add detailed phoneme information
                 phoneme_details.append({
                     "phoneme": phoneme,
-                    "accuracy_score": phoneme_data.get("AccuracyScore", 0),
+                    "accuracy_score": phoneme_data.get("PronunciationAssessment", {}).get("AccuracyScore", 0),
                     "duration": phoneme_data.get("Duration", 0) / 10000000,  # Convert to seconds
                     "offset": phoneme_data.get("Offset", 0) / 10000000  # Convert to seconds
                 })
