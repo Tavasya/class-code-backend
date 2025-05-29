@@ -38,3 +38,11 @@ class FluencyResponse(BaseModel):
     key_findings: List[str]
     improvement_suggestions: List[str]
     error: Optional[str] = None
+
+class SimpleFluencyResponse(BaseModel):
+    """Simplified response model for the fluency endpoint"""
+    grade: float
+    issues: List[str]
+    wpm: float
+    status: str = "success" # Optional: include a status if desired
+    error: Optional[str] = None # Optional: include error if an error occurs before this transformation

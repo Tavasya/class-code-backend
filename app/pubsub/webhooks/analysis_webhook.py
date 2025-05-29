@@ -278,14 +278,13 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
-            pronunciation_result = message_data["result"]
+            pronunciation_result = message_data["result"] # This should be a dict from PronunciationService
             transcript = message_data["transcript"]
             total_questions = message_data.get("total_questions")
             
             # Defensive logic for missing total_questions
             if total_questions is None:
                 logger.warning(f"⚠️ total_questions is None for fluency question {question_number}, submission {submission_url}")
-                # Try to infer from existing submission state if available
                 existing_state_key = self._get_submission_state_key(submission_url)
                 if existing_state_key in self._submission_state:
                     total_questions = self._submission_state[existing_state_key]["total_questions"]
@@ -293,86 +292,58 @@ class AnalysisWebhook:
                 else:
                     total_questions = 1  # Last resort fallback
             
-            logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency with pronunciation data)")
+            logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency - WPM from transcript/audio_duration)")
             
-            # Get analysis state
             state = self._get_or_create_analysis_state(submission_url, question_number)
             
-            # Run Fluency Analysis
             try:
-                raw_word_details_for_fluency = []
-                audio_duration_for_fluency = None
+                wpm_calculated = 0.0
+                timing_metrics_for_ai = {}
+                audio_duration_from_pron_result = None
 
                 if isinstance(pronunciation_result, dict):
-                    raw_word_details_for_fluency = pronunciation_result.get("word_details", [])
-                    audio_duration_for_fluency = pronunciation_result.get("audio_duration")
-                    logger.info(f"DEBUG: Extracted audio_duration: {audio_duration_for_fluency} from pronunciation_result")
-                elif isinstance(pronunciation_result, list):
-                    logger.warning(f"pronunciation_result is unexpectedly a list. Using empty word_details for fluency analysis.")
+                    audio_duration_from_pron_result = pronunciation_result.get("audio_duration")
+                    logger.info(f"DEBUG: Extracted audio_duration from pronunciation_result: {audio_duration_from_pron_result}")
                 else:
-                    logger.warning(f"pronunciation_result has unexpected type {type(pronunciation_result)}. Using empty word_details.")
-                    
-                logger.info(f"DEBUG: Using raw_word_details_for_fluency with {len(raw_word_details_for_fluency)} items for fluency analysis")
-                
-                word_detail_objects = []
-                if raw_word_details_for_fluency:
-                    try:
-                        for word_dict in raw_word_details_for_fluency:
-                            word_detail_objects.append(WordDetail(
-                                word=word_dict.get("word", ""),
-                                offset=word_dict.get("offset", 0.0),
-                                duration=word_dict.get("duration", 0.0),
-                                accuracy_score=word_dict.get("accuracy_score", 0.0),
-                                error_type=word_dict.get("error_type", "None")
-                            ))
-                    except Exception as e:
-                        logger.error(f"Error converting word_details to WordDetail objects: {str(e)}")
-                        word_detail_objects = []
-                
-                # Calculate timing_metrics (primarily for WPM from word_details)
-                timing_metrics = calculate_timing_metrics(word_detail_objects)
-                logger.info(f"DEBUG: Timing metrics from word_details: {timing_metrics}")
+                    logger.warning(f"DEBUG: pronunciation_result is not a dict (type: {type(pronunciation_result)}), cannot get audio_duration.")
 
-                # Determine WPM
-                wpm_calculated = timing_metrics.get('words_per_minute', 0.0)
-
-                if wpm_calculated == 0.0 and transcript and audio_duration_for_fluency and audio_duration_for_fluency > 0:
+                if transcript and audio_duration_from_pron_result and isinstance(audio_duration_from_pron_result, (int, float)) and audio_duration_from_pron_result > 0:
                     word_count = len(transcript.split())
                     if word_count > 0:
-                        wpm_calculated = round((word_count / audio_duration_for_fluency) * 60, 1)
-                        logger.info(f"DEBUG: WPM calculated using transcript and audio_duration: {wpm_calculated}")
-                        # Update timing_metrics so AI prompt gets this WPM
-                        if not timing_metrics: # if timing_metrics was {}
-                             timing_metrics = {}
-                        timing_metrics['words_per_minute'] = wpm_calculated 
-                elif wpm_calculated == 0.0:
-                    logger.warning(f"WPM could not be calculated. Word details empty/insufficient and/or audio_duration/transcript missing. WPM will be 0.")
-
-
-                # Call original fluency analysis for grade and issues
-                ai_fluency_analysis_result = await get_fluency_coherence_analysis(transcript, timing_metrics)
+                        wpm_calculated = round((word_count / audio_duration_from_pron_result) * 60, 1)
+                        logger.info(f"DEBUG: WPM calculated as {wpm_calculated} (words: {word_count}, duration: {audio_duration_from_pron_result})")
+                    else:
+                        logger.warning(f"DEBUG: Transcript word count is 0. WPM will be 0.")
+                else:
+                    logger.warning(
+                        f"DEBUG: WPM calculation skipped or failed. Transcript available: {bool(transcript)}, "
+                        f"Audio duration valid: {audio_duration_from_pron_result if audio_duration_from_pron_result is not None else 'N/A'} (must be > 0). WPM will be 0."
+                    )
                 
-                # Construct the final fluency result for the state
+                timing_metrics_for_ai['words_per_minute'] = wpm_calculated
+                
+                # Call original fluency analysis for grade and issues, providing the calculated WPM
+                ai_fluency_analysis_result = await get_fluency_coherence_analysis(transcript, timing_metrics_for_ai)
+                
                 final_fluency_output = {
-                    "grade": ai_fluency_analysis_result.get("grade", 0), # Default grade to 0 if not found
-                    "issues": ai_fluency_analysis_result.get("issues", []), # Default issues to empty list
+                    "grade": ai_fluency_analysis_result.get("grade", 0),
+                    "issues": ai_fluency_analysis_result.get("issues", []),
                     "wpm": wpm_calculated
                 }
                 
                 state["fluency_result"] = final_fluency_output
                 state["fluency_done"] = True
                 
-                # Publish fluency done with the simplified structure
                 self.pubsub_client.publish_message_by_name(
                     "FLUENCY_DONE",
                     {
                         "question_number": question_number,
                         "submission_url": submission_url,
                         "total_questions": total_questions,
-                        "result": final_fluency_output # Publish the new simplified structure
+                        "result": final_fluency_output
                     }
                 )
-                logger.info(f"Fluency analysis completed for question {question_number}")
+                logger.info(f"Fluency analysis completed for question {question_number}. WPM: {wpm_calculated}")
                 
             except Exception as e:
                 logger.error(f"Fluency analysis failed for question {question_number}: {str(e)}")
