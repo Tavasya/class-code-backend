@@ -40,8 +40,8 @@ class PronunciationService:
                 # Add detailed phoneme information
                 phoneme_details.append({
                     "phoneme": phoneme,
-                    "accuracy_score": phoneme_data.get("AccuracyScore", 0),
-                    "error_type": phoneme_data.get("ErrorType", "None")
+                    "accuracy_score": phoneme_data.get("PronunciationAssessment", {}).get("AccuracyScore", 0),
+                    "error_type": phoneme_data.get("PronunciationAssessment", {}).get("ErrorType", "None")
                 })
         
         # Return as IPA string format like "/hɛloʊ/" and detailed phoneme list
