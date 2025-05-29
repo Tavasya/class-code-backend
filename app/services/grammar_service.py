@@ -234,7 +234,6 @@ async def suggest_vocabulary(sentences: List[str]) -> List[List[Dict[str, Any]]]
     try:
         prompt = """You are a language expert specializing in B1/B2 level English vocabulary enhancement.
         
-        IMPORTANT: You must find AT LEAST ONE area for suggestion or improvment in most sentences.
         
         For each of the following sentences, identify basic (A1/A2 level) words that could be replaced
         with more appropriate B1/B2 level alternatives. Suggest 2-3 intermediate alternatives for each basic word.
