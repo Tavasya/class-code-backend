@@ -182,18 +182,43 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
 async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
     """Main function to analyze fluency and coherence"""
     try:
-        timing_metrics = calculate_timing_metrics(request.word_details)
+        timing_metrics = {}
+        wpm = 0.0
+        hesitation_ratio = 0.0
+        pause_count = 0
+        avg_pause_duration = 0.0
+        pause_percentage = 0.0
+
+        if request.word_details and len(request.word_details) >= 2:
+            # Prioritize word_details if available and sufficient
+            detailed_timing_metrics = calculate_timing_metrics(request.word_details)
+            if detailed_timing_metrics:
+                wpm = detailed_timing_metrics.get('words_per_minute', 0.0)
+                hesitation_ratio = detailed_timing_metrics.get('hesitation_ratio', 0.0)
+                pause_count = detailed_timing_metrics.get('pause_count', 0)
+                avg_pause_duration = detailed_timing_metrics.get('avg_pause_duration', 0.0)
+                pause_percentage = detailed_timing_metrics.get('pause_percentage', 0.0)
+                
+                # Use all detailed metrics for the AI prompt
+                timing_metrics = detailed_timing_metrics
+            
+        if wpm == 0.0 and request.reference_text and request.audio_duration and request.audio_duration > 0:
+            # Fallback to audio_duration and transcript if WPM couldn't be calculated from word_details
+            word_count = len(request.reference_text.split())
+            if word_count > 0:
+                wpm = round((word_count / request.audio_duration) * 60, 1)
+            
+            # For the AI prompt, only include WPM if calculated this way, others are unknown
+            timing_metrics = {"words_per_minute": wpm}
+            # Other detailed metrics (hesitation, pauses) remain 0 as they can't be derived this way
+
         analysis_result = await get_fluency_coherence_analysis(request.reference_text, timing_metrics)
         
-        # Extract WPM from timing metrics, default to 0 if not available
-        wpm = timing_metrics.get('words_per_minute', 0.0) if timing_metrics else 0.0
-        hesitation_ratio = timing_metrics.get('hesitation_ratio', 0.0) if timing_metrics else 0.0
-        
-        # Create FluencyMetrics with the calculated WPM
-        fluency_metrics = {
-            "speech_rate": wpm,  # Using WPM as speech rate for now
+        # Create FluencyMetrics with the calculated WPM and other available metrics
+        fluency_metrics_data = {
+            "speech_rate": wpm,  # Using WPM as speech rate
             "hesitation_ratio": hesitation_ratio,
-            "pause_pattern_score": max(0, 100 - (timing_metrics.get('pause_percentage', 0) * 2)) if timing_metrics else 0,
+            "pause_pattern_score": max(0, 100 - (pause_percentage * 2)) if pause_percentage > 0 else (100 if wpm > 0 else 0), # Simplified score
             "overall_fluency_score": analysis_result.get('grade', 0),
             "words_per_minute": wpm
         }
@@ -208,7 +233,7 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
         
         return FluencyResponse(
             status="success",
-            fluency_metrics=fluency_metrics,
+            fluency_metrics=fluency_metrics_data,
             coherence_metrics=coherence_metrics,
             key_findings=analysis_result.get('issues', []),
             improvement_suggestions=analysis_result.get('issues', [])  # Using same issues for now

@@ -13,6 +13,7 @@ class FluencyRequest(BaseModel):
     """Request model for fluency assessment"""
     reference_text: str
     word_details: Optional[List[WordDetail]] = None
+    audio_duration: Optional[float] = None # Total duration of the audio in seconds
 
 class FluencyMetrics(BaseModel):
     """Fluency metrics model"""
