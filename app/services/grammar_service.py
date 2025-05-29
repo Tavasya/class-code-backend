@@ -165,6 +165,7 @@ async def check_grammar(sentences: List[str]) -> List[List[Dict[str, str]]]:
     try:
         prompt = """
 You are an expert in English grammar and spoken communication. Analyze the following transcript, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
+IMPORTANT: ONLY GIVE A TOTAL OF 3 Grammer suggestions on different sentences.
  
 Your job is to:
 - Detect and correct grammar mistakes related to:
@@ -233,6 +234,7 @@ async def suggest_vocabulary(sentences: List[str]) -> List[List[Dict[str, Any]]]
     try:
         prompt = """You are a language expert specializing in B1/B2 level English vocabulary enhancement.
         
+        IMPORTANT: You must find AT LEAST ONE area for suggestion or improvment in most sentences.
         
         For each of the following sentences, identify basic (A1/A2 level) words that could be replaced
         with more appropriate B1/B2 level alternatives. Suggest 2-3 intermediate alternatives for each basic word.
