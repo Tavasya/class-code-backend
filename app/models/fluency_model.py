@@ -38,7 +38,7 @@ class FluencyResponse(BaseModel):
     key_findings: List[str]
     improvement_suggestions: List[str]
     error: Optional[str] = None
-
+#
 class SimpleFluencyResponse(BaseModel):
     """Simplified response model for the fluency endpoint"""
     grade: float
