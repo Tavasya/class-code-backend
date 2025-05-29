@@ -28,20 +28,28 @@ class PronunciationService:
         """Extract reference phonemes from Azure word data"""
         phonemes = word_data.get("Phonemes", [])
         if not phonemes:
-            return ""
+            return "", []
         
         # Extract the phoneme names and join them
         phoneme_list = []
+        phoneme_details = []
         for phoneme_data in phonemes:
             phoneme = phoneme_data.get("Phoneme", "")
             if phoneme:
                 phoneme_list.append(phoneme)
+                # Add detailed phoneme information
+                phoneme_details.append({
+                    "phoneme": phoneme,
+                    "accuracy_score": phoneme_data.get("AccuracyScore", 0),
+                    "duration": phoneme_data.get("Duration", 0) / 10000000,  # Convert to seconds
+                    "offset": phoneme_data.get("Offset", 0) / 10000000  # Convert to seconds
+                })
         
-        # Return as IPA string format like "/hɛloʊ/"
+        # Return as IPA string format like "/hɛloʊ/" and detailed phoneme list
         if phoneme_list:
-            return "/" + "".join(phoneme_list) + "/"
+            return "/" + "".join(phoneme_list) + "/", phoneme_details
         
-        return ""
+        return "", []
 
     @staticmethod
     async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
@@ -262,7 +270,8 @@ class PronunciationService:
                     "duration": duration_seconds,
                     "accuracy_score": accuracy_score,
                     "error_type": error_type,
-                    "reference_phonemes": PronunciationService.extract_reference_phonemes(word)
+                    "reference_phonemes": PronunciationService.extract_reference_phonemes(word)[0],
+                    "phoneme_details": PronunciationService.extract_reference_phonemes(word)[1]
                 }
                 
                 processed_result["word_details"].append(word_detail)
@@ -426,7 +435,8 @@ class PronunciationService:
                     "duration": word.get("duration", 0),
                     "timestamp": word.get("offset", 0),
                     "error_type": word.get("error_type", "None"),
-                    "reference_phonemes": word.get("reference_phonemes", "")
+                    "reference_phonemes": word.get("reference_phonemes", ""),
+                    "phoneme_details": word.get("phoneme_details", [])
                 })
             
             issues.append({
