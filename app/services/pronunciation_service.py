@@ -50,7 +50,7 @@ class PronunciationService:
             return "/" + "".join(phoneme_list) + "/", phoneme_details
         
         return "", []
-
+    #
     @staticmethod
     async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
