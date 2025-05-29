@@ -19,7 +19,7 @@ class PronunciationResponse(BaseModel):
     completeness_score: float
     critical_errors: List[Dict[str, Any]]
     filler_words: List[Dict[str, Any]]
-    word_details: List[Dict[str, Any]]
+    word_details: List[Dict[str, Any]]  # Each word now includes: word, accuracy_score, duration, timestamp, error_type, reference_phonemes
     improvement_suggestion: str
     error: Optional[str] = None
     question_number: int = 1

@@ -24,6 +24,26 @@ class PronunciationService:
     """Service for handling pronunciation assessment"""
     
     @staticmethod
+    def extract_reference_phonemes(word_data):
+        """Extract reference phonemes from Azure word data"""
+        phonemes = word_data.get("Phonemes", [])
+        if not phonemes:
+            return ""
+        
+        # Extract the phoneme names and join them
+        phoneme_list = []
+        for phoneme_data in phonemes:
+            phoneme = phoneme_data.get("Phoneme", "")
+            if phoneme:
+                phoneme_list.append(phoneme)
+        
+        # Return as IPA string format like "/hɛloʊ/"
+        if phoneme_list:
+            return "/" + "".join(phoneme_list) + "/"
+        
+        return ""
+
+    @staticmethod
     async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze pronunciation using Azure Speech Services with a provided reference text
@@ -241,7 +261,8 @@ class PronunciationService:
                     "offset": offset_seconds,
                     "duration": duration_seconds,
                     "accuracy_score": accuracy_score,
-                    "error_type": error_type
+                    "error_type": error_type,
+                    "reference_phonemes": PronunciationService.extract_reference_phonemes(word)
                 }
                 
                 processed_result["word_details"].append(word_detail)
@@ -404,7 +425,8 @@ class PronunciationService:
                     "score": word.get("accuracy_score", 0),
                     "duration": word.get("duration", 0),
                     "timestamp": word.get("offset", 0),
-                    "error_type": word.get("error_type", "None")
+                    "error_type": word.get("error_type", "None"),
+                    "reference_phonemes": word.get("reference_phonemes", "")
                 })
             
             issues.append({
