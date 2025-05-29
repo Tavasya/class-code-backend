@@ -128,27 +128,19 @@ def print_analysis_results(results):
             fluency = q_results['fluency']
             print(f"\n🌊 FLUENCY ANALYSIS:")
             print("-" * 50)
-            if 'error' in fluency:
+            if fluency.get('error'):
                 print(f"❌ Error: {fluency['error']}")
             else:
-                print(f"✅ Overall Score: {fluency.get('overall_score', 'N/A')}")
-                print(f"⚡ Fluency Score: {fluency.get('fluency_score', 'N/A')}")
-                print(f"🔗 Coherence Score: {fluency.get('coherence_score', 'N/A')}")
-                print(f"⏱️ Speaking Rate: {fluency.get('speaking_rate', 'N/A')} WPM")
-                print(f"⏸️ Pause Analysis: {fluency.get('pause_analysis', 'N/A')}")
+                print(f"✅ Grade: {fluency.get('grade', 'N/A')}")
+                print(f"⏱️ Words Per Minute: {fluency.get('wpm', 'N/A')} WPM")
                 
-                if 'feedback' in fluency:
-                    print(f"\n💬 Fluency Feedback:")
-                    if isinstance(fluency['feedback'], str):
-                        print(f"   {fluency['feedback']}")
-                    elif isinstance(fluency['feedback'], list):
-                        for feedback in fluency['feedback']:
-                            print(f"   • {feedback}")
-                
-                if 'detailed_analysis' in fluency:
-                    print(f"\n🔍 Detailed Fluency Analysis:")
-                    for key, value in fluency['detailed_analysis'].items():
-                        print(f"   {key.title()}: {value}")
+                issues = fluency.get('issues', [])
+                if issues:
+                    print(f"\n💬 Fluency Feedback (Issues):")
+                    for issue in issues:
+                        print(f"   • {issue}")
+                else:
+                    print("   No specific fluency issues noted.")
 
 def wait_for_results(submission_url, timeout=120):
     """Wait for analysis results to be available"""

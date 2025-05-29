@@ -295,77 +295,81 @@ class AnalysisWebhook:
             
             logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency with pronunciation data)")
             
-            # Add debugging to understand the pronunciation_result structure
-            logger.info(f"DEBUG: pronunciation_result type: {type(pronunciation_result)}")
-            logger.info(f"DEBUG: pronunciation_result content (first 500 chars): {str(pronunciation_result)[:500]}")
-            if isinstance(pronunciation_result, list):
-                logger.info(f"DEBUG: pronunciation_result is a list with {len(pronunciation_result)} items")
-                if pronunciation_result:
-                    logger.info(f"DEBUG: First item type: {type(pronunciation_result[0])}")
-                    logger.info(f"DEBUG: First item content: {pronunciation_result[0]}")
-            elif isinstance(pronunciation_result, dict):
-                logger.info(f"DEBUG: pronunciation_result is a dict with keys: {list(pronunciation_result.keys())}")
-                if "word_details" in pronunciation_result:
-                    logger.info(f"DEBUG: word_details type: {type(pronunciation_result['word_details'])}")
-                    logger.info(f"DEBUG: word_details length: {len(pronunciation_result['word_details']) if isinstance(pronunciation_result['word_details'], list) else 'not a list'}")
-            
             # Get analysis state
             state = self._get_or_create_analysis_state(submission_url, question_number)
             
-            # Run Fluency Analysis with pronunciation word_details
+            # Run Fluency Analysis
             try:
-                # Add defensive handling for both dict and list cases
+                raw_word_details_for_fluency = []
+                audio_duration_for_fluency = None
+
                 if isinstance(pronunciation_result, dict):
-                    word_details = pronunciation_result.get("word_details", [])
+                    raw_word_details_for_fluency = pronunciation_result.get("word_details", [])
+                    audio_duration_for_fluency = pronunciation_result.get("audio_duration")
+                    logger.info(f"DEBUG: Extracted audio_duration: {audio_duration_for_fluency} from pronunciation_result")
                 elif isinstance(pronunciation_result, list):
                     logger.warning(f"pronunciation_result is unexpectedly a list. Using empty word_details for fluency analysis.")
-                    # If it's a list, we might need to extract word_details differently
-                    # For now, use empty list to prevent crash
-                    word_details = []
                 else:
                     logger.warning(f"pronunciation_result has unexpected type {type(pronunciation_result)}. Using empty word_details.")
-                    word_details = []
                     
-                logger.info(f"DEBUG: Using word_details with {len(word_details)} items for fluency analysis")
+                logger.info(f"DEBUG: Using raw_word_details_for_fluency with {len(raw_word_details_for_fluency)} items for fluency analysis")
                 
-                # Convert word_details to proper format and calculate timing metrics
-                if word_details:
-                    # Convert dict word_details to WordDetail objects
+                word_detail_objects = []
+                if raw_word_details_for_fluency:
                     try:
-                        word_detail_objects = []
-                        for word_dict in word_details:
-                            word_detail = WordDetail(
+                        for word_dict in raw_word_details_for_fluency:
+                            word_detail_objects.append(WordDetail(
                                 word=word_dict.get("word", ""),
                                 offset=word_dict.get("offset", 0.0),
                                 duration=word_dict.get("duration", 0.0),
                                 accuracy_score=word_dict.get("accuracy_score", 0.0),
                                 error_type=word_dict.get("error_type", "None")
-                            )
-                            word_detail_objects.append(word_detail)
-                        
-                        # Calculate timing metrics from word details
-                        timing_metrics = calculate_timing_metrics(word_detail_objects)
-                        logger.info(f"DEBUG: Calculated timing metrics: {timing_metrics}")
-                        
+                            ))
                     except Exception as e:
                         logger.error(f"Error converting word_details to WordDetail objects: {str(e)}")
-                        timing_metrics = {}
-                else:
-                    timing_metrics = {}
+                        word_detail_objects = []
                 
-                # Call fluency analysis with proper timing metrics (not raw word_details)
-                fluency_result = await get_fluency_coherence_analysis(transcript, timing_metrics)
-                state["fluency_result"] = fluency_result
+                # Calculate timing_metrics (primarily for WPM from word_details)
+                timing_metrics = calculate_timing_metrics(word_detail_objects)
+                logger.info(f"DEBUG: Timing metrics from word_details: {timing_metrics}")
+
+                # Determine WPM
+                wpm_calculated = timing_metrics.get('words_per_minute', 0.0)
+
+                if wpm_calculated == 0.0 and transcript and audio_duration_for_fluency and audio_duration_for_fluency > 0:
+                    word_count = len(transcript.split())
+                    if word_count > 0:
+                        wpm_calculated = round((word_count / audio_duration_for_fluency) * 60, 1)
+                        logger.info(f"DEBUG: WPM calculated using transcript and audio_duration: {wpm_calculated}")
+                        # Update timing_metrics so AI prompt gets this WPM
+                        if not timing_metrics: # if timing_metrics was {}
+                             timing_metrics = {}
+                        timing_metrics['words_per_minute'] = wpm_calculated 
+                elif wpm_calculated == 0.0:
+                    logger.warning(f"WPM could not be calculated. Word details empty/insufficient and/or audio_duration/transcript missing. WPM will be 0.")
+
+
+                # Call original fluency analysis for grade and issues
+                ai_fluency_analysis_result = await get_fluency_coherence_analysis(transcript, timing_metrics)
+                
+                # Construct the final fluency result for the state
+                final_fluency_output = {
+                    "grade": ai_fluency_analysis_result.get("grade", 0), # Default grade to 0 if not found
+                    "issues": ai_fluency_analysis_result.get("issues", []), # Default issues to empty list
+                    "wpm": wpm_calculated
+                }
+                
+                state["fluency_result"] = final_fluency_output
                 state["fluency_done"] = True
                 
-                # Publish fluency done
+                # Publish fluency done with the simplified structure
                 self.pubsub_client.publish_message_by_name(
                     "FLUENCY_DONE",
                     {
                         "question_number": question_number,
                         "submission_url": submission_url,
                         "total_questions": total_questions,
-                        "result": fluency_result
+                        "result": final_fluency_output # Publish the new simplified structure
                     }
                 )
                 logger.info(f"Fluency analysis completed for question {question_number}")
