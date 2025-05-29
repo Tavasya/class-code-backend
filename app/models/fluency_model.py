@@ -20,6 +20,7 @@ class FluencyMetrics(BaseModel):
     hesitation_ratio: float
     pause_pattern_score: float
     overall_fluency_score: float
+    words_per_minute: float
 
 class CoherenceMetrics(BaseModel):
     """Coherence metrics model"""

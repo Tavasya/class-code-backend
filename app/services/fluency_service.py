@@ -185,9 +185,33 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
         timing_metrics = calculate_timing_metrics(request.word_details)
         analysis_result = await get_fluency_coherence_analysis(request.reference_text, timing_metrics)
         
+        # Extract WPM from timing metrics, default to 0 if not available
+        wpm = timing_metrics.get('words_per_minute', 0.0) if timing_metrics else 0.0
+        hesitation_ratio = timing_metrics.get('hesitation_ratio', 0.0) if timing_metrics else 0.0
+        
+        # Create FluencyMetrics with the calculated WPM
+        fluency_metrics = {
+            "speech_rate": wpm,  # Using WPM as speech rate for now
+            "hesitation_ratio": hesitation_ratio,
+            "pause_pattern_score": max(0, 100 - (timing_metrics.get('pause_percentage', 0) * 2)) if timing_metrics else 0,
+            "overall_fluency_score": analysis_result.get('grade', 0),
+            "words_per_minute": wpm
+        }
+        
+        # Create CoherenceMetrics (using grade as baseline for now)
+        coherence_metrics = {
+            "topic_consistency": analysis_result.get('grade', 0),
+            "logical_flow": analysis_result.get('grade', 0),
+            "idea_development": analysis_result.get('grade', 0),
+            "overall_coherence_score": analysis_result.get('grade', 0)
+        }
+        
         return FluencyResponse(
             status="success",
-            **analysis_result
+            fluency_metrics=fluency_metrics,
+            coherence_metrics=coherence_metrics,
+            key_findings=analysis_result.get('issues', []),
+            improvement_suggestions=analysis_result.get('issues', [])  # Using same issues for now
         )
         
     except Exception as e:
@@ -199,7 +223,8 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
                 "speech_rate": 0,
                 "hesitation_ratio": 0,
                 "pause_pattern_score": 0,
-                "overall_fluency_score": 0
+                "overall_fluency_score": 0,
+                "words_per_minute": 0.0
             },
             coherence_metrics={
                 "topic_consistency": 0,
