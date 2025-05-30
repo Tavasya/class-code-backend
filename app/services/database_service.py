@@ -70,15 +70,20 @@ class DatabaseService:
             self._log_operation_error(operation, str(e), bucket="recordings", path_prefix=path_prefix)
             return []
 
-    def update_submission_results(self, submission_url: str, question_results: Dict[str, Any], recordings: Optional[List[str]] = None) -> Optional[str]:
-        """Update an existing submission with analysis results and recordings."""
+    def update_submission_results(self, submission_url: str, question_results: Dict[str, Any], recordings: Optional[List[str]] = None, overall_assignment_score: Optional[float] = None) -> Optional[str]:
+        """Update an existing submission with analysis results, recordings, and overall assignment score."""
         operation = "UPDATE_SUBMISSION_RESULTS"
         
-        self._log_operation_start(operation, 
-                                submission_url=submission_url,
-                                questions_count=len(question_results) if question_results else 0,
-                                recordings_count=len(recordings) if recordings else 0,
-                                table="submissions")
+        log_kwargs = {
+            "submission_url": submission_url,
+            "questions_count": len(question_results) if question_results else 0,
+            "recordings_count": len(recordings) if recordings else 0,
+            "table": "submissions"
+        }
+        if overall_assignment_score is not None:
+            log_kwargs["overall_assignment_score"] = overall_assignment_score
+
+        self._log_operation_start(operation, **log_kwargs)
         
         try:
             # First, check if the submission exists
@@ -104,9 +109,13 @@ class DatabaseService:
             # Add recordings if provided
             if recordings:
                 update_data["recordings"] = recordings
+
+            # Add overall_assignment_score if provided
+            if overall_assignment_score is not None:
+                update_data["overall_assignment_score"] = overall_assignment_score
             
             # Log the data being updated
-            logger.info(f"📝 Data to update for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes")
+            logger.info(f"📝 Data to update for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes, overall_score={overall_assignment_score}")
 
             # Update the submission
             result = self.supabase.table('submissions').update(update_data).eq('id', submission_url).execute()
@@ -118,7 +127,8 @@ class DatabaseService:
                                           submission_url=submission_url,
                                           db_id=submission_db_id,
                                           table="submissions",
-                                          status="graded")
+                                          status="graded",
+                                          overall_assignment_score=overall_assignment_score)
                 return submission_db_id
             else:
                 error_msg = result.error if hasattr(result, 'error') and result.error else 'No data returned from update operation'

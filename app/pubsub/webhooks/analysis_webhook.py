@@ -610,6 +610,47 @@ class AnalysisWebhook:
             logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
             logger.info(f"📊 Question results summary for {submission_url}: {list(question_results.keys()) if question_results else 'No results'}")
             
+            # Calculate overall assignment score
+            overall_assignment_score = 0
+            question_scores = []
+            if question_results:
+                for q_num, q_data in question_results.items():
+                    pronunciation_grade = 0
+                    fluency_grade = 0
+                    # Ensure q_data and its nested dictionaries are not None
+                    if q_data and isinstance(q_data, dict):
+                        pron_analysis = q_data.get("pronunciation")
+                        flu_analysis = q_data.get("fluency")
+
+                        if pron_analysis and isinstance(pron_analysis, dict) and "grade" in pron_analysis:
+                            pronunciation_grade = pron_analysis["grade"]
+                        
+                        if flu_analysis and isinstance(flu_analysis, dict) and "grade" in flu_analysis:
+                            fluency_grade = flu_analysis["grade"]
+                        
+                        # Default to 0 if grades are not numbers or are missing, to avoid errors.
+                        if not isinstance(pronunciation_grade, (int, float)):
+                            pronunciation_grade = 0
+                            logger.warning(f"Pronunciation grade for Q{q_num} is not a number, using 0.")
+                        if not isinstance(fluency_grade, (int, float)):
+                            fluency_grade = 0
+                            logger.warning(f"Fluency grade for Q{q_num} is not a number, using 0.")
+
+                        question_score = (pronunciation_grade * 0.7) + (fluency_grade * 0.3)
+                        question_scores.append(question_score)
+                        logger.info(f"Calculated score for question {q_num}: {question_score} (P: {pronunciation_grade}, F: {fluency_grade})")
+                    else:
+                        logger.warning(f"No data or invalid data format for question {q_num}, skipping score calculation for this question.")
+
+
+                if question_scores:
+                    overall_assignment_score = round(sum(question_scores) / len(question_scores))
+                    logger.info(f"Overall assignment score for {submission_url}: {overall_assignment_score}")
+                else:
+                    logger.warning(f"No question scores calculated for {submission_url}, overall_assignment_score remains 0.")
+            else:
+                logger.warning(f"No question_results found for {submission_url}, overall_assignment_score is 0.")
+
             # Store results for testing/retrieval
             results_store.store_result(submission_url, message_data)
             logger.info(f"💾 Stored results in memory cache for submission: {submission_url}")
@@ -648,7 +689,8 @@ class AnalysisWebhook:
                 submission_db_id = db_service.update_submission_results(
                     submission_url=submission_url,
                     question_results=question_results,
-                    recordings=recording_urls
+                    recordings=recording_urls,
+                    overall_assignment_score=overall_assignment_score # Pass the new score
                 )
                 
                 if submission_db_id:
