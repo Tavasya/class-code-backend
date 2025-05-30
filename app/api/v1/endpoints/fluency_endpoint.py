@@ -13,7 +13,7 @@ async def assess_fluency(request: FluencyRequest) -> SimpleFluencyResponse:
         request: FluencyRequest containing reference text and optionally word details / audio_duration
         
     Returns:
-        SimpleFluencyResponse with grade, issues, and wpm
+        SimpleFluencyResponse with grade, issues, wpm, filler word count, and cohesive device info
     """
     try:
         full_response = await analyze_fluency(request)
@@ -24,6 +24,9 @@ async def assess_fluency(request: FluencyRequest) -> SimpleFluencyResponse:
                 grade=0,
                 issues=[f"Analysis error: {full_response.error}"],
                 wpm=0,
+                filler_word_count=0,
+                cohesive_device_band_level=0,
+                cohesive_device_feedback="Analysis error",
                 status="error",
                 error=full_response.error
             )
@@ -34,6 +37,7 @@ async def assess_fluency(request: FluencyRequest) -> SimpleFluencyResponse:
             grade=full_response.fluency_metrics.overall_fluency_score,
             issues=full_response.key_findings,
             wpm=full_response.fluency_metrics.words_per_minute,
+            filler_word_count=full_response.fluency_metrics.filler_word_count,
             cohesive_device_band_level=full_response.cohesive_device_band_level,
             cohesive_device_feedback=full_response.cohesive_device_feedback,
             status="success"
@@ -46,6 +50,9 @@ async def assess_fluency(request: FluencyRequest) -> SimpleFluencyResponse:
             grade=0,
             issues=[f"Endpoint error: {str(e)}"],
             wpm=0,
+            filler_word_count=0,
+            cohesive_device_band_level=0,
+            cohesive_device_feedback="Endpoint error",
             status="error",
             error=str(e)
         )

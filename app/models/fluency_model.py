@@ -22,6 +22,7 @@ class FluencyMetrics(BaseModel):
     pause_pattern_score: float
     overall_fluency_score: float
     words_per_minute: float
+    filler_word_count: int = 0  # Number of filler words used
 
 class CoherenceMetrics(BaseModel):
     """Coherence metrics model"""
@@ -46,6 +47,7 @@ class SimpleFluencyResponse(BaseModel):
     grade: float
     issues: List[str]
     wpm: float
+    filler_word_count: int = 0  # Number of filler words used
     cohesive_device_band_level: int = 0
     cohesive_device_feedback: str = "Cohesive device analysis not available."
     status: str = "success" # Optional: include a status if desired

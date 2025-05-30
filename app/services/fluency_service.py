@@ -3,7 +3,7 @@ import aiohttp
 import json
 import os
 import re
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from app.models.fluency_model import FluencyRequest, FluencyResponse, WordDetail
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 
@@ -119,11 +119,42 @@ def calculate_timing_metrics(word_details: List[WordDetail]) -> Dict[str, Any]:
         logger.error(f"Error calculating timing metrics: {str(e)}")
         return {}
 
+def count_filler_words(text: str) -> Tuple[int, List[str]]:
+    """
+    Count filler words in the text and return their occurrences
+    
+    Args:
+        text: Input text to analyze
+        
+    Returns:
+        Tuple of (count, list of found filler words)
+    """
+    # Common filler words and phrases
+    filler_patterns = [
+        r'\b(uh|um|uhh|uhm|er|erm|hmm)\b',  # Sound-based fillers
+        r'\b(like|sort\sof|kind\sof|you\sknow|i\smean|basically|actually|literally)\b',  # Hedge words
+        r'\b(well|so|right|okay|just|anyway|whatever)\b',  # Transitional fillers
+        r'\b(and\sthen|so\syeah|i\sguess)\b'  # Phrase fillers
+    ]
+    
+    filler_words_found = []
+    text_lower = text.lower()
+    
+    # Find all occurrences of filler words
+    for pattern in filler_patterns:
+        matches = re.finditer(pattern, text_lower, re.IGNORECASE)
+        filler_words_found.extend([match.group() for match in matches])
+    
+    return len(filler_words_found), filler_words_found
+
 async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[str, Any] = None) -> Dict[str, Any]:
     """Get comprehensive fluency and coherence analysis using OpenAI"""
     if not OPENAI_API_KEY:
         raise ValueError("No API key available")
 
+    # Count filler words
+    filler_count, filler_words = count_filler_words(transcript)
+    
     timing_info = ""
     if timing_metrics:
         timing_info = f"""
@@ -133,6 +164,7 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
         - Average pause duration: {timing_metrics.get('avg_pause_duration', 'N/A')} seconds
         - Pause percentage: {timing_metrics.get('pause_percentage', 'N/A')}% 
         - Hesitation ratio: {timing_metrics.get('hesitation_ratio', 'N/A')}
+        - Filler words count: {filler_count}
         """
 
     prompt = f"""
@@ -142,12 +174,15 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
 
     {timing_info}
 
+    Note: The speaker used {filler_count} filler words/phrases.
+
     Provide a detailed analysis. Your response MUST be ONLY a JSON object with the following structure:
     {{ 
         "grade": [0-100 overall fluency and coherence score],
         "issues": [
             "Specific observation about speech rate and fluency",
             "Observation about pause patterns and hesitation",
+            "Comment about filler word usage if significant",
             "Comment on topic consistency and logical flow",
             "Note about idea development and coherence",
             "Actionable improvement suggestion"
@@ -183,6 +218,9 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
     if not analysis:
         raise ValueError("Failed to get valid analysis from API")
 
+    # Add filler word count to the response
+    analysis['filler_word_count'] = filler_count
+
     # Ensure the response has the correct structure and provide defaults
     grade = analysis.get('grade', 50) # Default grade if missing
     issues = analysis.get('issues', ["Unable to provide specific issues due to API response format."])
@@ -199,7 +237,8 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
         "grade": grade,
         "issues": issues,
         "cohesive_device_band_level": cohesive_device_band_level,
-        "cohesive_device_feedback": cohesive_device_feedback
+        "cohesive_device_feedback": cohesive_device_feedback,
+        "filler_word_count": filler_count
     }
 
 async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
@@ -246,7 +285,8 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
             "hesitation_ratio": hesitation_ratio,
             "pause_pattern_score": max(0, 100 - (pause_percentage * 2)) if pause_percentage > 0 else (100 if wpm > 0 else 0), # Simplified score
             "overall_fluency_score": analysis_result.get('grade', 0),
-            "words_per_minute": wpm
+            "words_per_minute": wpm,
+            "filler_word_count": analysis_result.get('filler_word_count', 0)  # Add filler word count
         }
         
         # Create CoherenceMetrics (using grade as baseline for now)
@@ -277,7 +317,8 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
                 "hesitation_ratio": 0,
                 "pause_pattern_score": 0,
                 "overall_fluency_score": 0,
-                "words_per_minute": 0.0
+                "words_per_minute": 0.0,
+                "filler_word_count": 0
             },
             coherence_metrics={
                 "topic_consistency": 0,
