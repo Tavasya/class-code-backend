@@ -1,61 +1,60 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
-from app.models.lexical_model import LexicalAnalysisResponse, LexicalFeedback
-from app.services.lexical_service import analyze_lexical_resources
+from app.models.fluency_model import FluencyRequest, FluencyResponse, SimpleFluencyResponse
+from app.services.fluency_service import analyze_fluency
+import logging # It's good practice to have logging available
 
 router = APIRouter()
+logger = logging.getLogger(__name__) # Setup logger for the endpoint
 
-@router.post("/analyze", response_model=LexicalAnalysisResponse)
-async def analyze_lexical(text: str):
+@router.post("/analysis", response_model=SimpleFluencyResponse)
+async def assess_fluency(request: FluencyRequest) -> SimpleFluencyResponse:
     """
-    Analyze lexical resources in the provided text.
-    
+    Assess speech fluency and coherence (simplified response)
+
     Args:
-        text: The text to analyze
-        
+        request: FluencyRequest containing reference text and optionally word details / audio_duration
+
     Returns:
-        LexicalAnalysisResponse containing feedback for each sentence
+        SimpleFluencyResponse with grade, issues, wpm, cohesive device band level and feedback
     """
     try:
-        # Split text into sentences
-        sentences = [s.strip() for s in text.split('.') if s.strip()]
-        
-        if not sentences:
-            return LexicalAnalysisResponse(
-                lexical_feedback=[],
-                error="No valid sentences found in the input text"
+        full_response = await analyze_fluency(request)
+
+        if full_response.status == "error":
+            logger.error(f"Fluency analysis service returned an error: {full_response.error}")
+            # If analyze_fluency itself had an error, we can return that in the simple response
+            return SimpleFluencyResponse(
+                grade=0,
+                issues=[f"Analysis error: {full_response.error}"],
+                wpm=0,
+                cohesive_device_band_level=None,
+                cohesive_device_feedback=None,
+                status="error",
+                error=full_response.error
             )
-        
-        # Get lexical feedback from the service
-        service_output = await analyze_lexical_resources(sentences)
-        
-        # Transform service_output["enhanced_lexical_analysis"]
-        # which is List[List[LexicalCorrectionDictFromService]] (or similar)
-        # to List[LexicalFeedback]
-        
-        processed_feedback: List[LexicalFeedback] = []
-        # The service returns a dict, 'enhanced_lexical_analysis' contains the list of lists of corrections
-        enhanced_analysis_results = service_output.get("enhanced_lexical_analysis", [])
+            # Or, re-raise an HTTPException if preferred for this direct endpoint
+            # raise HTTPException(status_code=500, detail=full_response.error)
 
-        for i, sentence_corrections_list in enumerate(enhanced_analysis_results):
-            if i < len(sentences): # Ensure we have the original sentence to associate
-                # sentence_corrections_list is List[LexicalCorrection]
-                # LexicalFeedback expects: sentence: str, corrections: List[LexicalCorrection]
-                processed_feedback.append(
-                    LexicalFeedback(
-                        sentence=sentences[i],
-                        corrections=sentence_corrections_list
-                    )
-                )
-            # else: Mismatch in length between original sentences and analyzed sentence corrections.
-            # Might want to log this or handle it if it occurs.
+        return SimpleFluencyResponse(
+            grade=full_response.fluency_metrics.overall_fluency_score,
+            issues=full_response.key_findings,
+            wpm=full_response.fluency_metrics.words_per_minute,
+            cohesive_device_band_level=full_response.cohesive_device_band_level,
+            cohesive_device_feedback=full_response.cohesive_device_feedback,
+            status="success"
+        )
 
-        return LexicalAnalysisResponse(lexical_feedback=processed_feedback)
-        
     except Exception as e:
-        # Log the exception for more detailed error information
-        # logger.exception(f"Error in analyze_lexical endpoint: {str(e)}") # Assuming logger is configured
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error analyzing lexical resources: {str(e)}"
-        ) 
+        # Handle unexpected errors during the endpoint call itself
+        logger.exception("Unexpected error in assess_fluency endpoint") # Log the full exception
+        return SimpleFluencyResponse(
+            grade=0,
+            issues=[f"Endpoint error: {str(e)}"], # Be cautious about exposing internal error details
+            wpm=0,
+            cohesive_device_band_level=None,
+            cohesive_device_feedback=None,
+            status="error",
+            error=str(e) # Be cautious about exposing internal error details
+        )
+        # Or, re-raise an HTTPException
+        # raise HTTPException(status_code=500, detail=f"Unexpected endpoint error: {str(e)}")

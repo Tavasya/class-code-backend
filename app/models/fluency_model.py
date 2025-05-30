@@ -37,6 +37,8 @@ class FluencyResponse(BaseModel):
     coherence_metrics: CoherenceMetrics
     key_findings: List[str]
     improvement_suggestions: List[str]
+    cohesive_device_band_level: Optional[int] = None
+    cohesive_device_feedback: Optional[str] = None
     error: Optional[str] = None
 #
 class SimpleFluencyResponse(BaseModel):
@@ -44,5 +46,7 @@ class SimpleFluencyResponse(BaseModel):
     grade: float
     issues: List[str]
     wpm: float
+    cohesive_device_band_level: Optional[int] = None
+    cohesive_device_feedback: Optional[str] = None
     status: str = "success" # Optional: include a status if desired
     error: Optional[str] = None # Optional: include error if an error occurs before this transformation

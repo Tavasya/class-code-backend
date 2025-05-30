@@ -123,7 +123,7 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
     """Get comprehensive fluency and coherence analysis using OpenAI"""
     if not OPENAI_API_KEY:
         raise ValueError("No API key available")
-    
+
     timing_info = ""
     if timing_metrics:
         timing_info = f"""
@@ -131,21 +131,19 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
         - Words per minute: {timing_metrics.get('words_per_minute', 'N/A')}
         - Number of pauses: {timing_metrics.get('pause_count', 'N/A')}
         - Average pause duration: {timing_metrics.get('avg_pause_duration', 'N/A')} seconds
-        - Pause percentage: {timing_metrics.get('pause_percentage', 'N/A')}%
+        - Pause percentage: {timing_metrics.get('pause_percentage', 'N/A')}% 
         - Hesitation ratio: {timing_metrics.get('hesitation_ratio', 'N/A')}
         """
-    
+
     prompt = f"""
-    You are an expert in speech assessment focusing on fluency and coherence. Analyze the following transcript from a language learner:
-    
+    You are an expert in speech assessment focusing on fluency, coherence, and the use of cohesive devices. Analyze the following transcript from a language learner:
+
     "{transcript}"
-    
+
     {timing_info}
-    
-    Provide a detailed analysis of the speaker's fluency and coherence. Calculate an overall grade (0-100) and provide specific observations as issues.
-    
-    Return ONLY a JSON object with the following structure:
-    {{
+
+    Provide a detailed analysis. Your response MUST be ONLY a JSON object with the following structure:
+    {{ 
         "grade": [0-100 overall fluency and coherence score],
         "issues": [
             "Specific observation about speech rate and fluency",
@@ -153,30 +151,50 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
             "Comment on topic consistency and logical flow",
             "Note about idea development and coherence",
             "Actionable improvement suggestion"
-        ]
+        ],
+        "cohesive_device_band_level": [Integer: 9, 7, 5, 3, or 1 based on the proficiency bands below],
+        "cohesive_device_feedback": "[String: The specific feedback starting with 'Speech is...' for the identified band]"
     }}
-    
-    The grade should be based on:
+
+    The overall 'grade' should be based on:
     - Speech rate and smoothness (25%)
-    - Pause patterns and hesitation (25%) 
+    - Pause patterns and hesitation (25%)
     - Topic consistency and logical flow (25%)
     - Idea development and coherence (25%)
-    
-    Issues should be 4-6 specific, actionable observations written in 2nd person.
+
+    'Issues' should be 4-6 specific, actionable observations written in 2nd person.
+
+    For 'cohesive_device_band_level' and 'cohesive_device_feedback', use the following proficiency bands:
+    - Band 9 (Expert Proficiency): Use of cohesive devices is natural and appropriate, enhancing clarity and flow.
+      Feedback: "Speech is coherent and well-structured, with ideas developed fully and appropriately."
+    - Band 7 (Good Proficiency): Employs a range of connectives and discourse markers with some flexibility, aiding coherence.
+      Feedback: "Speech is generally well-organized, with ideas developed coherently."
+    - Band 5 (Modest Proficiency): Usually maintains flow but may overuse certain connectives/discourse markers. May lack coherence at times.
+      Feedback: "Speech may lack coherence at times."
+    - Band 3 (Extremely Limited Proficiency): Limited ability to link simple sentences, often relying on basic connectives.
+      Feedback: "Speech is often disjointed, and ideas may not be clearly connected."
+    - Band 1 (Non-User): No communication possible; no rateable language.
+      Feedback: "Speech lacks any logical organization."
+
+    Select the single most appropriate band level (9, 7, 5, 3, or 1) and provide its corresponding feedback string.
     """
-    
+
     analysis = await call_api_with_retry(prompt, expected_format="dict")
     if not analysis:
         raise ValueError("Failed to get valid analysis from API")
-    
+
     # Ensure the response has the correct structure
-    if "grade" not in analysis or "issues" not in analysis:
+    if "grade" not in analysis or "issues" not in analysis or \
+       "cohesive_device_band_level" not in analysis or "cohesive_device_feedback" not in analysis:
+        logger.warning("API response did not contain all expected fields for fluency/coherence/cohesive analysis. Falling back.")
         # Fallback to default structure if API doesn't return expected format
         return {
             "grade": 50,
-            "issues": ["Unable to analyze fluency due to API response format issues."]
+            "issues": ["Unable to analyze fluency due to API response format issues."],
+            "cohesive_device_band_level": None,
+            "cohesive_device_feedback": None
         }
-    
+
     return analysis
 
 async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
@@ -225,10 +243,10 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
         
         # Create CoherenceMetrics (using grade as baseline for now)
         coherence_metrics = {
-            "topic_consistency": analysis_result.get('grade', 0),
-            "logical_flow": analysis_result.get('grade', 0),
-            "idea_development": analysis_result.get('grade', 0),
-            "overall_coherence_score": analysis_result.get('grade', 0)
+            "topic_consistency": analysis_result.get('grade', 0), # Consider if cohesive band should influence this
+            "logical_flow": analysis_result.get('grade', 0),    # Consider if cohesive band should influence this
+            "idea_development": analysis_result.get('grade', 0), # Consider if cohesive band should influence this
+            "overall_coherence_score": analysis_result.get('grade', 0) # Consider if cohesive band should influence this
         }
         
         return FluencyResponse(
@@ -236,7 +254,9 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
             fluency_metrics=fluency_metrics_data,
             coherence_metrics=coherence_metrics,
             key_findings=analysis_result.get('issues', []),
-            improvement_suggestions=analysis_result.get('issues', [])  # Using same issues for now
+            improvement_suggestions=analysis_result.get('issues', []),  # Using same issues for now
+            cohesive_device_band_level=analysis_result.get('cohesive_device_band_level'),
+            cohesive_device_feedback=analysis_result.get('cohesive_device_feedback')
         )
         
     except Exception as e:
@@ -258,5 +278,7 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
                 "overall_coherence_score": 0
             },
             key_findings=[],
-            improvement_suggestions=[]
+            improvement_suggestions=[],
+            cohesive_device_band_level=None,
+            cohesive_device_feedback=None
         )

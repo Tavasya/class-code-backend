@@ -34,6 +34,8 @@ async def assess_fluency(request: FluencyRequest) -> SimpleFluencyResponse:
             grade=full_response.fluency_metrics.overall_fluency_score,
             issues=full_response.key_findings,
             wpm=full_response.fluency_metrics.words_per_minute,
+            cohesive_device_band_level=full_response.cohesive_device_band_level,
+            cohesive_device_feedback=full_response.cohesive_device_feedback,
             status="success"
         )
         
