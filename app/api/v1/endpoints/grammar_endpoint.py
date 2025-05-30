@@ -39,7 +39,6 @@ async def analyze_grammar_endpoint(request: GrammarRequest):
             vocabulary_suggestions=result["vocabulary_suggestions"],
             grade=result.get("grade", 100),  # Include the calculated grade
             issues=result.get("issues", []),  # Include all identified issues
-            lexical_resources=result.get("lexical_resources", {})  # Include any lexical resources
         )
         
         # Log detailed statistics

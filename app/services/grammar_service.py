@@ -250,41 +250,57 @@ def simplify_single_word_corrections(
         processed_sentences.append(processed_corrections_for_sentence)
     return processed_sentences
 
-async def check_grammar(sentences: List[str]) -> List[List[Dict[str, str]]]:
-    """Check grammar for each sentence and return corrections"""
-    logger.info(f"Checking grammar for {len(sentences)} sentences")
+async def check_grammar_and_vocabulary(sentences: List[str]) -> List[List[Dict[str, Any]]]:
+    """Check grammar and suggest vocabulary enhancements for each sentence"""
+    logger.info(f"Checking grammar and vocabulary for {len(sentences)} sentences")
     
     if not OPENAI_API_KEY:
-        logger.warning("No API key available, returning empty grammar corrections")
+        logger.warning("No API key available, returning empty corrections")
         return [[] for _ in sentences]
     
     try:
         prompt = """
-You are an expert in English grammar and spoken communication. Analyze the following transcript, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
-IMPORTANT: ONLY GIVE A TOTAL OF 3 Grammer suggestions on different sentences.
- 
-Your job is to:
-- Detect and correct grammar mistakes related to:
-  1. Subject-verb agreement  
-  2. Verb tense consistency  
-  3. Article usage (a, an, the)  
-  4. Singular/plural form  
-  5. Word order and sentence structure  
-  6. Preposition use  
-  7. Sentence completeness (fragments, run-ons)
+You are an expert in English grammar and vocabulary enhancement. Analyze the following transcript, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
+IMPORTANT: ONLY GIVE A TOTAL OF 3 Grammar suggestions on different sentences.
 
-Provide a list of corrections for each sentence in **structured JSON format**, even if no corrections are needed (return an empty array for those). Each correction should include:
-- "original_phrase": the problematic phrase from the sentence  
-- "suggested_correction": the corrected version  
-- "explanation": a brief, clear explanation of the issue
+Your job is to:
+1. Detect and correct grammar mistakes related to:
+   - Subject-verb agreement
+   - Verb tense consistency
+   - Article usage (a, an, the)
+   - Singular/plural form
+   - Word order and sentence structure
+   - Preposition use
+   - Sentence completeness (fragments, run-ons)
+
+2. Identify basic vocabulary that could be enhanced:
+   - Very basic verbs (like "get", "put", "go", "come")
+   - Simple adjectives (like "nice", "bad", "big", "small")
+   - Basic adverbs (like "very", "really", "a lot")
+   - General nouns that could be more specific
+
+Provide a list of corrections and suggestions for each sentence in structured JSON format. Each item should include:
+- "type": either "grammar" or "vocabulary"
+- "original_phrase": the problematic phrase or basic word
+- "suggested_correction": the corrected version or suggested alternatives (comma-separated for vocabulary)
+- "explanation": brief explanation of the issue or suggestion
+- "level": (for vocabulary only) target CEFR level (B1, B2, or C1)
 
 Output format:
 [
     [  // corrections for sentence 1
         {
-            "original_phrase": "the incorrect phrase",
-            "suggested_correction": "the correct phrase",
-            "explanation": "reason for correction"
+            "type": "grammar",
+            "original_phrase": "he don't",
+            "suggested_correction": "he doesn't",
+            "explanation": "Subject-verb agreement correction"
+        },
+        {
+            "type": "vocabulary",
+            "original_phrase": "nice",
+            "suggested_correction": "pleasant, delightful, enjoyable",
+            "explanation": "Consider using more sophisticated adjectives",
+            "level": "B1"
         }
     ],
     [], // sentence 2: no corrections
@@ -298,126 +314,62 @@ Here are the sentences to analyze:
         for i, sentence in enumerate(sentences):
             prompt += f"\n{i+1}. {sentence}"
         
-        prompt += "\n\nProvide ONLY the JSON array with corrections. No other text or markdown formatting."
+        prompt += "\n\nProvide ONLY the JSON array with corrections and suggestions. No other text or markdown formatting."
         
         corrections = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
         
         if corrections is None:
             return [[] for _ in sentences]
         
-        while len(corrections) < len(sentences):
-            corrections.append([])
-            
-        if len(corrections) > len(sentences):
-            corrections = corrections[:len(sentences)]
-        
-        return corrections
+        # Process corrections and filter vocabulary suggestions through Oxford 5000
+        processed_corrections = []
+        for sentence_idx, sentence_items in enumerate(corrections):
+            if sentence_idx >= len(sentences):
+                break
                 
+            filtered_items = []
+            for item in sentence_items:
+                if item.get("type") == "vocabulary":
+                    # Get suggested alternatives
+                    alternatives = [alt.strip() for alt in item.get("suggested_correction", "").split(",")]
+                    
+                    # Filter through Oxford 5000
+                    if NLP_PROCESSOR and OXFORD_DATA_CACHE:
+                        original_word = item.get("original_phrase", "").strip()
+                        original_lemma = get_lemma(original_word, NLP_PROCESSOR)
+                        
+                        if original_lemma in OXFORD_DATA_CACHE:
+                            original_level = OXFORD_DATA_CACHE[original_lemma].get('level')
+                            
+                            if original_level in CEFR_PROGRESSION_MAP:
+                                target_level = CEFR_PROGRESSION_MAP[original_level]
+                                
+                                # Filter alternatives through Oxford 5000
+                                valid_alternatives = []
+                                for alt in alternatives:
+                                    alt_lemma = get_lemma(alt, NLP_PROCESSOR)
+                                    if (alt_lemma in OXFORD_DATA_CACHE and 
+                                        OXFORD_DATA_CACHE[alt_lemma]['level'] == target_level):
+                                        valid_alternatives.append(alt)
+                                
+                                if valid_alternatives:
+                                    item["suggested_correction"] = ", ".join(valid_alternatives)
+                                    item["level"] = target_level
+                                    filtered_items.append(item)
+                else:
+                    # Keep grammar corrections as is
+                    filtered_items.append(item)
+            
+            processed_corrections.append(filtered_items)
+            
+        while len(processed_corrections) < len(sentences):
+            processed_corrections.append([])
+        
+        return processed_corrections
+        
     except Exception as e:
-        logger.exception(f"Error in grammar checking: {str(e)}")
+        logger.exception(f"Error in grammar and vocabulary checking: {str(e)}")
         return [[] for _ in sentences]
-
-def suggest_vocabulary(sentences: List[str]) -> List[List[VocabularySuggestion]]:
-    """
-    Analyze sentences and suggest vocabulary enhancements based on Oxford 5000 word list.
-    
-    Args:
-        sentences (List[str]): List of sentences from the transcript
-        
-    Returns:
-        List[List[VocabularySuggestion]]: List of vocabulary suggestions for each sentence
-    """
-    # Initialize empty suggestions list for each sentence
-    all_vocab_suggestions: List[List[VocabularySuggestion]] = [[] for _ in sentences]
-    
-    # Process each sentence
-    for sentence_idx, sentence_text in enumerate(sentences):
-        # Process sentence with spaCy for accurate tokenization
-        doc = NLP_PROCESSOR(sentence_text)
-        tokenized_words = [token.text for token in doc]
-        
-        # Process each word in the sentence
-        for word_idx, original_word_form in enumerate(tokenized_words):
-            # Get lemma form of the word
-            transcript_word_lemma = get_lemma(original_word_form, NLP_PROCESSOR)
-            
-            # Check if word is in Oxford 5000 and eligible for enhancement
-            if transcript_word_lemma in OXFORD_DATA_CACHE:
-                original_word_data = OXFORD_DATA_CACHE[transcript_word_lemma]
-                original_level = original_word_data['level']
-                
-                # Only process words at A2, B1, or B2 levels
-                if original_level in CEFR_PROGRESSION_MAP:
-                    target_level = CEFR_PROGRESSION_MAP[original_level]
-                    
-                    # Get AI suggestions
-                    prompt = f"Suggest 3-5 contextually appropriate single-word alternatives for the word '{original_word_form}' in the sentence: '{sentence_text}'. Provide only a JSON list of single-word strings."
-                    
-                    try:
-                        ai_response = call_openai_with_retry(prompt)
-                        ai_alternatives_list = parse_ai_response(ai_response)
-                        
-                        # Filter and validate AI suggestions
-                        filtered_alternatives = []
-                        for alt_word in ai_alternatives_list:
-                            alt_lemma = get_lemma(alt_word, NLP_PROCESSOR)
-                            
-                            # Check if alternative is in Oxford 5000 and at target level
-                            if (alt_lemma in OXFORD_DATA_CACHE and 
-                                OXFORD_DATA_CACHE[alt_lemma]['level'] == target_level and
-                                alt_lemma not in filtered_alternatives):
-                                filtered_alternatives.append(alt_lemma)
-                        
-                        # Create suggestion if valid alternatives found
-                        if filtered_alternatives:
-                            suggestion = VocabularySuggestion(
-                                original_word=original_word_form,
-                                context=sentence_text,
-                                advanced_alternatives=filtered_alternatives,
-                                level=target_level,
-                                sentence_index=sentence_idx,
-                                phrase_index=word_idx
-                            )
-                            all_vocab_suggestions[sentence_idx].append(suggestion)
-                            
-                    except Exception as e:
-                        # Log error but continue processing
-                        print(f"Error processing word '{original_word_form}': {str(e)}")
-                        continue
-    
-    # Apply limiting heuristics (configurable)
-    MAX_SUGGESTIONS_PER_SENTENCE = 3  # Can be moved to config
-    for sentence_suggestions in all_vocab_suggestions:
-        if len(sentence_suggestions) > MAX_SUGGESTIONS_PER_SENTENCE:
-            # Keep only the first MAX_SUGGESTIONS_PER_SENTENCE suggestions
-            sentence_suggestions[:] = sentence_suggestions[:MAX_SUGGESTIONS_PER_SENTENCE]
-    
-    return all_vocab_suggestions
-
-def parse_ai_response(response: str) -> List[str]:
-    """
-    Parse the AI response into a list of alternative words.
-    
-    Args:
-        response (str): The AI response string
-        
-    Returns:
-        List[str]: List of alternative words
-    """
-    import json
-    try:
-        # Try to parse as JSON list
-        alternatives = json.loads(response)
-        if isinstance(alternatives, list):
-            # Filter out non-string items and empty strings
-            return [str(word).strip() for word in alternatives if isinstance(word, (str, int, float)) and str(word).strip()]
-    except json.JSONDecodeError:
-        pass
-    
-    # Fallback: try to extract words from plain text
-    # Remove common formatting and split on commas or spaces
-    words = response.replace('[', '').replace(']', '').replace('"', '').replace("'", '').split(',')
-    return [word.strip() for word in words if word.strip()]
 
 async def analyze_grammar(transcript: str) -> Dict[str, Any]:
     """Analyze grammar and vocabulary in a transcript"""
@@ -429,85 +381,77 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
             "issues": [],
             "grammar_corrections": {},
             "vocabulary_suggestions": {},
-            "lexical_resources": {}
         }
         
     try:
         sentences = split_into_sentences(transcript)
         logger.info(f"Analyzing {len(sentences)} sentences")
         
-        # 1. Get grammar corrections for all sentences
-        raw_grammar_corrections = await check_grammar(sentences)
-
-        # ===> NEW STEP: Simplify corrections if they are single-word changes <===
-        simplified_grammar_corrections = simplify_single_word_corrections(raw_grammar_corrections)
+        # Get combined grammar and vocabulary analysis
+        raw_corrections = await check_grammar_and_vocabulary(sentences)
         
-        # 2. Enhance grammar corrections with context
-        enhanced_grammar_corrections = enhance_grammar_corrections_with_context(sentences, simplified_grammar_corrections)
-        
-        # 3. Get vocabulary suggestions for sentences without grammar issues
-        vocab_candidate_sentences = []
-        vocab_candidate_indices = []
-        
-        for i, corrections in enumerate(enhanced_grammar_corrections):
-            if not corrections:  # No grammar issues in this sentence
-                vocab_candidate_sentences.append(sentences[i])
-                vocab_candidate_indices.append(i)
-        
-        # Get vocabulary suggestions only for sentences without grammar issues
-        vocabulary_suggestions = []
-        if vocab_candidate_sentences:
-            vocab_raw = await suggest_vocabulary(vocab_candidate_sentences)
-            
-            # Map back to original sentence indices and enhance with context
-            vocabulary_suggestions = [[] for _ in sentences]  # Initialize for all sentences
-            for j, suggestions in enumerate(vocab_raw):
-                original_sentence_idx = vocab_candidate_indices[j]
-                vocabulary_suggestions[original_sentence_idx] = suggestions
-        else:
-            vocabulary_suggestions = [[] for _ in sentences]
-        
-        # 4. Enhance vocabulary suggestions with context
-        enhanced_vocabulary_suggestions = enhance_vocabulary_suggestions_with_context(sentences, vocabulary_suggestions)
-        
-        # 5. Convert to the expected format for backwards compatibility
-        grammar_issues = []
-        vocab_issues = []
-        
-        # Process enhanced grammar corrections
-        for sentence_idx, sentence_corrections in enumerate(enhanced_grammar_corrections):
-            for correction in sentence_corrections:
-                grammar_issues.append({
-                    "original": sentences[sentence_idx],
-                    "correction": {
-                        "explanation": correction.get("explanation", ""),
-                        "original_phrase": correction.get("original_phrase", ""),
-                        "suggested_correction": correction.get("suggested_correction", ""),
-                        "sentence_index": correction.get("sentence_index"),
-                        "phrase_index": correction.get("phrase_index"),
-                        "sentence_text": correction.get("sentence_text")
+        # Simplify single-word grammar corrections
+        simplified_corrections = []
+        for sentence_items in raw_corrections:
+            sentence_processed = []
+            for item in sentence_items:
+                if item.get("type") == "grammar":
+                    # Only simplify grammar corrections
+                    correction = {
+                        "original_phrase": item["original_phrase"],
+                        "suggested_correction": item["suggested_correction"],
+                        "explanation": item["explanation"]
                     }
-                })
+                    simplified = simplify_single_word_corrections([[correction]])
+                    if simplified and simplified[0]:
+                        sentence_processed.extend(
+                            [dict(item, **corr) for corr in simplified[0]]
+                        )
+                else:
+                    # Keep vocabulary suggestions as is
+                    sentence_processed.append(item)
+            simplified_corrections.append(sentence_processed)
         
-        # Process enhanced vocabulary suggestions
-        for sentence_idx, sentence_suggestions in enumerate(enhanced_vocabulary_suggestions):
-            for suggestion in sentence_suggestions:
-                vocab_issues.append({
-                    "original": sentences[sentence_idx],
-                    "correction": {
-                        "explanation": f"Consider using more advanced vocabulary: '{suggestion.get('original_word', '')}' could be '{', '.join(suggestion.get('advanced_alternatives', []))}'",
-                        "original_phrase": suggestion.get('original_word', ''),
-                        "suggested_correction": ', '.join(suggestion.get('advanced_alternatives', [])),
-                        "sentence_index": suggestion.get("sentence_index"),
-                        "phrase_index": suggestion.get("phrase_index"),
-                        "sentence_text": suggestion.get("sentence_text")
+        # Enhance with context
+        enhanced_corrections = enhance_grammar_corrections_with_context(
+            sentences, 
+            [[item for item in sent if item.get("type") == "grammar"] for sent in simplified_corrections]
+        )
+        
+        # Format results for API response
+        grammar_corrections_dict = {}
+        vocabulary_suggestions_dict = {}
+        all_issues = []
+        
+        for sentence_idx, sentence_items in enumerate(simplified_corrections):
+            for item_idx, item in enumerate(sentence_items):
+                key = f"sentence_{sentence_idx}_{item_idx}"
+                if item.get("type") == "grammar":
+                    grammar_corrections_dict[key] = {
+                        "original": sentences[sentence_idx],
+                        "corrections": [item]
                     }
-                })
+                    all_issues.append({
+                        "original": sentences[sentence_idx],
+                        "correction": item
+                    })
+                else:  # vocabulary
+                    vocabulary_suggestions_dict[key] = {
+                        "original": sentences[sentence_idx],
+                        "suggestions": [item]
+                    }
+                    all_issues.append({
+                        "original": sentences[sentence_idx],
+                        "correction": {
+                            "explanation": f"Consider using more advanced vocabulary ({item.get('level', 'B1')}): '{item['original_phrase']}' could be '{item['suggested_correction']}'",
+                            "original_phrase": item["original_phrase"],
+                            "suggested_correction": item["suggested_correction"],
+                            "sentence_index": sentence_idx,
+                            "sentence_text": sentences[sentence_idx]
+                        }
+                    })
         
-        # 6. Combine all issues for grade calculation
-        all_issues = grammar_issues + vocab_issues
-        
-        # 7. Calculate grade based on number of issues
+        # Calculate grade
         total_issues = len(all_issues)
         if total_issues == 0:
             grade = 100
@@ -520,34 +464,11 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         else:
             grade = max(60 - (total_issues - 6) * 5, 0)
         
-        # 8. Format enhanced results for new API structure
-        grammar_corrections_dict = {}
-        vocabulary_suggestions_dict = {}
-        
-        for sentence_idx, sentence_corrections in enumerate(enhanced_grammar_corrections):
-            if sentence_corrections:
-                for j, correction in enumerate(sentence_corrections):
-                    key = f"sentence_{sentence_idx}_{j}"
-                    grammar_corrections_dict[key] = {
-                        "original": sentences[sentence_idx],
-                        "corrections": [correction]
-                    }
-        
-        for sentence_idx, sentence_suggestions in enumerate(enhanced_vocabulary_suggestions):
-            if sentence_suggestions:
-                for j, suggestion in enumerate(sentence_suggestions):
-                    key = f"sentence_{sentence_idx}_{j}"
-                    vocabulary_suggestions_dict[key] = {
-                        "original": sentences[sentence_idx],
-                        "suggestions": [suggestion]
-                    }
-        
         return {
             "grade": grade,
             "issues": all_issues,
             "grammar_corrections": grammar_corrections_dict,
             "vocabulary_suggestions": vocabulary_suggestions_dict,
-            "lexical_resources": {}  # Placeholder for future lexical integration
         }
         
     except Exception as e:
@@ -557,5 +478,4 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
             "issues": [{"original": "", "correction": {"explanation": f"Error analyzing grammar: {str(e)}", "original_phrase": "", "suggested_correction": ""}}],
             "grammar_corrections": {},
             "vocabulary_suggestions": {},
-            "lexical_resources": {}
         } 
