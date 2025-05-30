@@ -74,12 +74,9 @@ class DatabaseService:
                                   submission_url: str, 
                                   question_results: Dict[str, Any], 
                                   recordings: Optional[List[str]] = None, 
-                                  avg_pronunciation_score: Optional[float] = None,
-                                  avg_fluency_score: Optional[float] = None,
-                                  avg_grammar_score: Optional[float] = None,
-                                  avg_lexical_score: Optional[float] = None
+                                  overall_assignment_score: Optional[Dict[str, Any]] = None # Expects a Dict for JSON
                                   ) -> Optional[str]:
-        """Update an existing submission with analysis results, recordings, and average section scores."""
+        """Update an existing submission with analysis results, recordings, and overall assignment score (as JSON)."""
         operation = "UPDATE_SUBMISSION_RESULTS"
         
         log_kwargs = {
@@ -88,15 +85,10 @@ class DatabaseService:
             "recordings_count": len(recordings) if recordings else 0,
             "table": "submissions"
         }
-        if avg_pronunciation_score is not None:
-            log_kwargs["avg_pronunciation_score"] = avg_pronunciation_score
-        if avg_fluency_score is not None:
-            log_kwargs["avg_fluency_score"] = avg_fluency_score
-        if avg_grammar_score is not None:
-            log_kwargs["avg_grammar_score"] = avg_grammar_score
-        if avg_lexical_score is not None:
-            log_kwargs["avg_lexical_score"] = avg_lexical_score
-        
+        if overall_assignment_score is not None:
+            # Log the JSON content directly or a summary of it
+            log_kwargs["overall_assignment_score"] = json.dumps(overall_assignment_score) 
+
         self._log_operation_start(operation, **log_kwargs)
         
         try:
@@ -124,15 +116,9 @@ class DatabaseService:
             if recordings:
                 update_data["recordings"] = recordings
 
-            # Add average section scores if provided
-            if avg_pronunciation_score is not None:
-                update_data["avg_pronunciation_score"] = avg_pronunciation_score
-            if avg_fluency_score is not None:
-                update_data["avg_fluency_score"] = avg_fluency_score
-            if avg_grammar_score is not None:
-                update_data["avg_grammar_score"] = avg_grammar_score
-            if avg_lexical_score is not None:
-                update_data["avg_lexical_score"] = avg_lexical_score
+            # Add overall_assignment_score (JSON object) if provided
+            if overall_assignment_score is not None:
+                update_data["overall_assignment_score"] = overall_assignment_score # Supabase client handles dict as JSON
             
             # Log the data being updated
             log_message_parts = [
@@ -140,14 +126,8 @@ class DatabaseService:
                 f"recordings_count={len(recordings or [])}",
                 f"section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes"
             ]
-            if avg_pronunciation_score is not None:
-                log_message_parts.append(f"avg_pron_score={avg_pronunciation_score}")
-            if avg_fluency_score is not None:
-                log_message_parts.append(f"avg_flu_score={avg_fluency_score}")
-            if avg_grammar_score is not None:
-                log_message_parts.append(f"avg_gram_score={avg_grammar_score}")
-            if avg_lexical_score is not None:
-                log_message_parts.append(f"avg_lex_score={avg_lexical_score}")
+            if overall_assignment_score is not None:
+                log_message_parts.append(f"overall_assignment_score={json.dumps(overall_assignment_score)}")
 
             logger.info(f"📝 Data to update for {submission_url}: {', '.join(log_message_parts)}")
 
@@ -164,14 +144,8 @@ class DatabaseService:
                     "table": "submissions",
                     "status": "graded"
                 }
-                if avg_pronunciation_score is not None:
-                    success_log_kwargs["avg_pronunciation_score"] = avg_pronunciation_score
-                if avg_fluency_score is not None:
-                    success_log_kwargs["avg_fluency_score"] = avg_fluency_score
-                if avg_grammar_score is not None:
-                    success_log_kwargs["avg_grammar_score"] = avg_grammar_score
-                if avg_lexical_score is not None:
-                    success_log_kwargs["avg_lexical_score"] = avg_lexical_score
+                if overall_assignment_score is not None:
+                    success_log_kwargs["overall_assignment_score"] = json.dumps(overall_assignment_score)
                 
                 self._log_operation_success(operation, **success_log_kwargs)
                 return submission_db_id

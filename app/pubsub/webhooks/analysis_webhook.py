@@ -681,6 +681,15 @@ class AnalysisWebhook:
             else:
                 logger.warning(f"No question_results found for {submission_url}, all average scores will be 0.")
             
+            # Create a dictionary for the overall_assignment_score JSON field
+            overall_assignment_score_json = {
+                "avg_pronunciation_score": avg_pronunciation_score,
+                "avg_fluency_score": avg_fluency_score,
+                "avg_grammar_score": avg_grammar_score,
+                "avg_lexical_score": avg_lexical_score
+            }
+            logger.info(f"Compiled section averages for {submission_url}: {overall_assignment_score_json}")
+
             # Store results for testing/retrieval
             results_store.store_result(submission_url, message_data)
             logger.info(f"💾 Stored results in memory cache for submission: {submission_url}")
@@ -720,10 +729,7 @@ class AnalysisWebhook:
                     submission_url=submission_url,
                     question_results=question_results,
                     recordings=recording_urls,
-                    avg_pronunciation_score=avg_pronunciation_score,
-                    avg_fluency_score=avg_fluency_score,
-                    avg_grammar_score=avg_grammar_score,
-                    avg_lexical_score=avg_lexical_score
+                    overall_assignment_score=overall_assignment_score_json
                 )
                 
                 if submission_db_id:
