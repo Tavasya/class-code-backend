@@ -320,19 +320,24 @@ class AnalysisWebhook:
                     logger.info(f"📋 Detected {sentence_count} sentences")
                     
                     # Natural speech timing adjustments (in seconds)
-                    PAUSE_BETWEEN_SENTENCES = 0.7  # Increased from 0.5
-                    PAUSE_FOR_COMMA = 0.3  # Pause for commas and other mid-sentence breaks
-                    PAUSE_FOR_THOUGHT = 0.5  # Natural pause for thought processing
+                    PAUSE_BETWEEN_SENTENCES = 1.5  # Increased for more natural speech rhythm
+                    PAUSE_FOR_COMMA = 0.7  # Increased for clearer pauses
+                    PAUSE_FOR_THOUGHT = 1.0  # Increased for natural thought process
+                    BASE_WORD_DURATION = 0.35  # Average duration per word for clear speech (slowed down)
                     
                     # Count commas for additional pauses
                     comma_count = transcript.count(',')
                     logger.info(f"✂️ Found {comma_count} commas for natural pauses")
                     
-                    # Calculate thought pauses - assume one per every 15 words
-                    thought_pauses = word_count // 15
-                    logger.info(f"🤔 Calculated {thought_pauses} natural thought pauses (1 per 15 words)")
+                    # Calculate thought pauses - more frequent for natural speech
+                    thought_pauses = word_count // 10  # Increased frequency (was 12)
+                    logger.info(f"🤔 Calculated {thought_pauses} natural thought pauses (1 per 10 words)")
                     
-                    # Calculate total pause duration
+                    # Calculate minimum speaking time based on word count
+                    base_speaking_time = word_count * BASE_WORD_DURATION
+                    logger.info(f"⌛ Base speaking time: {base_speaking_time:.1f}s (without pauses)")
+                    
+                    # Calculate pause durations
                     sentence_pause_time = sentence_count * PAUSE_BETWEEN_SENTENCES
                     comma_pause_time = comma_count * PAUSE_FOR_COMMA
                     thought_pause_time = thought_pauses * PAUSE_FOR_THOUGHT
@@ -347,35 +352,43 @@ class AnalysisWebhook:
                         f"  📊 Total pause duration: {total_pause_duration:.1f}s"
                     )
                     
-                    # Adjust total duration by subtracting natural pauses
-                    # Use a sliding scale for pause impact based on text length
-                    pause_impact_factor = min(0.9, max(0.5, 1.0 - (word_count / 300)))  # Reduces pause impact for longer texts
+                    # Calculate pause impact factor with more emphasis on longer texts
+                    # New formula that scales better with text length
+                    pause_impact_factor = min(0.95, max(0.75, 1.0 - (word_count / 300)))
                     logger.info(f"📉 Calculated pause impact factor: {pause_impact_factor:.2f} (adjusts for text length)")
                     
                     adjusted_pause_duration = total_pause_duration * pause_impact_factor
                     logger.info(f"⚖️ Adjusted pause duration: {adjusted_pause_duration:.1f}s (after impact factor)")
                     
-                    adjusted_duration = audio_duration_from_pron_result - adjusted_pause_duration
-                    logger.info(f"⏳ Initial adjusted duration: {adjusted_duration:.1f}s (original - adjusted pauses)")
+                    # Calculate minimum required duration based on word count and pauses
+                    # Increased the pause factor to 0.8 (was 0.7) for more natural speech
+                    min_required_duration = base_speaking_time + (adjusted_pause_duration * 0.8)
+                    logger.info(f"📏 Minimum required duration: {min_required_duration:.1f}s (base + essential pauses)")
                     
-                    # Ensure adjusted duration doesn't go below a reasonable minimum
-                    min_duration = audio_duration_from_pron_result * 0.6  # Allow more time reduction
-                    adjusted_duration = max(adjusted_duration, min_duration)
+                    # Use the larger of calculated minimum or 80% of original (was 75%)
+                    min_duration = max(min_required_duration, audio_duration_from_pron_result * 0.8)
+                    logger.info(f"📐 Final minimum duration: {min_duration:.1f}s")
                     
-                    if adjusted_duration != min_duration:
-                        logger.info(f"✅ Using calculated adjusted duration: {adjusted_duration:.1f}s")
+                    # Calculate adjusted duration
+                    adjusted_duration = max(min_duration, audio_duration_from_pron_result - adjusted_pause_duration)
+                    
+                    if adjusted_duration == min_duration:
+                        logger.info(f"⚠️ Using minimum allowed duration: {adjusted_duration:.1f}s")
                     else:
-                        logger.info(f"⚠️ Using minimum allowed duration: {adjusted_duration:.1f}s (60% of original)")
+                        logger.info(f"✅ Using calculated adjusted duration: {adjusted_duration:.1f}s")
                     
                     if word_count > 0:
                         # Calculate WPM using adjusted duration
                         wpm_calculated = round((word_count / adjusted_duration) * 60, 1)
+                        # Add a sanity check cap for extremely high WPM values
+                        wpm_calculated = min(wpm_calculated, 300)  # Cap at 300 WPM which is very fast but possible
                         logger.info(
                             f"🎉 WPM Calculation Complete!\n"
                             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                             f"📊 Final Results:\n"
                             f"  • Words counted: {word_count}\n"
                             f"  • Original duration: {audio_duration_from_pron_result:.1f}s\n"
+                            f"  • Base speaking time: {base_speaking_time:.1f}s\n"
                             f"  • Adjusted duration: {adjusted_duration:.1f}s\n"
                             f"  • Words per minute: {wpm_calculated} WPM\n"
                             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
