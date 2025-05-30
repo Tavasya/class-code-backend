@@ -5,6 +5,13 @@ import json
 from typing import Dict, List, Any
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 import difflib
+from app.utils.vocabulary_utils import (
+    get_lemma,
+    OXFORD_DATA_CACHE,
+    NLP_PROCESSOR,
+    CEFR_PROGRESSION_MAP
+)
+from app.models.grammar_model import VocabularySuggestion
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -310,68 +317,107 @@ Here are the sentences to analyze:
         logger.exception(f"Error in grammar checking: {str(e)}")
         return [[] for _ in sentences]
 
-async def suggest_vocabulary(sentences: List[str]) -> List[List[Dict[str, Any]]]:
-    """Suggest intermediate B1/B2 level vocabulary alternatives"""
-    logger.info(f"Suggesting intermediate vocabulary for {len(sentences)} sentences")
+def suggest_vocabulary(sentences: List[str]) -> List[List[VocabularySuggestion]]:
+    """
+    Analyze sentences and suggest vocabulary enhancements based on Oxford 5000 word list.
     
-    if not sentences:
-        return []
+    Args:
+        sentences (List[str]): List of sentences from the transcript
         
-    if not OPENAI_API_KEY:
-        return [[] for _ in sentences]
+    Returns:
+        List[List[VocabularySuggestion]]: List of vocabulary suggestions for each sentence
+    """
+    # Initialize empty suggestions list for each sentence
+    all_vocab_suggestions: List[List[VocabularySuggestion]] = [[] for _ in sentences]
     
-    try:
-        prompt = """You are a language expert specializing in B1/B2 level English vocabulary enhancement.
+    # Process each sentence
+    for sentence_idx, sentence_text in enumerate(sentences):
+        # Process sentence with spaCy for accurate tokenization
+        doc = NLP_PROCESSOR(sentence_text)
+        tokenized_words = [token.text for token in doc]
         
-        
-        For each of the following sentences, identify basic (A1/A2 level) words that could be replaced
-        with more appropriate B1/B2 level alternatives. Suggest 2-3 intermediate alternatives for each basic word.
-        
-        Focus on:
-        1. Very basic verbs (like "get", "put", "go", "come")
-        2. Simple adjectives (like "nice", "bad", "big", "small")
-        3. Basic adverbs (like "very", "really", "a lot") 
-        4. General nouns that could be more specific
-        
-        Present the results in a structured JSON format like this:
-        [
-            [  // suggestions for sentence 1
-                {
-                    "original_word": "nice",
-                    "context": "the project was nice",
-                    "advanced_alternatives": ["pleasant", "enjoyable", "interesting"],
-                    "level": "B1"
-                }
-            ],
-            [], // sentence 2: no suggestions
-            [ ... ], // sentence 3: suggestions
-            ...
-        ]
-        
-        Here are the sentences to analyze:
-        """
-        
-        for i, sentence in enumerate(sentences):
-            prompt += f"\n{i+1}. {sentence}"
-        
-        prompt += "\n\nProvide ONLY the JSON array with vocabulary suggestions. No other text or markdown formatting."
-        
-        suggestions = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
-        
-        if suggestions is None:
-            return [[] for _ in sentences]
-        
-        while len(suggestions) < len(sentences):
-            suggestions.append([])
+        # Process each word in the sentence
+        for word_idx, original_word_form in enumerate(tokenized_words):
+            # Get lemma form of the word
+            transcript_word_lemma = get_lemma(original_word_form, NLP_PROCESSOR)
             
-        if len(suggestions) > len(sentences):
-            suggestions = suggestions[:len(sentences)]
+            # Check if word is in Oxford 5000 and eligible for enhancement
+            if transcript_word_lemma in OXFORD_DATA_CACHE:
+                original_word_data = OXFORD_DATA_CACHE[transcript_word_lemma]
+                original_level = original_word_data['level']
+                
+                # Only process words at A2, B1, or B2 levels
+                if original_level in CEFR_PROGRESSION_MAP:
+                    target_level = CEFR_PROGRESSION_MAP[original_level]
+                    
+                    # Get AI suggestions
+                    prompt = f"Suggest 3-5 contextually appropriate single-word alternatives for the word '{original_word_form}' in the sentence: '{sentence_text}'. Provide only a JSON list of single-word strings."
+                    
+                    try:
+                        ai_response = call_openai_with_retry(prompt)
+                        ai_alternatives_list = parse_ai_response(ai_response)
+                        
+                        # Filter and validate AI suggestions
+                        filtered_alternatives = []
+                        for alt_word in ai_alternatives_list:
+                            alt_lemma = get_lemma(alt_word, NLP_PROCESSOR)
+                            
+                            # Check if alternative is in Oxford 5000 and at target level
+                            if (alt_lemma in OXFORD_DATA_CACHE and 
+                                OXFORD_DATA_CACHE[alt_lemma]['level'] == target_level and
+                                alt_lemma not in filtered_alternatives):
+                                filtered_alternatives.append(alt_lemma)
+                        
+                        # Create suggestion if valid alternatives found
+                        if filtered_alternatives:
+                            suggestion = VocabularySuggestion(
+                                original_word=original_word_form,
+                                context=sentence_text,
+                                advanced_alternatives=filtered_alternatives,
+                                level=target_level,
+                                sentence_index=sentence_idx,
+                                phrase_index=word_idx
+                            )
+                            all_vocab_suggestions[sentence_idx].append(suggestion)
+                            
+                    except Exception as e:
+                        # Log error but continue processing
+                        print(f"Error processing word '{original_word_form}': {str(e)}")
+                        continue
+    
+    # Apply limiting heuristics (configurable)
+    MAX_SUGGESTIONS_PER_SENTENCE = 3  # Can be moved to config
+    for sentence_suggestions in all_vocab_suggestions:
+        if len(sentence_suggestions) > MAX_SUGGESTIONS_PER_SENTENCE:
+            # Keep only the first MAX_SUGGESTIONS_PER_SENTENCE suggestions
+            sentence_suggestions[:] = sentence_suggestions[:MAX_SUGGESTIONS_PER_SENTENCE]
+    
+    return all_vocab_suggestions
+
+def parse_ai_response(response: str) -> List[str]:
+    """
+    Parse the AI response into a list of alternative words.
+    
+    Args:
+        response (str): The AI response string
         
-        return suggestions
-        
-    except Exception as e:
-        logger.exception(f"Error in vocabulary suggestion: {str(e)}")
-        return [[] for _ in sentences]
+    Returns:
+        List[str]: List of alternative words
+    """
+    import json
+    try:
+        # Try to parse as JSON list
+        alternatives = json.loads(response)
+        if isinstance(alternatives, list):
+            # Filter out non-string items and empty strings
+            return [str(word).strip() for word in alternatives if isinstance(word, (str, int, float)) and str(word).strip()]
+    except json.JSONDecodeError:
+        pass
+    
+    # Fallback: try to extract words from plain text
+    # Remove common formatting and split on commas or spaces
+    words = response.replace('[', '').replace(']', '').replace('"', '').replace("'", '').split(',')
+    return [word.strip() for word in words if word.strip()]
 
 async def analyze_grammar(transcript: str) -> Dict[str, Any]:
     """Analyze grammar and vocabulary in a transcript"""

@@ -36,4 +36,7 @@ class GrammarResponse(BaseModel):
     status: str
     grammar_corrections: Dict[str, Dict[str, Any]]
     vocabulary_suggestions: Dict[str, Dict[str, Any]]
+    grade: Optional[float] = 100  # Overall grade for the analysis
+    issues: Optional[List[Dict[str, Any]]] = []  # Combined list of grammar and vocabulary issues
+    lexical_resources: Optional[Dict[str, Any]] = {}  # Additional lexical resources and information
     error: Optional[str] = None

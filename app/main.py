@@ -6,6 +6,7 @@ from app.core.config import CORS_ORIGINS
 from app.api.v1.router import api_router
 from app.services.file_manager_service import file_manager
 import logging
+from app.utils.vocabulary_utils import initialize_vocabulary_tools
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,15 @@ async def startup_event():
     
     cleanup_task = asyncio.create_task(periodic_cleanup_loop())
     logger.info("Started periodic file cleanup task")
+
+    # Initialize vocabulary enhancement tools
+    try:
+        initialize_vocabulary_tools()
+    except Exception as e:
+        print(f"Error initializing vocabulary tools: {e}")
+        # You may want to log this error or handle it differently
+        # For now, we'll allow the app to start even if vocabulary tools fail
+        pass
 
 @app.on_event("shutdown")
 async def shutdown_event():

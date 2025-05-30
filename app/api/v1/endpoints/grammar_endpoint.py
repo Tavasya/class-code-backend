@@ -15,7 +15,10 @@ async def analyze_grammar_endpoint(request: GrammarRequest):
         request: GrammarRequest containing the transcript to analyze
         
     Returns:
-        GrammarResponse containing grammar corrections and vocabulary suggestions
+        GrammarResponse containing:
+        - Grammar corrections with context
+        - Vocabulary suggestions from Oxford 5000 with CEFR levels
+        - Overall analysis grade
     """
     try:
         logger.info(f"Received grammar analysis request for transcript of length: {len(request.transcript)}")
@@ -26,20 +29,24 @@ async def analyze_grammar_endpoint(request: GrammarRequest):
                 detail="Transcript is too short for analysis (minimum 10 characters)"
             )
         
-        # Run the grammar analysis
+        # Run the grammar and vocabulary analysis
         result = await analyze_grammar(request.transcript)
         
-        # Create response
+        # Create response with enhanced information
         response = GrammarResponse(
             status="success",
             grammar_corrections=result["grammar_corrections"],
-            vocabulary_suggestions=result["vocabulary_suggestions"]
+            vocabulary_suggestions=result["vocabulary_suggestions"],
+            grade=result.get("grade", 100),  # Include the calculated grade
+            issues=result.get("issues", []),  # Include all identified issues
+            lexical_resources=result.get("lexical_resources", {})  # Include any lexical resources
         )
         
-        # Log statistics
+        # Log detailed statistics
         grammar_count = len(result["grammar_corrections"])
         vocab_count = len(result["vocabulary_suggestions"])
-        logger.info(f"Analysis complete: {grammar_count} grammar issues, {vocab_count} vocabulary suggestions")
+        grade = result.get("grade", 100)
+        logger.info(f"Analysis complete: Grade={grade}, {grammar_count} grammar issues, {vocab_count} vocabulary suggestions")
         
         return response
         

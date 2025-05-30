@@ -43,21 +43,51 @@ The core logic will reside primarily in `app/services/grammar_service.py`. Helpe
 
 **Step 1: Load and Prepare Oxford 5000 Data (Application Startup)**
 
-*   **File to Modify/Create**:
-    *   Potentially `app/core/config.py` or a new `app/utils/vocabulary_utils.py` for loading, or directly in `app/services/grammar_service.py` if initialized globally or passed around.
+*   **File to Create/Modify**:
+    *   **`app/utils/vocabulary_utils.py` (New or Existing)**: This file should house the data loading logic, the cache, NLP processor, and related helper functions.
+    *   **`main.py` (or your FastAPI app's main entry point)**: To call the initialization function at startup.
 *   **Implementation Detail**:
-    1.  Define a function, let's call it `load_oxford_data(file_path: str = "app/assets/full-word.json") -> Dict[str, Dict[str, Any]]`.
-    2.  This function will:
-        a.  Open and read the JSON file specified by `file_path`.
-        b.  Parse the JSON (which is a list of objects).
-        c.  Iterate through the list. For each item, extract the `value.word` (lemmatized and lowercased) as the key and the `value` object (or just `value.level`) as the value for an in-memory dictionary.
-            *   Example: `oxford_word_data_cache = {}`
-            *   For each `entry` in `json_data_list`:
-                *   `word = entry['value']['word'].lower()` (Consider if lemmatization is needed here if words in JSON aren't already lemmas. Assuming they are for now.)
-                *   `level = entry['value']['level']`
-                *   `oxford_word_data_cache[word] = {"level": level, ...other_details_if_needed}`
-    3.  This `oxford_word_data_cache` dictionary should be loaded once when the application starts and made accessible to the `grammar_service`. This could be a global variable in the service module or passed as a dependency.
-    4.  Define the CEFR progression map: `CEFR_PROGRESSION = {"A2": "B1", "B1": "B2", "B2": "C1"}`.
+    1.  In `app/utils/vocabulary_utils.py`, define `load_oxford_data(file_path: str = "app/assets/full-word.json", nlp_processor) -> Dict[str, Dict[str, Any]]`. (Details as previously specified: load JSON, lemmatize keys, store level and original form).
+    2.  Also in `app/utils/vocabulary_utils.py`, define global variables:
+        *   `OXFORD_DATA_CACHE: Dict[str, Dict[str, Any]] = {}`
+        *   `NLP_PROCESSOR: Any = None`
+        *   `CEFR_PROGRESSION_MAP: Dict[str, str] = {"A2": "B1", "B1": "B2", "B2": "C1"}`
+    3.  In `app/utils/vocabulary_utils.py`, define `initialize_vocabulary_tools()`:
+        ```python
+        # In app/utils/vocabulary_utils.py
+        # import spacy # Assuming spaCy
+        
+        # OXFORD_DATA_CACHE, NLP_PROCESSOR, CEFR_PROGRESSION_MAP defined above
+
+        # def load_oxford_data(...): ...
+        # def get_lemma(...): ... # (Covered in Step 2)
+
+        def initialize_vocabulary_tools(oxford_json_path: str = "app/assets/full-word.json"):
+            global NLP_PROCESSOR, OXFORD_DATA_CACHE
+            if NLP_PROCESSOR is None: # Ensure it's initialized only once
+                NLP_PROCESSOR = spacy.load("en_core_web_sm") # Or your chosen library
+            
+            if not OXFORD_DATA_CACHE: # Ensure it's loaded only once
+                OXFORD_DATA_CACHE = load_oxford_data(file_path=oxford_json_path, nlp_processor=NLP_PROCESSOR)
+            
+            if not NLP_PROCESSOR or not OXFORD_DATA_CACHE:
+                # Log error appropriately
+                raise RuntimeError("Failed to initialize essential vocabulary tools.")
+        ```
+    4.  **Application Startup Call**: In your main application file (e.g., `main.py` if using FastAPI), ensure `initialize_vocabulary_tools()` is called during the startup sequence.
+        ```python
+        # Example for FastAPI in main.py
+        # from fastapi import FastAPI
+        # from app.utils.vocabulary_utils import initialize_vocabulary_tools
+
+        # app = FastAPI()
+
+        # @app.on_event("startup")
+        # async def startup_event():
+        #     initialize_vocabulary_tools()
+        #     # Other startup tasks...
+        ```
+    5.  The `oxford_word_data_cache` and `CEFR_PROGRESSION_MAP` will be imported and used by `app/services/grammar_service.py`.
 
 **Step 2: Lemmatization Setup**
 
@@ -114,20 +144,20 @@ The core logic will reside primarily in `app/services/grammar_service.py`. Helpe
     1.  For each "original candidate":
         a.  **Determine Target CEFR Level**: `target_level = CEFR_PROGRESSION[original_level]`.
         b.  **AI-Powered Alternative Generation**:
-            i.  Original word for prompt: `original_candidate['original_form']`.
+            i.  Original word for prompt: `original_candidate['original_form']` (This is the non-lemmatized form from the transcript).
             ii. Sentence for context: `original_candidate['sentence_text']`.
-            iii. Construct prompt for `call_openai_with_retry`: "Suggest a few contextually appropriate single-word alternatives for the word '{original_word_for_prompt}' in the sentence: '{sentence_text}'. Provide only a list of words." (Expected format: JSON list of strings).
-            iv. Let `ai_alternatives_list` be the list of words returned by the AI.
+            iii. Construct prompt for `call_openai_with_retry`: "Suggest 3-5 contextually appropriate single-word alternatives for the word '{original_word_for_prompt}' in the sentence: '{sentence_text}'. Provide only a JSON list of single-word strings." (Requesting a specific number like 3-5 helps, expected format: `["word1", "word2", ...]` ).
+            iv. Let `ai_alternatives_list` be the list of words returned by the AI. Handle cases where AI might not return a valid list (e.g., empty list, malformed response).
         c.  **Filter AI Alternatives**:
             i.  `valid_suggestions_for_candidate = []`
             ii. For each `alt_word_from_ai` in `ai_alternatives_list`:
-                1.  `alt_lemma = get_lemma(alt_word_from_ai, nlp)`.
+                1.  `alt_lemma = get_lemma(alt_word_from_ai, nlp)`. (Ensure `alt_word_from_ai` is treated as a single word for lemmatization).
                 2.  Check if `alt_lemma` exists as a key in `oxford_word_data_cache`.
                 3.  If it exists:
                     *   `alt_word_data = oxford_word_data_cache[alt_lemma]`
                     *   `alternative_actual_level = alt_word_data['level']`
                     *   If `alternative_actual_level == target_level`:
-                        *   Add `alt_lemma` (or `alt_word_from_ai` if you want to preserve AI's casing/form if it varies from lemma) to `valid_suggestions_for_candidate`.
+                        *   Add `alt_lemma` (the lemmatized form of the AI suggestion) to `valid_suggestions_for_candidate`. Avoid duplicates.
         d.  If `valid_suggestions_for_candidate` is not empty, store it along with the original candidate's details.
 
 **Step 6: Format and Present Suggestions (final part of `suggest_vocabulary`)**
@@ -135,16 +165,15 @@ The core logic will reside primarily in `app/services/grammar_service.py`. Helpe
 *   **File to Modify**: `app/services/grammar_service.py`.
 *   **Implementation Detail**:
     1.  The `suggest_vocabulary` function will now return a structure similar to `List[List[Dict[str, Any]]]`, where the outer list corresponds to sentences, and the inner list contains vocabulary suggestion dictionaries for words in that sentence.
-    2.  Each suggestion dictionary should conform to the `VocabularySuggestion` model in `app/models/grammer_model.py`.
-        *   `original_word`: The original non-lemmatized word from the transcript.
-        *   `context`: The `sentence_text`.
-        *   `advanced_alternatives`: The list of `valid_suggestions_for_candidate` (lemmas or AI's form).
+    2.  Each suggestion dictionary should conform to the `VocabularySuggestion` model in `app/models/grammer_model.py`. Ensure the model has a field (e.g., `context` or `sentence_text`) that can store the full sentence.
+        *   `original_word`: The original non-lemmatized word from the transcript (`original_candidate['original_form']`).
+        *   `context` (or `sentence_text` - use the exact field name from `VocabularySuggestion` model): The full `sentence_text` (`original_candidate['sentence_text']`).
+        *   `advanced_alternatives`: The list of `valid_suggestions_for_candidate` (these are lemmas).
         *   `level`: The `target_level`.
         *   `sentence_index`: `original_candidate['sentence_idx']`.
-        *   `phrase_index`: `original_candidate['word_idx']` (or a similar index tracking distinct words if needed, as per current `enhance_vocabulary_suggestions_with_context`). Consider if the existing `phrase_index` logic for multiple occurrences of the *same* original word needs to be adapted.
-        *   `sentence_text`: `original_candidate['sentence_text']`.
+        *   `phrase_index`: This should be `original_candidate['word_idx']`, representing the 0-based index of the original word within its tokenized sentence.
     3.  **Apply Limiting Heuristics**:
-        *   Before finalizing, apply rules like "max N suggestions per sentence" or "total M suggestions per transcript." This might involve sorting candidates (e.g., by lowest original CEFR level) and picking the top N/M.
+        *   Before finalizing, apply rules like "max N suggestions per sentence" or "total M suggestions per transcript." These thresholds (N, M) should ideally be configurable (e.g., via environment variables or a config file) rather than hardcoded.
 
 ## 5. How it Works (User Perspective)
 
@@ -164,111 +193,95 @@ The core logic will reside primarily in `app/services/grammar_service.py`. Helpe
 
 This section details specific changes and their locations.
 
-**A. New Utility Components (Consider `app/utils/vocabulary_utils.py` or within `grammar_service.py`)**
+**A. New Utility Components (Strongly Recommended in `app/utils/vocabulary_utils.py`)**
 
-1.  **Oxford 5000 Data Loader**:
-    *   **Function**: `load_oxford_data(file_path: str = "app/assets/full-word.json") -> Dict[str, Dict[str, Any]]`
-    *   **Purpose**: Loads `full-word.json`, parses it, and transforms it into a dictionary mapping lowercased, lemmatized words to their details (especially 'level').
-    *   **Initialization**: Called once at application startup. The resulting dictionary is stored globally or passed as a dependency.
-    *   **Global Variable Example (in `grammar_service.py` or `vocabulary_utils.py`)**:
-        ```python
-        # At the top of the file
-        OXFORD_DATA_CACHE: Dict[str, Dict[str, Any]] = {}
-        NLP_PROCESSOR: Any = None # spaCy model
-        CEFR_PROGRESSION_MAP: Dict[str, str] = {"A2": "B1", "B1": "B2", "B2": "C1"}
+Create `app/utils/vocabulary_utils.py` if it doesn't exist. This file will consolidate vocabulary-specific logic.
 
-        def initialize_vocabulary_tools():
-            global OXFORD_DATA_CACHE, NLP_PROCESSOR
-            # OXFORD_DATA_CACHE = load_oxford_data() # Implement load_oxford_data
-            # NLP_PROCESSOR = spacy.load("en_core_web_sm") # Or your chosen library
-            pass # Actual implementation
-        ```
-        *Call `initialize_vocabulary_tools()` when the FastAPI app starts.*
+1.  **Oxford 5000 Data Loader and Global Variables**:
+    *   **File**: `app/utils/vocabulary_utils.py`
+    *   **Variables**:
+        *   `OXFORD_DATA_CACHE: Dict[str, Dict[str, Any]] = {}`
+        *   `NLP_PROCESSOR: Any = None`
+        *   `CEFR_PROGRESSION_MAP: Dict[str, str] = {"A2": "B1", "B1": "B2", "B2": "C1"}`
+    *   **Function**: `load_oxford_data(file_path: str = "app/assets/full-word.json", nlp_processor) -> Dict[str, Dict[str, Any]]`
+        *   **Purpose**: Loads `full-word.json`, lemmatizes keys using `nlp_processor`, and stores word details (level, original form).
+    *   **Initialization Function**: `initialize_vocabulary_tools()`
+        *   **File**: `app/utils/vocabulary_utils.py`
+        *   **Purpose**: Initializes `NLP_PROCESSOR` and calls `load_oxford_data` to populate `OXFORD_DATA_CACHE`.
+        *   **Called From**: Application startup sequence (e.g., in `main.py` for FastAPI, as shown in Section 4, Step 1).
 
 2.  **Lemmatization Function**:
-    *   **Function**: `get_lemma(word_text: str, nlp_processor_instance) -> str` (Note: `nlp_processor_instance` is the loaded spaCy model, e.g., `NLP_PROCESSOR`)
-    *   **Purpose**: Takes a single word string and the initialized NLP processor (e.g., spaCy model), returns its lowercase lemma. Essential for standardizing words from the transcript and AI suggestions before dictionary lookups.
-    *   **Usage**: Called repeatedly. Example implementation (if using spaCy):
-        ```python
-        # Ensure spaCy is imported, e.g., import spacy
-        # And NLP_PROCESSOR is loaded globally, e.g.,
-        # NLP_PROCESSOR = spacy.load("en_core_web_sm")
-
-        def get_lemma(word_text: str, nlp_processor_instance) -> str:
-            doc = nlp_processor_instance(word_text.lower())
-            if doc and len(doc) > 0:
-                return doc[0].lemma_
-            return word_text.lower() # Fallback for empty or unlemmatizable input
-        ```
-    *   **Consideration**: Ensure the `nlp_processor_instance` passed to this function is the globally initialized one to avoid reloading the model on each call.
+    *   **File**: `app/utils/vocabulary_utils.py`
+    *   **Function**: `get_lemma(word_text: str, nlp_processor_instance) -> str`
+    *   **Purpose**: Takes a single word and the initialized `NLP_PROCESSOR`, returns its lowercase lemma. (Details as previously specified).
 
 **B. `app/services/grammar_service.py` Modifications**
 
-1.  **Global Variables/Initialization**:
-    *   Store the loaded `OXFORD_DATA_CACHE`, `NLP_PROCESSOR`, and `CEFR_PROGRESSION_MAP` so they are accessible by `suggest_vocabulary`.
-    *   Ensure `initialize_vocabulary_tools()` is called.
+1.  **Imports and Reliance on Utilities**:
+    *   `app/services/grammar_service.py` will now import necessary components from `app/utils/vocabulary_utils.py`:
+        ```python
+        # At the top of app/services/grammar_service.py
+        # from app.utils.vocabulary_utils import get_lemma, OXFORD_DATA_CACHE, NLP_PROCESSOR, CEFR_PROGRESSION_MAP
+        # from app.models.grammer_model import VocabularySuggestion # Assuming this path
+        # import other necessary modules like call_openai_with_retry
+        ```
+    *   It no longer needs to define these globals itself. The `initialize_vocabulary_tools()` ensures they are ready.
 
 2.  **`suggest_vocabulary(sentences: List[str]) -> List[List[Dict[str, Any]]]` function (Major Refactor)**:
-    *   **Inputs**: Will now implicitly use `OXFORD_DATA_CACHE`, `NLP_PROCESSOR`, and `CEFR_PROGRESSION_MAP`.
-    *   **Remove Old Logic**: The current OpenAI call that asks for general B1/B2 enhancements will be replaced.
+    *   **File**: `app/services/grammar_service.py`
+    *   **Inputs**: `sentences: List[str]`. Implicitly uses imported `OXFORD_DATA_CACHE`, `NLP_PROCESSOR`, `CEFR_PROGRESSION_MAP`, and `get_lemma` from `app/utils/vocabulary_utils.py`.
+    *   **Return Type**: `List[List[VocabularySuggestion]]` (using the actual model type).
+    *   **Remove Old Logic**: The current OpenAI call that asks for general B1/B2 enhancements will be completely removed and replaced by the logic below.
     *   **New Workflow Integration**:
-        1.  Initialize `all_vocab_suggestions = [[] for _ in sentences]`.
+        1.  Initialize `all_vocab_suggestions: List[List[VocabularySuggestion]] = [[] for _ in sentences]`.
         2.  Iterate `sentence_idx, sentence_text` from `enumerate(sentences)`.
-        3.  Tokenize `sentence_text` into words (with their original index/position in the sentence for `phrase_index`).
-        4.  For each `original_word_form` at `word_idx` in the tokenized sentence:
-            a.  `transcript_word_lemma = get_lemma(original_word_form, NLP_PROCESSOR)`.
+        3.  Tokenize `sentence_text` into words. A simple `tokenized_words = sentence_text.split()` can be a starting point. For more advanced tokenization that aligns with `spaCy` (if used for lemmatization), you might process the sentence: `doc = NLP_PROCESSOR(sentence_text); tokenized_words = [token.text for token in doc]`. Choose a consistent method. Store these original word forms.
+        4.  For each `original_word_form` at `word_idx` in `enumerate(tokenized_words)`:
+            a.  `transcript_word_lemma = get_lemma(original_word_form, NLP_PROCESSOR)`. Keep `original_word_form` for the suggestion output.
             b.  **Identify Candidate (Step 4 from Workflow)**:
                 *   If `transcript_word_lemma` in `OXFORD_DATA_CACHE`:
-                    *   `original_level = OXFORD_DATA_CACHE[transcript_word_lemma]['level']`.
+                    *   `original_word_cache_data = OXFORD_DATA_CACHE[transcript_word_lemma]`
+                    *   `original_level = original_word_cache_data['level']`.
                     *   If `original_level` in ["A2", "B1", "B2"] and `original_level` in `CEFR_PROGRESSION_MAP`:
                         *   `target_level = CEFR_PROGRESSION_MAP[original_level]`.
-                        *   This becomes an "original candidate."
+                        *   An "original candidate" is identified: `original_form=original_word_form`, `sentence_text=sentence_text`, `sentence_idx=sentence_idx`, `word_idx=word_idx`, `original_level=original_level`.
             c.  **Generate & Filter Suggestions (Step 5 from Workflow)**:
                 *   If an "original candidate" is identified:
-                    *   Call `call_openai_with_retry` with the new prompt (see Workflow Step 5.b.iii) to get `ai_alternatives_list`.
+                    *   Call `call_openai_with_retry` ... (details as before) ... to get `ai_alternatives_list`. 
                     *   `filtered_advanced_alternatives = []`.
                     *   For `alt_word_from_ai` in `ai_alternatives_list`:
                         *   `alt_lemma = get_lemma(alt_word_from_ai, NLP_PROCESSOR)`.
                         *   If `alt_lemma` in `OXFORD_DATA_CACHE` and `OXFORD_DATA_CACHE[alt_lemma]['level'] == target_level`:
-                            *   `filtered_advanced_alternatives.append(alt_lemma)` (or `alt_word_from_ai`).
+                            *   If `alt_lemma` not already in `filtered_advanced_alternatives`:
+                                *   `filtered_advanced_alternatives.append(alt_lemma)`.
                     *   If `filtered_advanced_alternatives` is not empty:
-                        *   Construct the `VocabularySuggestion` dictionary (see Workflow Step 6.2).
-                        *   `all_vocab_suggestions[sentence_idx].append(suggestion_dict)`.
-        5.  **(Crucial) Apply Limiting Heuristics**: Before returning, prune `all_vocab_suggestions` based on rules like max suggestions per sentence/transcript. This might involve sorting and slicing.
+                        *   Construct the `VocabularySuggestion` object (ensure field names match your model in `app/models/grammer_model.py`):
+                            ```python
+                            suggestion = VocabularySuggestion(
+                                original_word=original_candidate['original_form'],
+                                context=original_candidate['sentence_text'], # Or sentence_text if that's the model field
+                                advanced_alternatives=filtered_advanced_alternatives,
+                                level=target_level,
+                                sentence_index=original_candidate['sentence_idx'],
+                                phrase_index=original_candidate['word_idx']
+                                # sentence_text field might be redundant if 'context' stores the full sentence
+                            )
+                            ```
+                        *   `all_vocab_suggestions[sentence_idx].append(suggestion)`.
+        5.  **(Crucial) Apply Limiting Heuristics**: ... (details as before) ...
         6.  Return `all_vocab_suggestions`.
-
-3.  **`enhance_vocabulary_suggestions_with_context` function**:
-    *   May still be useful if the `phrase_index` logic needs to be more sophisticated than just the word's position, especially if the same word appears multiple times and each instance is treated as a separate candidate. Review if its current logic is directly applicable or needs adjustment based on how candidates are identified and stored. The `suggest_vocabulary` refactor should aim to populate most fields directly.
-
-4.  **`analyze_grammar(transcript: str) -> Dict[str, Any]` function**:
-    *   **Initialization Call**: Ensure `initialize_vocabulary_tools()` has been run if not handled at app startup.
-    *   **`vocab_candidate_sentences` logic**: This will likely be removed or completely rethought. The new `suggest_vocabulary` operates on all sentences and filters based on Oxford 5000 presence.
-    *   The call to `suggest_vocabulary` will remain, but its output will now be based on the new Oxford 5000 driven logic.
-    *   The formatting of `vocab_issues` and `vocabulary_suggestions_dict` will largely remain the same, as the `VocabularySuggestion` model structure is preserved.
 
 **C. `app/models/grammer_model.py`**
 
-*   No changes expected to `VocabularySuggestion` model itself, as the new logic will populate the existing fields.
+*   **File**: `app/models/grammer_model.py`
+*   **`VocabularySuggestion` Model**: 
+    *   Verify that this Pydantic (or similar) model has a field to store the full sentence context (e.g., `context: str` or `sentence_text: str`). The examples in this plan will assume `context` is used for the full sentence.
+    *   Other fields (`original_word`, `advanced_alternatives`, `level`, `sentence_index`, `phrase_index`) should align with the data being prepared in `suggest_vocabulary`.
+    *   No other structural changes to the model are expected *due to this plan*, but ensure it accommodates the data as described.
 
 **D. `app/requirements.txt`**
 
-*   Add the chosen lemmatization library (e.g., `spacy` and the specific model like `en_core_web_sm`).
-    *   Example:
-        ```
-        spacy>=3.0.0,<4.0.0
-        # If using spaCy, also remind to download the model:
-        # python -m spacy download en_core_web_sm
-        ```
-
-## 7. Potential Challenges & Mitigation
-
-*   **Lemmatization Accuracy**: Mismatches due to imperfect lemmatization.
-    *   *Mitigation*: Use a robust lemmatization library (e.g., spaCy is generally very good).
-*   **Contextual Fit of AI Alternatives**: AI might suggest alternatives that are at the right level but don't perfectly fit the nuance.
-    *   *Mitigation*: The prompt to the AI is key. Emphasize contextual fit. The strict filtering by Oxford 5000 at the target level will also help.
-*   **Limited Number of Suggestions**: The strict filtering, now focused on words starting at A2, B1, or B2, might result in few suggestions.
-    *   *Mitigation*: This is an accepted trade-off for quality and adherence to the Oxford 5000. Ensure the AI is prompted to provide a decent number of initial alternatives to increase the chances of a match.
-*   **Overwhelming Users**: If too many words in a sentence are from Oxford 5000 B1/B2 (previously A1/A2).
-    *   *Mitigation*: Implement the limiting heuristics mentioned in Step 5 of the workflow.
-
-This plan provides a clear path forward for enhancing the vocabulary suggestion feature with a strong pedagogical basis. 
+*   **File**: `app/requirements.txt`
+*   **Additions**:
+    *   `spacy>=3.0.0,<4.0.0`
+    *   `python -m spacy download en_core_web_sm`
