@@ -183,22 +183,30 @@ async def get_fluency_coherence_analysis(transcript: str, timing_metrics: Dict[s
     if not analysis:
         raise ValueError("Failed to get valid analysis from API")
 
-    # Ensure the response has the correct structure
-    if "grade" not in analysis or "issues" not in analysis or \
-       "cohesive_device_band_level" not in analysis or "cohesive_device_feedback" not in analysis:
-        logger.warning("API response did not contain all expected fields for fluency/coherence/cohesive analysis. Falling back.")
-        # Fallback to default structure if API doesn't return expected format
-        return {
-            "grade": 50,
-            "issues": ["Unable to analyze fluency due to API response format issues."],
-            "cohesive_device_band_level": None,
-            "cohesive_device_feedback": None
-        }
+    # Ensure the response has the correct structure and provide defaults
+    grade = analysis.get('grade', 50) # Default grade if missing
+    issues = analysis.get('issues', ["Unable to provide specific issues due to API response format."])
+    cohesive_device_band_level = analysis.get('cohesive_device_band_level', 0) # Default band level
+    cohesive_device_feedback = analysis.get('cohesive_device_feedback', "Cohesive device analysis not available.") # Default feedback
 
-    return analysis
+    # Check if critical fields like grade or issues were actually missing, to log if needed
+    if 'grade' not in analysis or 'issues' not in analysis:
+        logger.warning("API response did not contain 'grade' or 'issues'. Using fallback values for these.")
+    if 'cohesive_device_band_level' not in analysis or 'cohesive_device_feedback' not in analysis:
+        logger.warning("API response did not contain cohesive device fields. Using default values.")
+        
+    return {
+        "grade": grade,
+        "issues": issues,
+        "cohesive_device_band_level": cohesive_device_band_level,
+        "cohesive_device_feedback": cohesive_device_feedback
+    }
 
 async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
     """Main function to analyze fluency and coherence"""
+    # Define default values to ensure fields are always populated
+    default_band_level = 0
+    default_feedback = "Cohesive device analysis not available."
     try:
         timing_metrics = {}
         wpm = 0.0
@@ -243,10 +251,10 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
         
         # Create CoherenceMetrics (using grade as baseline for now)
         coherence_metrics = {
-            "topic_consistency": analysis_result.get('grade', 0), # Consider if cohesive band should influence this
-            "logical_flow": analysis_result.get('grade', 0),    # Consider if cohesive band should influence this
-            "idea_development": analysis_result.get('grade', 0), # Consider if cohesive band should influence this
-            "overall_coherence_score": analysis_result.get('grade', 0) # Consider if cohesive band should influence this
+            "topic_consistency": analysis_result.get('grade', 0), 
+            "logical_flow": analysis_result.get('grade', 0),    
+            "idea_development": analysis_result.get('grade', 0), 
+            "overall_coherence_score": analysis_result.get('grade', 0) 
         }
         
         return FluencyResponse(
@@ -254,9 +262,9 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
             fluency_metrics=fluency_metrics_data,
             coherence_metrics=coherence_metrics,
             key_findings=analysis_result.get('issues', []),
-            improvement_suggestions=analysis_result.get('issues', []),  # Using same issues for now
-            cohesive_device_band_level=analysis_result.get('cohesive_device_band_level'),
-            cohesive_device_feedback=analysis_result.get('cohesive_device_feedback')
+            improvement_suggestions=analysis_result.get('issues', []),
+            cohesive_device_band_level=analysis_result.get('cohesive_device_band_level', default_band_level),
+            cohesive_device_feedback=analysis_result.get('cohesive_device_feedback', default_feedback)
         )
         
     except Exception as e:
@@ -279,6 +287,6 @@ async def analyze_fluency(request: FluencyRequest) -> FluencyResponse:
             },
             key_findings=[],
             improvement_suggestions=[],
-            cohesive_device_band_level=None,
-            cohesive_device_feedback=None
+            cohesive_device_band_level=default_band_level, # Use default
+            cohesive_device_feedback=default_feedback # Use default
         )

@@ -37,16 +37,16 @@ class FluencyResponse(BaseModel):
     coherence_metrics: CoherenceMetrics
     key_findings: List[str]
     improvement_suggestions: List[str]
-    cohesive_device_band_level: Optional[int] = None
-    cohesive_device_feedback: Optional[str] = None
+    cohesive_device_band_level: int = 0
+    cohesive_device_feedback: str = "Cohesive device analysis not available."
     error: Optional[str] = None
-#
+
 class SimpleFluencyResponse(BaseModel):
     """Simplified response model for the fluency endpoint"""
     grade: float
     issues: List[str]
     wpm: float
-    cohesive_device_band_level: Optional[int] = None
-    cohesive_device_feedback: Optional[str] = None
+    cohesive_device_band_level: int = 0
+    cohesive_device_feedback: str = "Cohesive device analysis not available."
     status: str = "success" # Optional: include a status if desired
     error: Optional[str] = None # Optional: include error if an error occurs before this transformation
