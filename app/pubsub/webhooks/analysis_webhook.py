@@ -309,27 +309,87 @@ class AnalysisWebhook:
                     logger.warning(f"DEBUG: pronunciation_result is not a dict (type: {type(pronunciation_result)}), cannot get audio_duration.")
 
                 if transcript and audio_duration_from_pron_result and isinstance(audio_duration_from_pron_result, (int, float)) and audio_duration_from_pron_result > 0:
+                    logger.info("🎯 Starting WPM calculation process...")
+                    
                     # Count actual words using the utility function
                     word_count = count_actual_words(transcript)
+                    logger.info(f"📝 Found {word_count} actual words in transcript")
                     
                     # Get sentence count for natural pause adjustment
                     sentence_count = get_sentence_count(transcript)
+                    logger.info(f"📋 Detected {sentence_count} sentences")
                     
-                    # Average pause between sentences (in seconds)
-                    PAUSE_BETWEEN_SENTENCES = 0.5
+                    # Natural speech timing adjustments (in seconds)
+                    PAUSE_BETWEEN_SENTENCES = 0.7  # Increased from 0.5
+                    PAUSE_FOR_COMMA = 0.3  # Pause for commas and other mid-sentence breaks
+                    PAUSE_FOR_THOUGHT = 0.5  # Natural pause for thought processing
+                    
+                    # Count commas for additional pauses
+                    comma_count = transcript.count(',')
+                    logger.info(f"✂️ Found {comma_count} commas for natural pauses")
+                    
+                    # Calculate thought pauses - assume one per every 15 words
+                    thought_pauses = word_count // 15
+                    logger.info(f"🤔 Calculated {thought_pauses} natural thought pauses (1 per 15 words)")
+                    
+                    # Calculate total pause duration
+                    sentence_pause_time = sentence_count * PAUSE_BETWEEN_SENTENCES
+                    comma_pause_time = comma_count * PAUSE_FOR_COMMA
+                    thought_pause_time = thought_pauses * PAUSE_FOR_THOUGHT
+                    
+                    total_pause_duration = sentence_pause_time + comma_pause_time + thought_pause_time
+                    
+                    logger.info(
+                        f"⏱️ Pause Duration Breakdown:\n"
+                        f"  • Sentence pauses: {sentence_pause_time:.1f}s ({sentence_count} × {PAUSE_BETWEEN_SENTENCES}s)\n"
+                        f"  • Comma pauses: {comma_pause_time:.1f}s ({comma_count} × {PAUSE_FOR_COMMA}s)\n"
+                        f"  • Thought pauses: {thought_pause_time:.1f}s ({thought_pauses} × {PAUSE_FOR_THOUGHT}s)\n"
+                        f"  📊 Total pause duration: {total_pause_duration:.1f}s"
+                    )
                     
                     # Adjust total duration by subtracting natural pauses
-                    adjusted_duration = audio_duration_from_pron_result - (sentence_count * PAUSE_BETWEEN_SENTENCES)
+                    # Use a sliding scale for pause impact based on text length
+                    pause_impact_factor = min(0.9, max(0.5, 1.0 - (word_count / 300)))  # Reduces pause impact for longer texts
+                    logger.info(f"📉 Calculated pause impact factor: {pause_impact_factor:.2f} (adjusts for text length)")
                     
-                    # Ensure adjusted duration doesn't go below a minimum threshold
-                    adjusted_duration = max(adjusted_duration, audio_duration_from_pron_result * 0.7)
+                    adjusted_pause_duration = total_pause_duration * pause_impact_factor
+                    logger.info(f"⚖️ Adjusted pause duration: {adjusted_pause_duration:.1f}s (after impact factor)")
+                    
+                    adjusted_duration = audio_duration_from_pron_result - adjusted_pause_duration
+                    logger.info(f"⏳ Initial adjusted duration: {adjusted_duration:.1f}s (original - adjusted pauses)")
+                    
+                    # Ensure adjusted duration doesn't go below a reasonable minimum
+                    min_duration = audio_duration_from_pron_result * 0.6  # Allow more time reduction
+                    adjusted_duration = max(adjusted_duration, min_duration)
+                    
+                    if adjusted_duration != min_duration:
+                        logger.info(f"✅ Using calculated adjusted duration: {adjusted_duration:.1f}s")
+                    else:
+                        logger.info(f"⚠️ Using minimum allowed duration: {adjusted_duration:.1f}s (60% of original)")
                     
                     if word_count > 0:
                         # Calculate WPM using adjusted duration
                         wpm_calculated = round((word_count / adjusted_duration) * 60, 1)
-                        logger.info(f"DEBUG: WPM calculated as {wpm_calculated} (words: {word_count}, adjusted duration: {adjusted_duration}s, original duration: {audio_duration_from_pron_result}s, sentences: {sentence_count})")
+                        logger.info(
+                            f"🎉 WPM Calculation Complete!\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📊 Final Results:\n"
+                            f"  • Words counted: {word_count}\n"
+                            f"  • Original duration: {audio_duration_from_pron_result:.1f}s\n"
+                            f"  • Adjusted duration: {adjusted_duration:.1f}s\n"
+                            f"  • Words per minute: {wpm_calculated} WPM\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📝 Speech Components:\n"
+                            f"  • Sentences: {sentence_count}\n"
+                            f"  • Commas: {comma_count}\n"
+                            f"  • Thought pauses: {thought_pauses}\n"
+                            f"⏱️ Timing Adjustments:\n"
+                            f"  • Total pause time: {total_pause_duration:.1f}s\n"
+                            f"  • Impact factor: {pause_impact_factor:.2f}\n"
+                            f"  • Final pause reduction: {adjusted_pause_duration:.1f}s"
+                        )
                     else:
-                        logger.warning(f"DEBUG: Transcript word count is 0. WPM will be 0.")
+                        logger.warning("⚠️ Transcript word count is 0. WPM will be 0.")
                 else:
                     logger.warning(
                         f"DEBUG: WPM calculation skipped or failed. Transcript available: {bool(transcript)}, "
