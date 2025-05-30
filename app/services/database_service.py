@@ -70,8 +70,16 @@ class DatabaseService:
             self._log_operation_error(operation, str(e), bucket="recordings", path_prefix=path_prefix)
             return []
 
-    def update_submission_results(self, submission_url: str, question_results: Dict[str, Any], recordings: Optional[List[str]] = None, overall_assignment_score: Optional[float] = None) -> Optional[str]:
-        """Update an existing submission with analysis results, recordings, and overall assignment score."""
+    def update_submission_results(self, 
+                                  submission_url: str, 
+                                  question_results: Dict[str, Any], 
+                                  recordings: Optional[List[str]] = None, 
+                                  avg_pronunciation_score: Optional[float] = None,
+                                  avg_fluency_score: Optional[float] = None,
+                                  avg_grammar_score: Optional[float] = None,
+                                  avg_lexical_score: Optional[float] = None
+                                  ) -> Optional[str]:
+        """Update an existing submission with analysis results, recordings, and average section scores."""
         operation = "UPDATE_SUBMISSION_RESULTS"
         
         log_kwargs = {
@@ -80,9 +88,15 @@ class DatabaseService:
             "recordings_count": len(recordings) if recordings else 0,
             "table": "submissions"
         }
-        if overall_assignment_score is not None:
-            log_kwargs["overall_assignment_score"] = overall_assignment_score
-
+        if avg_pronunciation_score is not None:
+            log_kwargs["avg_pronunciation_score"] = avg_pronunciation_score
+        if avg_fluency_score is not None:
+            log_kwargs["avg_fluency_score"] = avg_fluency_score
+        if avg_grammar_score is not None:
+            log_kwargs["avg_grammar_score"] = avg_grammar_score
+        if avg_lexical_score is not None:
+            log_kwargs["avg_lexical_score"] = avg_lexical_score
+        
         self._log_operation_start(operation, **log_kwargs)
         
         try:
@@ -110,12 +124,32 @@ class DatabaseService:
             if recordings:
                 update_data["recordings"] = recordings
 
-            # Add overall_assignment_score if provided
-            if overall_assignment_score is not None:
-                update_data["overall_assignment_score"] = overall_assignment_score
+            # Add average section scores if provided
+            if avg_pronunciation_score is not None:
+                update_data["avg_pronunciation_score"] = avg_pronunciation_score
+            if avg_fluency_score is not None:
+                update_data["avg_fluency_score"] = avg_fluency_score
+            if avg_grammar_score is not None:
+                update_data["avg_grammar_score"] = avg_grammar_score
+            if avg_lexical_score is not None:
+                update_data["avg_lexical_score"] = avg_lexical_score
             
             # Log the data being updated
-            logger.info(f"📝 Data to update for {submission_url}: status=graded, recordings_count={len(recordings or [])}, section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes, overall_score={overall_assignment_score}")
+            log_message_parts = [
+                f"status=graded",
+                f"recordings_count={len(recordings or [])}",
+                f"section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes"
+            ]
+            if avg_pronunciation_score is not None:
+                log_message_parts.append(f"avg_pron_score={avg_pronunciation_score}")
+            if avg_fluency_score is not None:
+                log_message_parts.append(f"avg_flu_score={avg_fluency_score}")
+            if avg_grammar_score is not None:
+                log_message_parts.append(f"avg_gram_score={avg_grammar_score}")
+            if avg_lexical_score is not None:
+                log_message_parts.append(f"avg_lex_score={avg_lexical_score}")
+
+            logger.info(f"📝 Data to update for {submission_url}: {', '.join(log_message_parts)}")
 
             # Update the submission
             result = self.supabase.table('submissions').update(update_data).eq('id', submission_url).execute()
@@ -123,12 +157,23 @@ class DatabaseService:
             if result.data and len(result.data) > 0:
                 updated_submission = result.data[0]
                 submission_db_id = updated_submission['id']
-                self._log_operation_success(operation,
-                                          submission_url=submission_url,
-                                          db_id=submission_db_id,
-                                          table="submissions",
-                                          status="graded",
-                                          overall_assignment_score=overall_assignment_score)
+                
+                success_log_kwargs = {
+                    "submission_url": submission_url,
+                    "db_id": submission_db_id,
+                    "table": "submissions",
+                    "status": "graded"
+                }
+                if avg_pronunciation_score is not None:
+                    success_log_kwargs["avg_pronunciation_score"] = avg_pronunciation_score
+                if avg_fluency_score is not None:
+                    success_log_kwargs["avg_fluency_score"] = avg_fluency_score
+                if avg_grammar_score is not None:
+                    success_log_kwargs["avg_grammar_score"] = avg_grammar_score
+                if avg_lexical_score is not None:
+                    success_log_kwargs["avg_lexical_score"] = avg_lexical_score
+                
+                self._log_operation_success(operation, **success_log_kwargs)
                 return submission_db_id
             else:
                 error_msg = result.error if hasattr(result, 'error') and result.error else 'No data returned from update operation'
