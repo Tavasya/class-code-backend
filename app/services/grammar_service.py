@@ -4,6 +4,7 @@ import aiohttp
 import json
 from typing import Dict, List, Any
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
+import difflib
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -154,6 +155,94 @@ def enhance_vocabulary_suggestions_with_context(sentences: List[str], vocab_sugg
             
     return vocab_suggestions_per_sentence
 
+def simplify_single_word_corrections(
+    corrections_per_sentence: List[List[Dict[str, str]]]
+) -> List[List[Dict[str, str]]]:
+    """
+    Attempts to simplify corrections down to a single word if the change
+    is primarily a single-word substitution.
+    """
+    processed_sentences = []
+    for sentence_corrections in corrections_per_sentence:
+        if not sentence_corrections:
+            processed_sentences.append([])
+            continue
+
+        processed_corrections_for_sentence = []
+        for correction in sentence_corrections:
+            original_phrase_str = correction.get("original_phrase", "")
+            suggested_correction_str = correction.get("suggested_correction", "")
+
+            if not original_phrase_str or not suggested_correction_str or original_phrase_str == suggested_correction_str:
+                processed_corrections_for_sentence.append(correction)
+                continue
+            
+            original_tokens = original_phrase_str.split()
+            suggested_tokens = suggested_correction_str.split()
+
+            matcher = difflib.SequenceMatcher(None, original_tokens, suggested_tokens)
+            opcodes = matcher.get_opcodes()
+            
+            is_single_word_substitution = False
+            new_original_word = None
+            new_suggested_word = None
+
+            if len(opcodes) > 0:
+                change_opcodes = [op for op in opcodes if op[0] != 'equal']
+
+                if len(change_opcodes) == 1 and change_opcodes[0][0] == 'replace':
+                    tag, i1, i2, j1, j2 = change_opcodes[0]
+                    if (i2 - i1 == 1) and (j2 - j1 == 1): 
+                        # Check if all other opcodes are 'equal'
+                        # This ensures that the 'replace' is the *only* significant change
+                        # and not part of a larger set of differences.
+                        only_one_replace_and_rest_equal = True
+                        for op_tag, _, _, _, _ in opcodes:
+                            if op_tag != 'equal' and op_tag != 'replace':
+                                only_one_replace_and_rest_equal = False
+                                break
+                        
+                        if only_one_replace_and_rest_equal:
+                             # Further check: ensure the replace operation itself is surrounded by equals or is the only operation
+                            if len(opcodes) == 1: # Only the replace operation
+                                is_single_word_substitution = True
+                            elif len(opcodes) > 1 :
+                                # Check if this replace is bounded by equals or at an end
+                                replace_opcode_index = -1
+                                for idx, op in enumerate(opcodes):
+                                    if op[0] == 'replace' and op[1]==i1 and op[2]==i2 and op[3]==j1 and op[4]==j2:
+                                        replace_opcode_index = idx
+                                        break
+                                
+                                if replace_opcode_index != -1:
+                                    is_valid_context = True
+                                    # Check opcode before (if exists)
+                                    if replace_opcode_index > 0 and opcodes[replace_opcode_index-1][0] != 'equal':
+                                        is_valid_context = False
+                                    # Check opcode after (if exists)
+                                    if replace_opcode_index < len(opcodes) - 1 and opcodes[replace_opcode_index+1][0] != 'equal':
+                                        is_valid_context = False
+                                    
+                                    if is_valid_context:
+                                        is_single_word_substitution = True
+
+
+                        if is_single_word_substitution:
+                            new_original_word = original_tokens[i1]
+                            new_suggested_word = suggested_tokens[j1]
+            
+            if is_single_word_substitution and new_original_word and new_suggested_word:
+                simplified_correction = correction.copy() 
+                simplified_correction["original_phrase"] = new_original_word
+                simplified_correction["suggested_correction"] = new_suggested_word
+                processed_corrections_for_sentence.append(simplified_correction)
+                logger.info(f"Simplified correction: '{original_phrase_str}' -> '{suggested_correction_str}' to '{new_original_word}' -> '{new_suggested_word}'")
+            else:
+                processed_corrections_for_sentence.append(correction)
+        
+        processed_sentences.append(processed_corrections_for_sentence)
+    return processed_sentences
+
 async def check_grammar(sentences: List[str]) -> List[List[Dict[str, str]]]:
     """Check grammar for each sentence and return corrections"""
     logger.info(f"Checking grammar for {len(sentences)} sentences")
@@ -302,16 +391,19 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         logger.info(f"Analyzing {len(sentences)} sentences")
         
         # 1. Get grammar corrections for all sentences
-        grammar_corrections = await check_grammar(sentences)
+        raw_grammar_corrections = await check_grammar(sentences)
+
+        # ===> NEW STEP: Simplify corrections if they are single-word changes <===
+        simplified_grammar_corrections = simplify_single_word_corrections(raw_grammar_corrections)
         
         # 2. Enhance grammar corrections with context
-        enhanced_grammar_corrections = enhance_grammar_corrections_with_context(sentences, grammar_corrections)
+        enhanced_grammar_corrections = enhance_grammar_corrections_with_context(sentences, simplified_grammar_corrections)
         
         # 3. Get vocabulary suggestions for sentences without grammar issues
         vocab_candidate_sentences = []
         vocab_candidate_indices = []
         
-        for i, corrections in enumerate(grammar_corrections):
+        for i, corrections in enumerate(enhanced_grammar_corrections):
             if not corrections:  # No grammar issues in this sentence
                 vocab_candidate_sentences.append(sentences[i])
                 vocab_candidate_indices.append(i)
