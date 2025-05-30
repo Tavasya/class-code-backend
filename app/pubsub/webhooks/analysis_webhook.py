@@ -15,6 +15,7 @@ from app.core.results_store import results_store
 from app.services.database_service import DatabaseService
 from app.models.fluency_model import WordDetail
 from app.services.fluency_service import calculate_timing_metrics
+from app.utils.text_processing import count_actual_words, get_sentence_count
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class AnalysisWebhook:
     def __init__(self):
         self.pubsub_client = PubSubClient()
         self.analysis_coordinator = AnalysisCoordinatorService()
+        self.database_service = DatabaseService()
         # State tracking for analysis coordination
         self._analysis_state: Dict[str, Dict] = {}
         # NEW: Submission-level aggregation state
@@ -278,11 +280,10 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
-            pronunciation_result = message_data["result"] # This should be a dict from PronunciationService
+            pronunciation_result = message_data["result"]
             transcript = message_data["transcript"]
             total_questions = message_data.get("total_questions")
             
-            # Defensive logic for missing total_questions
             if total_questions is None:
                 logger.warning(f"⚠️ total_questions is None for fluency question {question_number}, submission {submission_url}")
                 existing_state_key = self._get_submission_state_key(submission_url)
@@ -290,9 +291,9 @@ class AnalysisWebhook:
                     total_questions = self._submission_state[existing_state_key]["total_questions"]
                     logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
                 else:
-                    total_questions = 1  # Last resort fallback
+                    total_questions = 1
             
-            logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency - WPM from transcript/audio_duration)")
+            logger.info(f"Starting PHASE 2 analysis for question {question_number} (Fluency - WPM calculation)")
             
             state = self._get_or_create_analysis_state(submission_url, question_number)
             
@@ -308,10 +309,25 @@ class AnalysisWebhook:
                     logger.warning(f"DEBUG: pronunciation_result is not a dict (type: {type(pronunciation_result)}), cannot get audio_duration.")
 
                 if transcript and audio_duration_from_pron_result and isinstance(audio_duration_from_pron_result, (int, float)) and audio_duration_from_pron_result > 0:
-                    word_count = len(transcript.split())
+                    # Count actual words using the utility function
+                    word_count = count_actual_words(transcript)
+                    
+                    # Get sentence count for natural pause adjustment
+                    sentence_count = get_sentence_count(transcript)
+                    
+                    # Average pause between sentences (in seconds)
+                    PAUSE_BETWEEN_SENTENCES = 0.5
+                    
+                    # Adjust total duration by subtracting natural pauses
+                    adjusted_duration = audio_duration_from_pron_result - (sentence_count * PAUSE_BETWEEN_SENTENCES)
+                    
+                    # Ensure adjusted duration doesn't go below a minimum threshold
+                    adjusted_duration = max(adjusted_duration, audio_duration_from_pron_result * 0.7)
+                    
                     if word_count > 0:
-                        wpm_calculated = round((word_count / audio_duration_from_pron_result) * 60, 1)
-                        logger.info(f"DEBUG: WPM calculated as {wpm_calculated} (words: {word_count}, duration: {audio_duration_from_pron_result})")
+                        # Calculate WPM using adjusted duration
+                        wpm_calculated = round((word_count / adjusted_duration) * 60, 1)
+                        logger.info(f"DEBUG: WPM calculated as {wpm_calculated} (words: {word_count}, adjusted duration: {adjusted_duration}s, original duration: {audio_duration_from_pron_result}s, sentences: {sentence_count})")
                     else:
                         logger.warning(f"DEBUG: Transcript word count is 0. WPM will be 0.")
                 else:
@@ -352,7 +368,6 @@ class AnalysisWebhook:
                 state["fluency_result"] = {"error": str(e)}
                 state["fluency_done"] = True
             
-            # Check if all analyses are complete
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             return {"status": "success", "message": "Phase 2 analysis completed (Fluency)"}
