@@ -328,7 +328,9 @@ class AnalysisWebhook:
                 final_fluency_output = {
                     "grade": ai_fluency_analysis_result.get("grade", 0),
                     "issues": ai_fluency_analysis_result.get("issues", []),
-                    "wpm": wpm_calculated
+                    "wpm": wpm_calculated,
+                    "cohesive_device_band_level": ai_fluency_analysis_result.get("cohesive_device_band_level", 0),
+                    "cohesive_device_feedback": ai_fluency_analysis_result.get("cohesive_device_feedback", "Cohesive device analysis not available.")
                 }
                 
                 state["fluency_result"] = final_fluency_output
