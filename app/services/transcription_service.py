@@ -77,7 +77,8 @@ class TranscriptionService:
             "audio_url": audio_url,
             "speaker_labels": True,
             "punctuate": True,
-            "format_text": True
+            "format_text": True,
+            "disfluencies": True  # Include filler words in the transcript
         }
         
         try:
