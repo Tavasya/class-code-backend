@@ -418,6 +418,7 @@ class AnalysisWebhook:
                     "grade": ai_fluency_analysis_result.get("grade", 0),
                     "issues": ai_fluency_analysis_result.get("issues", []),
                     "wpm": wpm_calculated,
+                    "filler_word_count": ai_fluency_analysis_result.get("filler_word_count", 0),
                     "cohesive_device_band_level": ai_fluency_analysis_result.get("cohesive_device_band_level", 0),
                     "cohesive_device_feedback": ai_fluency_analysis_result.get("cohesive_device_feedback", "Cohesive device analysis not available.")
                 }
