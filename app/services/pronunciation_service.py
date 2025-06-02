@@ -8,6 +8,7 @@ import azure.cognitiveservices.speech as speechsdk
 from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
 from app.services.file_manager_service import file_manager
+import unicodedata
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -20,8 +21,61 @@ REGION = AZURE_SPEECH_REGION
 # OpenAI API config for improvement suggestions
 OPENAI_URL = OPENAI_API_URL
 
+# Azure phoneme to IPA mapping
+AZURE_TO_IPA = {
+    # Vowels
+    "ax": "ə",  # schwa
+    "ay": "aɪ",  # PRICE vowel
+    "ow": "oʊ",  # GOAT vowel
+    "iy": "i",   # FLEECE vowel
+    "ih": "ɪ",   # KIT vowel
+    "eh": "ɛ",   # DRESS vowel
+    "ae": "æ",   # TRAP vowel
+    "aa": "ɑ",   # PALM vowel
+    "ao": "ɔ",   # THOUGHT vowel
+    "uw": "u",   # GOOSE vowel
+    "uh": "ʊ",   # FOOT vowel
+    "er": "ɜr",  # NURSE vowel
+    # Consonants
+    "dh": "ð",   # voiced th
+    "th": "θ",   # voiceless th
+    "sh": "ʃ",   # SHIP consonant
+    "zh": "ʒ",   # MEASURE consonant
+    "ch": "tʃ",  # CHIP consonant
+    "jh": "dʒ",  # JUDGE consonant
+    "ng": "ŋ",   # SING consonant
+    # Stress markers
+    "1": "ˈ",    # primary stress
+    "2": "ˌ",    # secondary stress
+    # Keep single letters as is
+    "p": "p", "b": "b", "t": "t", "d": "d", "k": "k", "g": "g",
+    "f": "f", "v": "v", "s": "s", "z": "z", "h": "h",
+    "m": "m", "n": "n", "l": "l", "r": "r", "w": "w", "y": "j"
+}
+
 class PronunciationService:
     """Service for handling pronunciation assessment"""
+    
+    @staticmethod
+    def convert_to_ipa(phoneme: str) -> str:
+        """Convert Azure phoneme to IPA symbol"""
+        # First normalize the input phoneme
+        phoneme = phoneme.strip().lower()
+        
+        # Check for stress markers in the phoneme
+        stress_marker = ""
+        if phoneme.endswith("1"):
+            stress_marker = "ˈ"
+            phoneme = phoneme[:-1]
+        elif phoneme.endswith("2"):
+            stress_marker = "ˌ"
+            phoneme = phoneme[:-1]
+        
+        # Get the IPA symbol
+        ipa_symbol = AZURE_TO_IPA.get(phoneme, phoneme)
+        
+        # Return the combination of stress marker and IPA symbol
+        return stress_marker + ipa_symbol
     
     @staticmethod
     def extract_reference_phonemes(word_data):
@@ -33,20 +87,43 @@ class PronunciationService:
         # Extract the phoneme names and join them
         phoneme_list = []
         phoneme_details = []
+        
         for phoneme_data in phonemes:
+            # Get the phoneme and ensure it's properly decoded as UTF-8
             phoneme = phoneme_data.get("Phoneme", "")
+            if isinstance(phoneme, bytes):
+                phoneme = phoneme.decode('utf-8')
+            elif isinstance(phoneme, str):
+                # Get stress information directly from the phoneme data
+                stress = phoneme_data.get("Stress", 0)  # 0 = no stress, 1 = primary, 2 = secondary
+                
+                # Convert Azure phoneme to IPA
+                phoneme = PronunciationService.convert_to_ipa(phoneme)
+                
+                # Add stress markers based on the stress field
+                if stress == 1:
+                    phoneme = "ˈ" + phoneme  # Primary stress
+                elif stress == 2:
+                    phoneme = "ˌ" + phoneme  # Secondary stress
+                
+                phoneme = unicodedata.normalize('NFC', phoneme)
+            
             if phoneme:
                 phoneme_list.append(phoneme)
-                # Add detailed phoneme information
+                # Add detailed phoneme information including stress
                 phoneme_details.append({
                     "phoneme": phoneme,
                     "accuracy_score": phoneme_data.get("PronunciationAssessment", {}).get("AccuracyScore", 0),
-                    "error_type": phoneme_data.get("PronunciationAssessment", {}).get("ErrorType", "None")
+                    "error_type": phoneme_data.get("PronunciationAssessment", {}).get("ErrorType", "None"),
+                    "stress": phoneme_data.get("Stress", 0)  # Include stress level in details
                 })
         
-        # Return as IPA string format like "/hɛloʊ/" and detailed phoneme list
+        # Return as IPA string format with stress marks and detailed phoneme list
         if phoneme_list:
-            return "/" + "".join(phoneme_list) + "/", phoneme_details
+            # Ensure the final string is properly normalized
+            ipa_string = "/" + "".join(phoneme_list) + "/"
+            ipa_string = unicodedata.normalize('NFC', ipa_string)
+            return ipa_string, phoneme_details
         
         return "", []
     #
