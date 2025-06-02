@@ -203,11 +203,6 @@ class DatabaseService:
         duration_feedback_map = {str(fb['question_number']): fb for fb in (duration_feedback or [])}
         
         # Log duration feedback mapping
-        if duration_feedback:
-            logger.info(f"📊 Duration feedback mapping created: {json.dumps(duration_feedback_map, indent=2)}")
-        else:
-            logger.warning("⚠️ No duration feedback provided for transformation")
-        
         for question_id, analysis_results in question_results.items():
             # OPTION 1: Prioritize original_audio_url from analysis results
             audio_url = ""
