@@ -74,7 +74,8 @@ class DatabaseService:
                                   submission_url: str, 
                                   question_results: Dict[str, Any], 
                                   recordings: Optional[List[str]] = None, 
-                                  overall_assignment_score: Optional[Dict[str, Any]] = None # Expects a Dict for JSON
+                                  overall_assignment_score: Optional[Dict[str, Any]] = None, # Expects a Dict for JSON
+                                  duration_feedback: Optional[list] = None # <-- add this
                                   ) -> Optional[str]:
         """Update an existing submission with analysis results, recordings, and overall assignment score (as JSON)."""
         operation = "UPDATE_SUBMISSION_RESULTS"
@@ -104,7 +105,18 @@ class DatabaseService:
             logger.info(f"✅ Found existing submission: {submission_record['id']} with status: {submission_record['status']}")
             
             # Transform question_results to the new format
-            transformed_results = self._transform_to_new_format(question_results, recordings or [])
+            transformed_results = self._transform_to_new_format(question_results, recordings or [], duration_feedback)
+            
+            # Log transformed results details
+            logger.info(f"📊 Transformed results structure: {json.dumps(transformed_results, indent=2)}")
+            logger.info(f"📊 Number of transformed results: {len(transformed_results)}")
+            
+            # Log duration feedback details
+            if duration_feedback:
+                logger.info(f"📊 Duration feedback received: {json.dumps(duration_feedback, indent=2)}")
+                logger.info(f"📊 Number of duration feedback entries: {len(duration_feedback)}")
+            else:
+                logger.warning("⚠️ No duration feedback provided")
             
             # Prepare update data with the transformed results
             update_data = {
@@ -137,6 +149,9 @@ class DatabaseService:
             if result.data and len(result.data) > 0:
                 updated_submission = result.data[0]
                 submission_db_id = updated_submission['id']
+                
+                # Log the updated submission data
+                logger.info(f"📊 Updated submission data: {json.dumps(updated_submission, indent=2)}")
                 
                 success_log_kwargs = {
                     "submission_url": submission_url,
@@ -182,9 +197,16 @@ class DatabaseService:
             self._log_operation_error(operation, str(e), submission_id=submission_id, table="submissions")
             return False
 
-    def _transform_to_new_format(self, question_results: Dict[str, Any], recordings: List[str]) -> List[Dict[str, Any]]:
-        """Transform old question_results format to new standardized array format"""
+    def _transform_to_new_format(self, question_results: Dict[str, Any], recordings: List[str], duration_feedback: Optional[list] = None) -> List[Dict[str, Any]]:
+        """Transform old question_results format to new standardized array format, with optional duration_feedback per question."""
         transformed_results = []
+        duration_feedback_map = {str(fb['question_number']): fb for fb in (duration_feedback or [])}
+        
+        # Log duration feedback mapping
+        if duration_feedback:
+            logger.info(f"📊 Duration feedback mapping created: {json.dumps(duration_feedback_map, indent=2)}")
+        else:
+            logger.warning("⚠️ No duration feedback provided for transformation")
         
         for question_id, analysis_results in question_results.items():
             # OPTION 1: Prioritize original_audio_url from analysis results
@@ -250,7 +272,36 @@ class DatabaseService:
                 "question_id": int(question_id),
                 "section_feedback": section_feedback
             }
+            # Attach duration_feedback if available for this question
+            if duration_feedback_map.get(str(question_id)):
+                logger.info(f"Attaching duration_feedback to question_id {question_id}: {duration_feedback_map[str(question_id)]}")
+                transformed_result["duration_feedback"] = duration_feedback_map[str(question_id)]
+            else:
+                logger.info(f"No duration_feedback for question_id {question_id}")
             
             transformed_results.append(transformed_result)
         
+        logger.info(f"Final transformed_results for submission: {json.dumps(transformed_results, indent=2)}")
         return transformed_results
+
+    def get_submission_by_url(self, submission_url: str) -> Optional[Dict[str, Any]]:
+        """Fetch a submission row by submission_url (id)."""
+        try:
+            result = self.supabase.table('submissions').select('*').eq('id', submission_url).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching submission by url {submission_url}: {str(e)}")
+            return None
+
+    def get_assignment_by_id(self, assignment_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch an assignment row by assignment_id (id)."""
+        try:
+            result = self.supabase.table('assignments').select('*').eq('id', assignment_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching assignment by id {assignment_id}: {str(e)}")
+            return None

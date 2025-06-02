@@ -814,13 +814,71 @@ class AnalysisWebhook:
                 else:
                     logger.warning(f"⚠️ No original audio URLs found in question results for submission: {submission_url}")
 
+                # --- BEGIN: Duration/TimeLimit Feedback Calculation ---
+                duration_feedback = []
+                try:
+                    db_service = DatabaseService()
+                    submission_row = db_service.get_submission_by_url(submission_url)
+                    if submission_row and 'assignment_id' in submission_row:
+                        assignment_row = db_service.get_assignment_by_id(submission_row['assignment_id'])
+                        if assignment_row and 'questions' in assignment_row:
+                            import json
+                            questions = json.loads(assignment_row['questions'])
+                            logger.info(f"📊 Processing duration feedback for {len(questions)} questions")
+                            for idx, question in enumerate(questions):
+                                q_num = str(idx + 1)
+                                time_limit_sec = int(question.get('timeLimit', 0)) * 60
+                                # Get actual duration from pronunciation analysis
+                                actual_duration = 0
+                                q_data = question_results.get(q_num)
+                                if q_data and isinstance(q_data, dict):
+                                    pron = q_data.get('pronunciation')
+                                    if pron and isinstance(pron, dict):
+                                        actual_duration = pron.get('audio_duration', 0)
+                                        logger.info(f"📊 Question {q_num}: Found audio_duration={actual_duration}s, time_limit={time_limit_sec}s")
+                                    else:
+                                        logger.warning(f"⚠️ Question {q_num}: No pronunciation data found")
+                                else:
+                                    logger.warning(f"⚠️ Question {q_num}: No question data found")
+                                ratio = (actual_duration / time_limit_sec) * 100 if time_limit_sec > 0 else 0
+                                if ratio < 50:
+                                    feedback = "Did not speak that much."
+                                elif ratio <= 100:
+                                    feedback = "User spoke longer."
+                                else:
+                                    feedback = "User exceeded the time limit."
+                                duration_feedback.append({
+                                    'question_number': q_num,
+                                    'feedback': feedback,
+                                    'ratio': ratio,
+                                    'actual_duration': actual_duration,
+                                    'time_limit_sec': time_limit_sec
+                                })
+                                logger.info(f"📊 Question {q_num} duration feedback: {feedback} (ratio={ratio:.1f}%)")
+                        else:
+                            logger.warning(f"Could not fetch assignment or questions for assignment_id: {submission_row.get('assignment_id')}")
+                    else:
+                        logger.warning(f"Could not fetch submission or assignment_id for submission_url: {submission_url}")
+                except Exception as e:
+                    logger.error(f"Error calculating duration/timeLimit feedback: {str(e)}")
+                    import traceback
+                    logger.error(f"📋 Full traceback for duration feedback calculation: {traceback.format_exc()}")
+                # --- END: Duration/TimeLimit Feedback Calculation ---
+
+                # Log duration feedback before database update
+                if duration_feedback:
+                    logger.info(f"📊 Final duration feedback to be sent to database: {json.dumps(duration_feedback, indent=2)}")
+                else:
+                    logger.warning("⚠️ No duration feedback to send to database")
+
                 # 2. Update the existing submission with analysis results
                 logger.info(f"💽 Updating existing submission in Supabase 'submissions' table: {submission_url}")
                 submission_db_id = db_service.update_submission_results(
                     submission_url=submission_url,
                     question_results=question_results,
                     recordings=recording_urls,
-                    overall_assignment_score=overall_assignment_score_json
+                    overall_assignment_score=overall_assignment_score_json,
+                    duration_feedback=duration_feedback
                 )
                 
                 if submission_db_id:
@@ -838,6 +896,9 @@ class AnalysisWebhook:
 
             logger.info(f"🏁 Completed all operations for submission: {submission_url}")
             
+            # Add duration_feedback to message_data for storage and API
+            message_data['duration_feedback'] = duration_feedback
+
             # TODO: Implement further final submission processing here:
             # - Calculate overall scores/grades
             # - Send notifications to students/teachers
