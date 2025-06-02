@@ -699,8 +699,7 @@ class AnalysisWebhook:
             question_results = message_data["question_results"]
             
             logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
-            logger.info(f"📊 Question results summary for {submission_url}: {list(question_results.keys()) if question_results else 'No results'}")
-            
+           
             # Initialize lists for per-section scores
             pronunciation_scores_list = []
             fluency_scores_list = []
@@ -867,7 +866,9 @@ class AnalysisWebhook:
 
                 # Log duration feedback before database update
                 if duration_feedback:
-                    logger.info(f"📊 Final duration feedback to be sent to database: {json.dumps(duration_feedback, indent=2)}")
+                    logger.info(f"📊 Duration feedback summary: {len(duration_feedback)} questions processed")
+                    for fb in duration_feedback:
+                        logger.info(f"  Q{fb['question_number']}: {fb['feedback']} ({fb['ratio']:.1f}%)")
                 else:
                     logger.warning("⚠️ No duration feedback to send to database")
 
