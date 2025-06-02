@@ -9,10 +9,14 @@ from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
 from app.services.file_manager_service import file_manager
 import unicodedata
+import cmudict
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize CMU Dictionary
+cmu = cmudict.dict()
 
 # Azure Speech config
 SPEECH_KEY = AZURE_SPEECH_KEY
@@ -20,6 +24,28 @@ REGION = AZURE_SPEECH_REGION
 
 # OpenAI API config for improvement suggestions
 OPENAI_URL = OPENAI_API_URL
+
+# Azure phoneme to CMU mapping
+AZURE_TO_CMU = {
+    "ax": "AH",  # schwa
+    "ay": "AY",  # PRICE vowel
+    "ow": "OW",  # GOAT vowel
+    "iy": "IY",  # FLEECE vowel
+    "ih": "IH",  # KIT vowel
+    "eh": "EH",  # DRESS vowel
+    "ae": "AE",  # TRAP vowel
+    "aa": "AA",  # PALM vowel
+    "ao": "AO",  # THOUGHT vowel
+    "uw": "UW",  # GOOSE vowel
+    "uh": "UH",  # FOOT vowel
+    "er": "ER"   # NURSE vowel
+}
+
+# Stress mark symbols
+STRESS_MARKS = {
+    "1": "ˈ",  # Primary stress
+    "2": "ˌ"   # Secondary stress
+}
 
 # Azure phoneme to IPA mapping
 AZURE_TO_IPA = {
@@ -57,6 +83,89 @@ class PronunciationService:
     """Service for handling pronunciation assessment"""
     
     @staticmethod
+    def get_cmu_pronunciation(word: str) -> List[str]:
+        """Get CMU pronunciation for a word"""
+        try:
+            # Get pronunciation from CMU dict
+            word = word.lower()
+            if word in cmu:
+                # Return first pronunciation (most common)
+                return cmu[word][0]
+            return []
+        except Exception as e:
+            logger.warning(f"Failed to get CMU pronunciation for {word}: {str(e)}")
+            return []
+
+    @staticmethod
+    def align_phonemes(azure_phonemes: List[str], cmu_pronunciation: List[str]) -> List[Dict[str, Any]]:
+        """Align Azure phonemes with CMU pronunciation for stress marking"""
+        aligned = []
+        vowel_index = 0
+        
+        for az_phoneme in azure_phonemes:
+            alignment = {
+                "azure_phoneme": az_phoneme,
+                "ipa": AZURE_TO_IPA.get(az_phoneme, az_phoneme),
+                "stress": None
+            }
+            
+            # Check if current phoneme is a vowel
+            if az_phoneme in AZURE_TO_CMU:
+                cmu_base = AZURE_TO_CMU[az_phoneme]
+                # Find corresponding CMU vowel
+                for cmu_phoneme in cmu_pronunciation:
+                    if cmu_phoneme.rstrip('012').upper() == cmu_base:
+                        # Extract stress if present
+                        stress = next((c for c in cmu_phoneme if c.isdigit()), None)
+                        if stress:
+                            alignment["stress"] = STRESS_MARKS.get(stress)
+                        break
+                vowel_index += 1
+                
+            aligned.append(alignment)
+            
+        return aligned
+
+    @staticmethod
+    def process_phoneme(azure_phoneme: str, stress: Optional[str] = None) -> str:
+        """Process a single phoneme with stress marking"""
+        # Get base IPA symbol
+        ipa = AZURE_TO_IPA.get(azure_phoneme, azure_phoneme)
+        
+        # Apply stress if present
+        if stress:
+            return stress + ipa
+        return ipa
+
+    @staticmethod
+    def convert_to_ipa_with_stress(word: str, azure_phonemes: List[str]) -> str:
+        """Convert Azure phonemes to IPA with stress marks using CMU dict"""
+        try:
+            # Get CMU pronunciation
+            cmu_pron = PronunciationService.get_cmu_pronunciation(word)
+            if not cmu_pron:
+                # Fallback to basic IPA conversion if no CMU pronunciation found
+                return "".join(PronunciationService.convert_to_ipa(p) for p in azure_phonemes)
+            
+            # Align phonemes and get stress information
+            aligned = PronunciationService.align_phonemes(azure_phonemes, cmu_pron)
+            
+            # Convert to IPA with stress marks
+            result = ""
+            for alignment in aligned:
+                result += PronunciationService.process_phoneme(
+                    alignment["azure_phoneme"],
+                    alignment["stress"]
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to convert to IPA with stress for {word}: {str(e)}")
+            # Fallback to basic IPA conversion
+            return "".join(PronunciationService.convert_to_ipa(p) for p in azure_phonemes)
+
+    @staticmethod
     def convert_to_ipa(phoneme: str) -> str:
         """Convert Azure phoneme to IPA symbol"""
         # First normalize the input phoneme
@@ -79,54 +188,51 @@ class PronunciationService:
     
     @staticmethod
     def extract_reference_phonemes(word_data):
-        """Extract reference phonemes from Azure word data"""
+        """Extract reference phonemes from Azure word data with stress marks"""
         phonemes = word_data.get("Phonemes", [])
         if not phonemes:
             return "", []
         
-        # Extract the phoneme names and join them
+        # Extract the word and phoneme names
+        word = word_data.get("Word", "").lower()
         phoneme_list = []
         phoneme_details = []
         
-        for phoneme_data in phonemes:
-            # Get the phoneme and ensure it's properly decoded as UTF-8
+        # Get Azure phonemes
+        azure_phonemes = [p.get("Phoneme", "") for p in phonemes]
+        
+        # Convert to IPA with stress marks using CMU dict
+        ipa_with_stress = PronunciationService.convert_to_ipa_with_stress(word, azure_phonemes)
+        
+        # Process each phoneme with its details
+        for i, phoneme_data in enumerate(phonemes):
             phoneme = phoneme_data.get("Phoneme", "")
             if isinstance(phoneme, bytes):
                 phoneme = phoneme.decode('utf-8')
-            elif isinstance(phoneme, str):
-                # Get stress information directly from the phoneme data
-                stress = phoneme_data.get("Stress", 0)  # 0 = no stress, 1 = primary, 2 = secondary
-                
-                # Convert Azure phoneme to IPA
-                phoneme = PronunciationService.convert_to_ipa(phoneme)
-                
-                # Add stress markers based on the stress field
-                if stress == 1:
-                    phoneme = "ˈ" + phoneme  # Primary stress
-                elif stress == 2:
-                    phoneme = "ˌ" + phoneme  # Secondary stress
-                
-                phoneme = unicodedata.normalize('NFC', phoneme)
             
-            if phoneme:
-                phoneme_list.append(phoneme)
-                # Add detailed phoneme information including stress
+            # Get the processed IPA symbol with stress
+            processed_phoneme = PronunciationService.convert_to_ipa_with_stress(
+                word,
+                [phoneme]
+            )
+            
+            if processed_phoneme:
+                phoneme_list.append(processed_phoneme)
+                # Add detailed phoneme information
                 phoneme_details.append({
-                    "phoneme": phoneme,
+                    "phoneme": processed_phoneme,
                     "accuracy_score": phoneme_data.get("PronunciationAssessment", {}).get("AccuracyScore", 0),
-                    "error_type": phoneme_data.get("PronunciationAssessment", {}).get("ErrorType", "None"),
-                    "stress": phoneme_data.get("Stress", 0)  # Include stress level in details
+                    "error_type": phoneme_data.get("PronunciationAssessment", {}).get("ErrorType", "None")
                 })
         
-        # Return as IPA string format with stress marks and detailed phoneme list
+        # Return IPA string with stress marks and detailed phoneme list
         if phoneme_list:
-            # Ensure the final string is properly normalized
             ipa_string = "/" + "".join(phoneme_list) + "/"
             ipa_string = unicodedata.normalize('NFC', ipa_string)
             return ipa_string, phoneme_details
         
         return "", []
-    #
+
     @staticmethod
     async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
