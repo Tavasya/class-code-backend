@@ -107,10 +107,10 @@ class DatabaseService:
             # Get assignment meta to check autoGrade setting
             assignment_id = submission_record.get('assignment_id')
             if assignment_id:
-                assignment_result = self.supabase.table('assignments').select('meta').eq('id', assignment_id).execute()
+                assignment_result = self.supabase.table('assignments').select('metadata').eq('id', assignment_id).execute()
                 if assignment_result.data and len(assignment_result.data) > 0:
-                    meta = assignment_result.data[0].get('meta', {})
-                    auto_grade = meta.get('autoGrade', True)  # Default to True if not specified
+                    metadata = assignment_result.data[0].get('metadata', {})
+                    auto_grade = metadata.get('autoGrade', True)  # Default to True if not specified
                     logger.info(f"📊 Assignment {assignment_id} autoGrade setting: {auto_grade}")
                 else:
                     logger.warning(f"⚠️ Could not find assignment {assignment_id}, defaulting to autoGrade=True")
