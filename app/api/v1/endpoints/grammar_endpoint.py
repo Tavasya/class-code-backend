@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.models.grammer_model import GrammarRequest, GrammarResponse
+from app.models.grammar_model import GrammarRequest, GrammarResponse
 from app.services.grammar_service import analyze_grammar
 import logging
 

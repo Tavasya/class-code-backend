@@ -1,13 +1,41 @@
-from typing import List
 from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+
+class GrammarCorrection(BaseModel):
+    """Model for individual grammar corrections"""
+    original_phrase: str
+    suggested_correction: str
+    explanation: str
+    sentence_index: Optional[int] = None
+    phrase_index: Optional[int] = None
+    sentence_text: Optional[str] = None
 
 class VocabularySuggestion(BaseModel):
-    """
-    Model for vocabulary enhancement suggestions.
-    """
-    original_word: str  # The original word from the transcript
-    context: str  # The full sentence containing the word
-    advanced_alternatives: List[str]  # List of suggested alternative words
-    level: str  # Target CEFR level (e.g., "B1", "B2", "C1")
-    sentence_index: int  # Index of the sentence in the transcript
-    phrase_index: int  # Index of the word within the sentence 
+    """Model for vocabulary suggestions"""
+    original_word: str
+    context: str
+    advanced_alternatives: List[str]
+    level: str
+    sentence_index: Optional[int] = None
+    phrase_index: Optional[int] = None
+    sentence_text: Optional[str] = None
+
+class SentenceAnalysis(BaseModel):
+    """Model for sentence-level analysis"""
+    original: str
+    corrections: Optional[List[GrammarCorrection]] = None
+    suggestions: Optional[List[VocabularySuggestion]] = None
+
+class GrammarRequest(BaseModel):
+    """Request model for grammar analysis"""
+    transcript: str
+    question_number: int = 1
+
+class GrammarResponse(BaseModel):
+    """Response model for grammar analysis"""
+    status: str
+    grammar_corrections: Dict[str, Dict[str, Any]]
+    vocabulary_suggestions: Dict[str, Dict[str, Any]]
+    grade: Optional[float] = 100  # Overall grade for the analysis
+    issues: Optional[List[Dict[str, Any]]] = []  # Combined list of grammar and vocabulary issues
+    error: Optional[str] = None 

@@ -165,7 +165,7 @@ The core logic will reside primarily in `app/services/grammar_service.py`. Helpe
 *   **File to Modify**: `app/services/grammar_service.py`.
 *   **Implementation Detail**:
     1.  The `suggest_vocabulary` function will now return a structure similar to `List[List[Dict[str, Any]]]`, where the outer list corresponds to sentences, and the inner list contains vocabulary suggestion dictionaries for words in that sentence.
-    2.  Each suggestion dictionary should conform to the `VocabularySuggestion` model in `app/models/grammer_model.py`. Ensure the model has a field (e.g., `context` or `sentence_text`) that can store the full sentence.
+    2.  Each suggestion dictionary should conform to the `VocabularySuggestion` model in `app/models/grammar_model.py`. Ensure the model has a field (e.g., `context` or `sentence_text`) that can store the full sentence.
         *   `original_word`: The original non-lemmatized word from the transcript (`original_candidate['original_form']`).
         *   `context` (or `sentence_text` - use the exact field name from `VocabularySuggestion` model): The full `sentence_text` (`original_candidate['sentence_text']`).
         *   `advanced_alternatives`: The list of `valid_suggestions_for_candidate` (these are lemmas).
@@ -222,7 +222,7 @@ Create `app/utils/vocabulary_utils.py` if it doesn't exist. This file will conso
         ```python
         # At the top of app/services/grammar_service.py
         # from app.utils.vocabulary_utils import get_lemma, OXFORD_DATA_CACHE, NLP_PROCESSOR, CEFR_PROGRESSION_MAP
-        # from app.models.grammer_model import VocabularySuggestion # Assuming this path
+        # from app.models.grammar_model import VocabularySuggestion # Assuming this path
         # import other necessary modules like call_openai_with_retry
         ```
     *   It no longer needs to define these globals itself. The `initialize_vocabulary_tools()` ensures they are ready.
@@ -255,7 +255,7 @@ Create `app/utils/vocabulary_utils.py` if it doesn't exist. This file will conso
                             *   If `alt_lemma` not already in `filtered_advanced_alternatives`:
                                 *   `filtered_advanced_alternatives.append(alt_lemma)`.
                     *   If `filtered_advanced_alternatives` is not empty:
-                        *   Construct the `VocabularySuggestion` object (ensure field names match your model in `app/models/grammer_model.py`):
+                        *   Construct the `VocabularySuggestion` object (ensure field names match your model in `app/models/grammar_model.py`):
                             ```python
                             suggestion = VocabularySuggestion(
                                 original_word=original_candidate['original_form'],
@@ -271,17 +271,8 @@ Create `app/utils/vocabulary_utils.py` if it doesn't exist. This file will conso
         5.  **(Crucial) Apply Limiting Heuristics**: ... (details as before) ...
         6.  Return `all_vocab_suggestions`.
 
-**C. `app/models/grammer_model.py`**
+**C. `app/models/grammar_model.py`**
 
-*   **File**: `app/models/grammer_model.py`
+*   **File**: `app/models/grammar_model.py`
 *   **`VocabularySuggestion` Model**: 
-    *   Verify that this Pydantic (or similar) model has a field to store the full sentence context (e.g., `context: str` or `sentence_text: str`). The examples in this plan will assume `context` is used for the full sentence.
-    *   Other fields (`original_word`, `advanced_alternatives`, `level`, `sentence_index`, `phrase_index`) should align with the data being prepared in `suggest_vocabulary`.
-    *   No other structural changes to the model are expected *due to this plan*, but ensure it accommodates the data as described.
-
-**D. `app/requirements.txt`**
-
-*   **File**: `app/requirements.txt`
-*   **Additions**:
-    *   `spacy>=3.0.0,<4.0.0`
-    *   `python -m spacy download en_core_web_sm`
+    *   Verify that this Pydantic (or similar) model has a field to store the full sentence context (e.g., `context: str` or `sentence_text: str`
