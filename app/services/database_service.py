@@ -95,7 +95,7 @@ class DatabaseService:
         try:
             # First, check if the submission exists
             logger.info(f"🔍 Looking for existing submission with ID: {submission_url}")
-            existing_result = self.supabase.table('submissions').select("id, status").eq('id', submission_url).execute()
+            existing_result = self.supabase.table('submissions').select("id, status, assignment_id").eq('id', submission_url).execute()
             
             if not existing_result.data or len(existing_result.data) == 0:
                 self._log_operation_error(operation, f"No submission found with ID: {submission_url}", submission_url=submission_url, table="submissions")
@@ -103,6 +103,21 @@ class DatabaseService:
             
             submission_record = existing_result.data[0]
             logger.info(f"✅ Found existing submission: {submission_record['id']} with status: {submission_record['status']}")
+            
+            # Get assignment meta to check autoGrade setting
+            assignment_id = submission_record.get('assignment_id')
+            if assignment_id:
+                assignment_result = self.supabase.table('assignments').select('meta').eq('id', assignment_id).execute()
+                if assignment_result.data and len(assignment_result.data) > 0:
+                    meta = assignment_result.data[0].get('meta', {})
+                    auto_grade = meta.get('autoGrade', True)  # Default to True if not specified
+                    logger.info(f"📊 Assignment {assignment_id} autoGrade setting: {auto_grade}")
+                else:
+                    logger.warning(f"⚠️ Could not find assignment {assignment_id}, defaulting to autoGrade=True")
+                    auto_grade = True
+            else:
+                logger.warning(f"⚠️ No assignment_id found for submission {submission_url}, defaulting to autoGrade=True")
+                auto_grade = True
             
             # Transform question_results to the new format
             transformed_results = self._transform_to_new_format(question_results, recordings or [], duration_feedback)
@@ -121,7 +136,7 @@ class DatabaseService:
             # Prepare update data with the transformed results
             update_data = {
                 "section_feedback": transformed_results,
-                "status": "graded"
+                "status": "awaiting_review" if not auto_grade else "graded"
             }
             
             # Add recordings if provided
@@ -134,7 +149,7 @@ class DatabaseService:
             
             # Log the data being updated
             log_message_parts = [
-                f"status=graded",
+                f"status={update_data['status']}",
                 f"recordings_count={len(recordings or [])}",
                 f"section_feedback_size={len(json.dumps(transformed_results)) if transformed_results else 0} bytes"
             ]
@@ -157,7 +172,7 @@ class DatabaseService:
                     "submission_url": submission_url,
                     "db_id": submission_db_id,
                     "table": "submissions",
-                    "status": "graded"
+                    "status": update_data['status']
                 }
                 if overall_assignment_score is not None:
                     success_log_kwargs["overall_assignment_score"] = json.dumps(overall_assignment_score)
