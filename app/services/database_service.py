@@ -265,7 +265,7 @@ class DatabaseService:
             
             # Build section_feedback from analysis results
             section_feedback = {}
-            
+            #w
             # Add each analysis type if it exists and has the expected format
             for analysis_type in ["fluency", "grammar", "lexical", "pronunciation", "vocabulary"]:
                 if analysis_type in analysis_results:
