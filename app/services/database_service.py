@@ -270,14 +270,29 @@ class DatabaseService:
             for analysis_type in ["fluency", "grammar", "lexical", "pronunciation", "vocabulary"]:
                 if analysis_type in analysis_results:
                     result = analysis_results[analysis_type]
-                    if isinstance(result, dict) and "grade" in result and "issues" in result:
-                        section_feedback[analysis_type] = result
-                    else:
-                        # Handle old format or error cases
-                        section_feedback[analysis_type] = {
-                            "grade": 0,
-                            "issues": [f"Error in {analysis_type} analysis: {result.get('error', 'Unknown error')}"]
-                        }
+                    if isinstance(result, dict):
+                        if analysis_type == "vocabulary":
+                            # Special handling for vocabulary analysis
+                            section_feedback[analysis_type] = {
+                                "grade": result.get("grade", 0),
+                                "vocabulary_suggestions": result.get("vocabulary_suggestions", {}),
+                                "issues": [f"Found {len(result.get('vocabulary_suggestions', {}))} vocabulary suggestions"]
+                            }
+                        elif analysis_type == "grammar":
+                            # Special handling for grammar analysis
+                            section_feedback[analysis_type] = {
+                                "grade": result.get("grade", 0),
+                                "grammar_corrections": result.get("grammar_corrections", {}),
+                                "issues": [f"Found {len(result.get('grammar_corrections', {}))} grammar corrections"]
+                            }
+                        elif "grade" in result and "issues" in result:
+                            section_feedback[analysis_type] = result
+                        else:
+                            # Handle old format or error cases
+                            section_feedback[analysis_type] = {
+                                "grade": 0,
+                                "issues": [f"Error in {analysis_type} analysis: {result.get('error', 'Unknown error')}"]
+                            }
             
             transformed_result = {
                 "audio_url": audio_url,
