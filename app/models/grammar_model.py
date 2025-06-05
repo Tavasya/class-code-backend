@@ -25,5 +25,4 @@ class GrammarResponse(BaseModel):
     status: str
     grammar_corrections: Dict[str, Dict[str, Any]]
     grade: Optional[float] = 100  # Overall grade for the analysis
-    issues: Optional[List[Dict[str, Any]]] = []  # List of grammar issues
     error: Optional[str] = None 

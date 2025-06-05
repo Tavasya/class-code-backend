@@ -36,13 +36,12 @@ async def analyze_grammar_endpoint(request: GrammarRequest):
             status="success",
             grammar_corrections=result["grammar_corrections"],
             grade=result.get("grade", 100),  # Include the calculated grade
-            issues=result.get("issues", []),  # Include all identified issues
         )
         
         # Log detailed statistics
         grammar_count = len(result["grammar_corrections"])
         grade = result.get("grade", 100)
-        logger.info(f"Analysis complete: Grade={grade}, {grammar_count} grammar issues")
+        logger.info(f"Analysis complete: Grade={grade}, {grammar_count} grammar corrections")
         
         return response
         

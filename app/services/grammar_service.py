@@ -42,7 +42,8 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
             payload = {
                 "model": MODEL,
                 "messages": [{"role": "user", "content": current_prompt}],
-                "temperature": 0.1
+                "temperature": 0.1,
+                "response_format": { "type": "json_object" }
             }
             
             async with aiohttp.ClientSession() as session:
@@ -50,6 +51,9 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                     if response.status == 200:
                         result = await response.json()
                         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        
+                        # Log the raw response for debugging
+                        logger.info(f"Raw API response: {content}")
                         
                         if "```json" in content or "```" in content:
                             json_pattern = r"```(?:json)?\s*(.*?)\s*```"
@@ -59,15 +63,15 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                         
                         try:
                             parsed_content = json.loads(content)
+                            logger.info(f"Parsed content: {parsed_content}")
                             
-                            format_valid = False
-                            if expected_format == "list" and isinstance(parsed_content, list):
-                                format_valid = True
-                            elif expected_format == "dict" and isinstance(parsed_content, dict):
-                                format_valid = True
-                                
-                            if format_valid:
+                            # Handle both list and dict responses
+                            if isinstance(parsed_content, dict) and "corrections" in parsed_content:
+                                return parsed_content["corrections"]
+                            elif isinstance(parsed_content, list):
                                 return parsed_content
+                            else:
+                                logger.warning(f"Invalid format: expected list or dict with 'corrections' key, got {type(parsed_content)}")
                             
                         except json.JSONDecodeError as e:
                             logger.error(f"Failed to parse JSON: {e}")
@@ -226,18 +230,24 @@ You are an expert in English grammar. Analyze the following transcript, which is
 IMPORTANT: ONLY GIVE A TOTAL OF 3 Grammar suggestions on different sentences.
 
 Your job is to detect and correct grammar mistakes related to:
-- Subject-verb agreement
-- Verb tense consistency
-- Article usage (a, an, the)
-- Singular/plural form
-- Word order and sentence structure
-- Preposition use
-- Sentence completeness (fragments, run-ons)
+- Subject-verb agreement (e.g., "he don't" → "he doesn't")
+- Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
+- Article usage (e.g., "i went to store" → "i went to the store")
+- Singular/plural form (e.g., "they is happy" → "they are happy")
+- Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
+- Preposition use (e.g., "i am good in english" → "i am good at english")
+- Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+
+IMPORTANT: Always analyze complete phrases, not just single words. Grammar issues often involve multiple words working together.
+For example:
+- "he don't" (not just "don't")
+- "i am going yesterday" (not just "going")
+- "they is happy" (not just "is")
 
 Provide a list of corrections for each sentence in structured JSON format. Each item should include:
 - "type": "grammar"
-- "original_phrase": the problematic phrase
-- "suggested_correction": the corrected version
+- "original_phrase": the complete problematic phrase (not just a single word)
+- "suggested_correction": the complete corrected phrase
 - "explanation": brief explanation of the issue
 
 Output format:
@@ -245,8 +255,8 @@ Output format:
     [  // corrections for sentence 1
         {
             "type": "grammar",
-            "original_phrase": "he don't",
-            "suggested_correction": "he doesn't",
+            "original_phrase": "he don't like",
+            "suggested_correction": "he doesn't like",
             "explanation": "Subject-verb agreement correction"
         }
     ],
@@ -266,9 +276,29 @@ Here are the sentences to analyze:
         corrections = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
         
         if corrections is None:
+            logger.warning("Failed to get corrections from API")
             return [[] for _ in sentences]
-        
-        return corrections
+            
+        # Log the corrections for debugging
+        logger.info(f"Received corrections: {corrections}")
+            
+        # Ensure we have the correct number of sentence entries
+        while len(corrections) < len(sentences):
+            corrections.append([])
+            
+        # Ensure each correction has the required fields
+        processed_corrections = []
+        for sentence_corrections in corrections:
+            processed_sentence = []
+            for correction in sentence_corrections:
+                if isinstance(correction, dict) and all(k in correction for k in ["type", "original_phrase", "suggested_correction", "explanation"]):
+                    processed_sentence.append(correction)
+            processed_corrections.append(processed_sentence)
+            
+        # Log the processed corrections for debugging
+        logger.info(f"Processed corrections: {processed_corrections}")
+            
+        return processed_corrections
         
     except Exception as e:
         logger.exception(f"Error in grammar checking: {str(e)}")
@@ -281,7 +311,6 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
     if not transcript or not transcript.strip():
         return {
             "grade": 100,
-            "issues": [],
             "grammar_corrections": {},
         }
         
@@ -313,41 +342,36 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         # Enhance with context
         enhanced_corrections = enhance_grammar_corrections_with_context(
             sentences, 
-            [[item for item in sent if item.get("type") == "grammar"] for sent in simplified_corrections]
+            simplified_corrections
         )
         
         # Format results for API response
         grammar_corrections_dict = {}
-        all_issues = []
+        total_corrections = 0
         
-        for sentence_idx, sentence_items in enumerate(simplified_corrections):
+        for sentence_idx, sentence_items in enumerate(enhanced_corrections):
             for item_idx, item in enumerate(sentence_items):
                 key = f"sentence_{sentence_idx}_{item_idx}"
                 grammar_corrections_dict[key] = {
                     "original": sentences[sentence_idx],
                     "corrections": [item]
                 }
-                all_issues.append({
-                    "original": sentences[sentence_idx],
-                    "correction": item
-                })
+                total_corrections += 1
         
         # Calculate grade
-        total_issues = len(all_issues)
-        if total_issues == 0:
+        if total_corrections == 0:
             grade = 100
-        elif total_issues <= 2:
+        elif total_corrections <= 2:
             grade = 90
-        elif total_issues <= 4:
+        elif total_corrections <= 4:
             grade = 80
-        elif total_issues <= 6:
+        elif total_corrections <= 6:
             grade = 70
         else:
-            grade = max(60 - (total_issues - 6) * 5, 0)
+            grade = max(60 - (total_corrections - 6) * 5, 0)
         
         return {
             "grade": grade,
-            "issues": all_issues,
             "grammar_corrections": grammar_corrections_dict,
         }
         
@@ -355,6 +379,5 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         logger.exception("Error in grammar analysis")
         return {
             "grade": 0,
-            "issues": [{"original": "", "correction": {"explanation": f"Error analyzing grammar: {str(e)}", "original_phrase": "", "suggested_correction": ""}}],
             "grammar_corrections": {},
         } 
