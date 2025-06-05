@@ -52,7 +52,9 @@ async def startup_event():
         logger.info("Successfully initialized vocabulary tools")
     except Exception as e:
         logger.error(f"Failed to initialize vocabulary tools: {str(e)}")
-        raise RuntimeError(f"Failed to initialize vocabulary tools: {str(e)}")
+        # Don't raise the error, just log it and continue
+        # This allows the application to start even if vocabulary tools fail
+        logger.warning("Application will continue without vocabulary tools")
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -11,8 +11,11 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the application code
+# Copy the application code and assets
 COPY . .
+
+# Ensure proper permissions
+RUN chmod -R 755 /app/assets
 
 # Expose the port FastAPI is running on
 EXPOSE 8080
