@@ -102,4 +102,13 @@ async def handle_submission_analysis_complete_webhook(request: Request) -> Dict[
     Triggered by submission-analyis-complete-topic-sub.
     """
     logger.info("Received submission analysis complete webhook")
-    return await analysis_webhook.handle_submission_analysis_complete_webhook(request) 
+    return await analysis_webhook.handle_submission_analysis_complete_webhook(request)
+
+@router.post("/vocabulary-done")
+async def handle_vocabulary_done_webhook(request: Request) -> Dict[str, str]:
+    """
+    Webhook endpoint for vocabulary analysis completion.
+    Triggered by vocabulary-done-topic-sub.
+    """
+    logger.info("Received vocabulary done webhook")
+    return await analysis_webhook.handle_vocabulary_done_webhook(request) 

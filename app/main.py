@@ -47,12 +47,12 @@ async def startup_event():
 
     # Initialize vocabulary enhancement tools
     try:
+        logger.info("Initializing vocabulary tools...")
         initialize_vocabulary_tools()
+        logger.info("Successfully initialized vocabulary tools")
     except Exception as e:
-        print(f"Error initializing vocabulary tools: {e}")
-        # You may want to log this error or handle it differently
-        # For now, we'll allow the app to start even if vocabulary tools fail
-        pass
+        logger.error(f"Failed to initialize vocabulary tools: {str(e)}")
+        raise RuntimeError(f"Failed to initialize vocabulary tools: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -10,6 +10,7 @@ from app.services.fluency_service import get_fluency_coherence_analysis
 from app.services.grammar_service import analyze_grammar
 from app.services.lexical_service import analyze_lexical_resources
 from app.services.pronunciation_service import PronunciationService
+from app.services.vocabulary_service import analyze_vocabulary
 from app.models.analysis_model import AudioDoneMessage, TranscriptionDoneMessage, QuestionAnalysisReadyMessage
 from app.core.results_store import results_store
 from app.services.database_service import DatabaseService
@@ -44,13 +45,15 @@ class AnalysisWebhook:
                 "pronunciation_done": False,
                 "lexical_done": False,
                 "fluency_done": False,
+                "vocabulary_done": False,
                 "wav_path": None,
                 "transcript": None,
                 "audio_url": None,
                 "pronunciation_result": None,
                 "grammar_result": None,
                 "lexical_result": None,
-                "fluency_result": None
+                "fluency_result": None,
+                "vocabulary_result": None
             }
         return self._analysis_state[key]
         
@@ -141,8 +144,7 @@ class AnalysisWebhook:
     async def handle_question_analysis_ready_webhook(self, request: Request) -> Dict[str, str]:
         """Handle question ready for analysis webhook from Pub/Sub push
         
-        PHASE 1: Run Grammar, Pronunciation, and Lexical in PARALLEL
-        (Fluency will be triggered separately when pronunciation completes)
+        PHASE 1: Run Grammar, Pronunciation, Lexical, and Vocabulary in PARALLEL
         """
         try:
             parsed_message = await parse_pubsub_message(request)
@@ -163,7 +165,7 @@ class AnalysisWebhook:
                 # The downstream handlers will need to handle this case
                 logger.warning(f"⚠️ Cannot recover total_questions at analysis ready stage for question {question_number}")
             
-            logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical)")
+            logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical, Vocabulary)")
             if session_id:
                 logger.info(f"Using session {session_id} for file lifecycle management")
             
@@ -175,7 +177,7 @@ class AnalysisWebhook:
             state["session_id"] = session_id
             state["total_questions"] = total_questions
             
-            # Create tasks for parallel execution (Grammar, Pronunciation, Lexical only)
+            # Create tasks for parallel execution
             tasks = []
             
             # 1. Pronunciation Analysis Task
@@ -237,7 +239,6 @@ class AnalysisWebhook:
                 try:
                     sentences = [s.strip() for s in transcript.split('.') if s.strip()]
                     lexical_result = await analyze_lexical_resources(sentences)
-                    # lexical_result is already a dict, no need to convert
                     state["lexical_result"] = lexical_result
                     state["lexical_done"] = True
                     
@@ -256,15 +257,43 @@ class AnalysisWebhook:
                     logger.error(f"Lexical analysis failed for question {question_number}: {str(e)}")
                     state["lexical_result"] = {"error": str(e)}
                     state["lexical_done"] = True
+
+            # 4. Vocabulary Analysis Task
+            async def vocabulary_task():
+                try:
+                    vocabulary_result = await analyze_vocabulary(transcript)
+                    state["vocabulary_result"] = vocabulary_result
+                    state["vocabulary_done"] = True
+                    
+                    # Publish vocabulary done
+                    self.pubsub_client.publish_message_by_name(
+                        "VOCABULARY_DONE",
+                        {
+                            "question_number": question_number,
+                            "submission_url": submission_url,
+                            "total_questions": total_questions,
+                            "result": vocabulary_result
+                        }
+                    )
+                    logger.info(f"Vocabulary analysis completed for question {question_number}")
+                except Exception as e:
+                    logger.error(f"Vocabulary analysis failed for question {question_number}: {str(e)}")
+                    state["vocabulary_result"] = {"error": str(e)}
+                    state["vocabulary_done"] = True
             
-            # Add tasks to list
-            tasks.extend([pronunciation_task(), grammar_task(), lexical_task()])
+            # Add all tasks to parallel execution
+            tasks.extend([
+                pronunciation_task(),
+                grammar_task(),
+                lexical_task(),
+                vocabulary_task()
+            ])
             
             # Run all Phase 1 tasks in parallel
             await asyncio.gather(*tasks)
             
             logger.info(f"PHASE 1 analysis completed for question {question_number}")
-            return {"status": "success", "message": "Phase 1 analysis completed (Grammar, Pronunciation, Lexical)"}
+            return {"status": "success", "message": "Phase 1 analysis completed (Grammar, Pronunciation, Lexical, Vocabulary)"}
             
         except HTTPException:
             raise
@@ -458,11 +487,12 @@ class AnalysisWebhook:
         
         state = self._get_or_create_analysis_state(submission_url, question_number)
         
-        logger.info(f"🔍 DEBUG: Analysis state check - grammar_done: {state['grammar_done']}, pronunciation_done: {state['pronunciation_done']}, lexical_done: {state['lexical_done']}, fluency_done: {state['fluency_done']}")
+        logger.info(f"🔍 DEBUG: Analysis state check - grammar_done: {state['grammar_done']}, pronunciation_done: {state['pronunciation_done']}, lexical_done: {state['lexical_done']}, fluency_done: {state['fluency_done']}, vocabulary_done: {state['vocabulary_done']}")
         
         # Check if all analyses are complete
         if (state["grammar_done"] and state["pronunciation_done"] and 
-            state["lexical_done"] and state["fluency_done"]):
+            state["lexical_done"] and state["fluency_done"] and
+            state["vocabulary_done"]):
             
             logger.info(f"🔍 DEBUG: All analyses complete! Compiling results for question {question_number}")
             
@@ -472,8 +502,9 @@ class AnalysisWebhook:
                 "grammar": state["grammar_result"],
                 "lexical": state["lexical_result"],
                 "fluency": state["fluency_result"],
-                "original_audio_url": state.get("audio_url"),  # Include original audio URL
-                "transcript": state.get("transcript")  # Include transcript from transcription service
+                "vocabulary": state["vocabulary_result"],
+                "original_audio_url": state.get("audio_url"),
+                "transcript": state.get("transcript")
             }
             
             # Publish analysis complete with total_questions
@@ -500,7 +531,7 @@ class AnalysisWebhook:
             logger.info(f"🔍 DEBUG: Cleaning up analysis state for question {question_number}")
             self._cleanup_analysis_state(submission_url, question_number)
         else:
-            logger.info(f"🔍 DEBUG: Not all analyses complete yet for question {question_number}. Missing: {[name for name, done in [('grammar', state['grammar_done']), ('pronunciation', state['pronunciation_done']), ('lexical', state['lexical_done']), ('fluency', state['fluency_done'])] if not done]}")
+            logger.info(f"🔍 DEBUG: Not all analyses complete yet for question {question_number}. Missing: {[name for name, done in [('grammar', state['grammar_done']), ('pronunciation', state['pronunciation_done']), ('lexical', state['lexical_done']), ('fluency', state['fluency_done']), ('vocabulary', state['vocabulary_done'])] if not done]}")
 
     async def handle_fluency_done_webhook(self, request: Request) -> Dict[str, str]:
         """Handle fluency analysis completion"""
@@ -596,6 +627,38 @@ class AnalysisWebhook:
             
         except Exception as e:
             logger.error(f"Error handling lexical done webhook: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+    async def handle_vocabulary_done_webhook(self, request: Request) -> Dict[str, str]:
+        """Handle vocabulary analysis completion"""
+        try:
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            question_number = message_data["question_number"]
+            submission_url = message_data["submission_url"]
+            total_questions = message_data.get("total_questions")
+            
+            # Defensive logic for missing total_questions
+            if total_questions is None:
+                logger.warning(f"⚠️ total_questions is None for vocabulary question {question_number}, submission {submission_url}")
+                # Try to infer from existing submission state if available
+                existing_state_key = self._get_submission_state_key(submission_url)
+                if existing_state_key in self._submission_state:
+                    total_questions = self._submission_state[existing_state_key]["total_questions"]
+                    logger.info(f"🔧 Recovered total_questions={total_questions} from existing submission state")
+                else:
+                    total_questions = 1  # Last resort fallback
+            
+            logger.info(f"Vocabulary analysis acknowledged for question {question_number}")
+            
+            # Check if all analyses are complete now that vocabulary is done
+            await self._check_and_publish_completion(submission_url, question_number, total_questions)
+            
+            return {"status": "success", "message": "Vocabulary analysis completion acknowledged"}
+            
+        except Exception as e:
+            logger.error(f"Error handling vocabulary done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
     async def handle_analysis_complete_webhook(self, request: Request) -> Dict[str, str]:

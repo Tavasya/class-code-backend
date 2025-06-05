@@ -10,21 +10,10 @@ class GrammarCorrection(BaseModel):
     phrase_index: Optional[int] = None
     sentence_text: Optional[str] = None
 
-class VocabularySuggestion(BaseModel):
-    """Model for vocabulary suggestions"""
-    original_word: str
-    context: str
-    advanced_alternatives: List[str]
-    level: str
-    sentence_index: Optional[int] = None
-    phrase_index: Optional[int] = None
-    sentence_text: Optional[str] = None
-
 class SentenceAnalysis(BaseModel):
     """Model for sentence-level analysis"""
     original: str
     corrections: Optional[List[GrammarCorrection]] = None
-    suggestions: Optional[List[VocabularySuggestion]] = None
 
 class GrammarRequest(BaseModel):
     """Request model for grammar analysis"""
@@ -35,7 +24,6 @@ class GrammarResponse(BaseModel):
     """Response model for grammar analysis"""
     status: str
     grammar_corrections: Dict[str, Dict[str, Any]]
-    vocabulary_suggestions: Dict[str, Dict[str, Any]]
     grade: Optional[float] = 100  # Overall grade for the analysis
-    issues: Optional[List[Dict[str, Any]]] = []  # Combined list of grammar and vocabulary issues
+    issues: Optional[List[Dict[str, Any]]] = []  # List of grammar issues
     error: Optional[str] = None 

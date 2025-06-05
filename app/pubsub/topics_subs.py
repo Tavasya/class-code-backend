@@ -11,7 +11,8 @@ TOPICS: Dict[str, str] = {
     "QUESTION_ANALYSIS_READY": "question-analysis-ready-topic",
     "STUDENT_SUBMISSION": "student-submission-topic",
     "SUBMISSION_ANALYSIS_COMPLETE": "submission-analyis-complete-topic",
-    "TRANSCRIPTION_DONE": "transcription-done-topic"
+    "TRANSCRIPTION_DONE": "transcription-done-topic",
+    "VOCABULARY_DONE": "vocabulary-done-topic"
 }
 
 # Subscription Names - Define all available subscriptions here
@@ -25,5 +26,6 @@ SUBSCRIPTIONS: Dict[str, str] = {
     "QUESTION_ANALYSIS_READY": "question-analysis-ready-topic-sub",
     "STUDENT_SUBMISSION": "student-submission-topic-sub",
     "SUBMISSION_ANALYSIS_COMPLETE": "submission-analyis-complete-topic-sub",
-    "TRANSCRIPTION_DONE": "transcription-service-sub"
+    "TRANSCRIPTION_DONE": "transcription-service-sub",
+    "VOCABULARY_DONE": "vocabulary-done-topic-sub"
 }
