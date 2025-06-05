@@ -17,8 +17,9 @@ RUN apt-get update && \
 # Copy the application code and assets
 COPY . .
 
-# Ensure proper permissions
-RUN chmod -R 755 /app/assets
+# Ensure proper permissions for assets directory
+RUN mkdir -p /app/assets && \
+    chmod -R 755 /app/assets
 
 # Expose the port FastAPI is running on
 EXPOSE 8080
