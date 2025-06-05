@@ -36,6 +36,7 @@ async def analyze_grammar_endpoint(request: GrammarRequest):
             status="success",
             grammar_corrections=result["grammar_corrections"],
             grade=result.get("grade", 100),  # Include the calculated grade
+            error=None  # Explicitly set error to None for successful analysis
         )
         
         # Log detailed statistics
