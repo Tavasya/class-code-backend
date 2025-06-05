@@ -217,6 +217,9 @@ class DatabaseService:
         transformed_results = []
         duration_feedback_map = {str(fb['question_number']): fb for fb in (duration_feedback or [])}
         
+        # Add version at the top of the array
+        transformed_results.append({"version": "v2"})
+        
         # Log duration feedback mapping
         for question_id, analysis_results in question_results.items():
             # OPTION 1: Prioritize original_audio_url from analysis results
@@ -264,7 +267,7 @@ class DatabaseService:
             section_feedback = {}
             
             # Add each analysis type if it exists and has the expected format
-            for analysis_type in ["fluency", "grammar", "lexical", "pronunciation"]:
+            for analysis_type in ["fluency", "grammar", "lexical", "pronunciation", "vocabulary"]:
                 if analysis_type in analysis_results:
                     result = analysis_results[analysis_type]
                     if isinstance(result, dict) and "grade" in result and "issues" in result:
