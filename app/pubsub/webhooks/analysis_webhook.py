@@ -737,7 +737,7 @@ class AnalysisWebhook:
                 "SUBMISSION_ANALYSIS_COMPLETE",
                 final_results
             )
-            
+            #d
             logger.info(f"🎉 Published submission completion for {submission_url} with {submission_state['completed_questions']} questions - Message ID: {message_id}")
             
             # Clean up submission state
