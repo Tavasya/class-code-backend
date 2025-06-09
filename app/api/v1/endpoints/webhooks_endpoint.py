@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from typing import Dict
 from app.pubsub.webhooks.submission_webhook import SubmissionWebhook
 from app.pubsub.webhooks.analysis_webhook import AnalysisWebhook
+from app.pubsub.utils import safe_webhook_handler
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ submission_webhook = SubmissionWebhook()
 analysis_webhook = AnalysisWebhook()
 
 @router.post("/student-submission")
+@safe_webhook_handler
 async def handle_student_submission_webhook(request: Request) -> Dict[str, str]:
     """
     Unified webhook endpoint for student submission processing.
@@ -22,6 +24,7 @@ async def handle_student_submission_webhook(request: Request) -> Dict[str, str]:
     return await submission_webhook.handle_student_submission_webhook(request)
 
 @router.post("/audio-conversion-done")
+@safe_webhook_handler
 async def handle_audio_conversion_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for audio conversion completion.
@@ -31,6 +34,7 @@ async def handle_audio_conversion_done_webhook(request: Request) -> Dict[str, st
     return await analysis_webhook.handle_audio_conversion_done_webhook(request)
 
 @router.post("/transcription-done")
+@safe_webhook_handler
 async def handle_transcription_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for transcription completion.
@@ -40,6 +44,7 @@ async def handle_transcription_done_webhook(request: Request) -> Dict[str, str]:
     return await analysis_webhook.handle_transcription_done_webhook(request)
 
 @router.post("/question-analysis-ready")
+@safe_webhook_handler
 async def handle_question_analysis_ready_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for question analysis ready.
@@ -49,6 +54,7 @@ async def handle_question_analysis_ready_webhook(request: Request) -> Dict[str, 
     return await analysis_webhook.handle_question_analysis_ready_webhook(request)
 
 @router.post("/fluency-done")
+@safe_webhook_handler
 async def handle_fluency_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for fluency analysis completion.
@@ -58,6 +64,7 @@ async def handle_fluency_done_webhook(request: Request) -> Dict[str, str]:
     return await analysis_webhook.handle_fluency_done_webhook(request)
 
 @router.post("/grammar-done")
+@safe_webhook_handler
 async def handle_grammar_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for grammar analysis completion.
@@ -67,6 +74,7 @@ async def handle_grammar_done_webhook(request: Request) -> Dict[str, str]:
     return await analysis_webhook.handle_grammar_done_webhook(request)
 
 @router.post("/lexical-done")
+@safe_webhook_handler
 async def handle_lexical_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for lexical analysis completion.
@@ -76,6 +84,7 @@ async def handle_lexical_done_webhook(request: Request) -> Dict[str, str]:
     return await analysis_webhook.handle_lexical_done_webhook(request)
 
 @router.post("/pronunciation-done")
+@safe_webhook_handler
 async def handle_pronunciation_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for pronunciation analysis completion.
@@ -86,6 +95,7 @@ async def handle_pronunciation_done_webhook(request: Request) -> Dict[str, str]:
     return await analysis_webhook.handle_pronunciation_done_webhook(request)
 
 @router.post("/analysis-complete")
+@safe_webhook_handler
 async def handle_analysis_complete_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for complete analysis completion.
@@ -95,6 +105,7 @@ async def handle_analysis_complete_webhook(request: Request) -> Dict[str, str]:
     return await analysis_webhook.handle_analysis_complete_webhook(request)
 
 @router.post("/submission-analyis-complete")
+@safe_webhook_handler
 async def handle_submission_analysis_complete_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for complete submission analysis.
@@ -105,6 +116,7 @@ async def handle_submission_analysis_complete_webhook(request: Request) -> Dict[
     return await analysis_webhook.handle_submission_analysis_complete_webhook(request)
 
 @router.post("/vocabulary-done")
+@safe_webhook_handler
 async def handle_vocabulary_done_webhook(request: Request) -> Dict[str, str]:
     """
     Webhook endpoint for vocabulary analysis completion.
