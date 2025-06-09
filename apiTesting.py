@@ -6,6 +6,13 @@ import json
 from datetime import datetime
 import random
 from typing import Dict, Any, List
+import logging
+from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configuration
 BASE_URL = "https://classconnect-staging-107872842385.us-west2.run.app"  # Production Cloud Run service URL
@@ -15,8 +22,8 @@ TOTAL_REQUESTS = 20
 MAX_CONCURRENT_REQUESTS = 5  # Adjust based on your needs
 
 # Supabase check configuration
-SUPABASE_URL = "https://zyaobehxpcwxlyljzknw.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5YW9iZWh4cGN3eGx5bGp6a253Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyMzQ1NjcsImV4cCI6MjA1NzgxMDU2N30.mUc1rpE_zecu3XLI8x_jH_QckrNNkLEnqOGp2SQOSdo"  # Replace with your Supabase anon key
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 CHECK_INTERVAL = 30  # Check every 30 seconds
 MAX_CHECK_TIME = 100000  # Give up after 10 minutes (600 seconds)
 

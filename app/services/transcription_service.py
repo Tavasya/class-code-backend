@@ -3,13 +3,13 @@ import logging
 import aiohttp
 import asyncio
 from typing import Dict, Any
+from app.core.config import ASSEMBLYAI_API_KEY
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY", "2dbe40dc3dc0413ebf929da37dd61441")
 ASSEMBLYAI_UPLOAD_URL = "https://api.assemblyai.com/v2/upload"
 ASSEMBLYAI_TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript"
 
