@@ -92,7 +92,7 @@ def verify_pubsub_token(request: Request, expected_token: Optional[str] = None) 
     """
     if not expected_token:
         return True
-    
+    #sdsf
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return False
