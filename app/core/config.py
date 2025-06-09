@@ -43,7 +43,7 @@ except Exception as e:
     logger.error(f"Failed to initialize Supabase client: {str(e)}")
 
 # API Keys
-OPENAI_API_KEY = "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"
+OPENAI_API_KEY = "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"
 AZURE_SPEECH_KEY = "CA4BV9f9rvEKQL22h6L383ucFVNHl9HvkS9bYsBR8xI6cdJm85fHJQQJ99BEACYeBjFXJ3w3AAAYACOGS9sl"
 AZURE_SPEECH_REGION = "eastus"
 ASSEMBLYAI_API_KEY = "2dbe40dc3dc0413ebf929da37dd61441"
