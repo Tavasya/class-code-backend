@@ -9,3 +9,4 @@ ffmpeg
 google-cloud-pubsub
 spacy>=3.0.0,<4.0.0
 cmudict
+python-dotenv
