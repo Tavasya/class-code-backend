@@ -140,18 +140,20 @@ async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
         [
             [  // suggestions for sentence 1
                 {
-                    "original_word": "big",
-                    "suggested_word": "large",
-                    "original_level": "A1",
-                    "suggested_level": "A2",
-                    "explanation": "Using 'large' instead of 'big' adds more precision to the description",
-                    "examples": ["The project had a large impact on the community."]
+                    "original_word": "[word_from_text]",
+                    "suggested_word": "[better_alternative]",
+                    "original_level": "[CEFR_level]",
+                    "suggested_level": "[higher_CEFR_level]",
+                    "explanation": "[reason_for_improvement]",
+                    "examples": ["[example_sentence_with_suggested_word]"]
                 }
             ],
-            [], // sentence 2: no issues
-            [ ... ], // sentence 3: issues
+            [], // sentence 2: no issues found
+            [ ... ], // sentence 3: any issues found
             ...
         ]
+        
+        ONLY analyze the actual words present in the sentences provided below. Do not suggest changes for words that are not in the text.
         
         Here are the sentences to analyze:
         """
