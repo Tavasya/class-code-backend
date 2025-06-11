@@ -226,7 +226,6 @@ async def check_grammar(sentences: List[str]) -> List[List[Dict[str, Any]]]:
     try:
         prompt = """
 You are an expert in English grammar. Analyze the following transcript, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
-IMPORTANT: ONLY GIVE A TOTAL OF 3 Grammar suggestions on different sentences.
 
 Your job is to detect and correct grammar mistakes related to:
 - Subject-verb agreement (e.g., "he don't" → "he doesn't")
