@@ -309,6 +309,11 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            
+            # Update status to in_progress
+            db_service = DatabaseService()
+            db_service.update_status_logs(submission_url, question_number, "pronunciation", "in_progress")
+            
             pronunciation_result = message_data["result"]
             transcript = message_data["transcript"]
             total_questions = message_data.get("total_questions")
@@ -473,65 +478,15 @@ class AnalysisWebhook:
             
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
-            return {"status": "success", "message": "Phase 2 analysis completed (Fluency)"}
+            # Update status to completed
+            db_service.update_status_logs(submission_url, question_number, "pronunciation", "completed")
             
-        except HTTPException:
-            raise
+            return {"status": "success", "message": "Pronunciation analysis completion acknowledged"}
+            
         except Exception as e:
-            logger.error(f"Error handling pronunciation done webhook: {str(e)}")
+            # Update status to failed if there's an error
+            db_service.update_status_logs(submission_url, question_number, "pronunciation", "failed")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-    async def _check_and_publish_completion(self, submission_url: str, question_number: int, total_questions: int = None):
-        """Check if all analyses are complete and publish final results"""
-        logger.info(f"🔍 DEBUG: Entering _check_and_publish_completion for question {question_number}, submission {submission_url}")
-        
-        state = self._get_or_create_analysis_state(submission_url, question_number)
-        
-        logger.info(f"🔍 DEBUG: Analysis state check - grammar_done: {state['grammar_done']}, pronunciation_done: {state['pronunciation_done']}, lexical_done: {state['lexical_done']}, fluency_done: {state['fluency_done']}, vocabulary_done: {state['vocabulary_done']}")
-        
-        # Check if all analyses are complete
-        if (state["grammar_done"] and state["pronunciation_done"] and 
-            state["lexical_done"] and state["fluency_done"] and
-            state["vocabulary_done"]):
-            
-            logger.info(f"🔍 DEBUG: All analyses complete! Compiling results for question {question_number}")
-            
-            # Compile all results including the original audio URL
-            analysis_results = {
-                "pronunciation": state["pronunciation_result"],
-                "grammar": state["grammar_result"],
-                "lexical": state["lexical_result"],
-                "fluency": state["fluency_result"],
-                "vocabulary": state["vocabulary_result"],
-                "original_audio_url": state.get("audio_url"),
-                "transcript": state.get("transcript")
-            }
-            
-            # Publish analysis complete with total_questions
-            message_data = {
-                "question_number": question_number,
-                "submission_url": submission_url,
-                "analysis_results": analysis_results
-            }
-            
-            # Add total_questions if available
-            if total_questions is not None:
-                message_data["total_questions"] = total_questions
-            
-            logger.info(f"🔍 DEBUG: About to publish ANALYSIS_COMPLETE message for question {question_number}")
-            
-            self.pubsub_client.publish_message_by_name(
-                "ANALYSIS_COMPLETE",
-                message_data
-            )
-            
-            logger.info(f"ALL analysis completed for question {question_number} - published to analysis-complete-topic")
-            
-            # Clean up state
-            logger.info(f"🔍 DEBUG: Cleaning up analysis state for question {question_number}")
-            self._cleanup_analysis_state(submission_url, question_number)
-        else:
-            logger.info(f"🔍 DEBUG: Not all analyses complete yet for question {question_number}. Missing: {[name for name, done in [('grammar', state['grammar_done']), ('pronunciation', state['pronunciation_done']), ('lexical', state['lexical_done']), ('fluency', state['fluency_done']), ('vocabulary', state['vocabulary_done'])] if not done]}")
 
     async def handle_fluency_done_webhook(self, request: Request) -> Dict[str, str]:
         """Handle fluency analysis completion"""
@@ -541,6 +496,11 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            
+            # Update status to in_progress
+            db_service = DatabaseService()
+            db_service.update_status_logs(submission_url, question_number, "fluency", "in_progress")
+            
             total_questions = message_data.get("total_questions")
             
             # Defensive logic for missing total_questions
@@ -559,9 +519,14 @@ class AnalysisWebhook:
             # Check if all analyses are complete now that fluency is done
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
+            # Update status to completed
+            db_service.update_status_logs(submission_url, question_number, "fluency", "completed")
+            
             return {"status": "success", "message": "Fluency analysis completion acknowledged"}
             
         except Exception as e:
+            # Update status to failed if there's an error
+            db_service.update_status_logs(submission_url, question_number, "fluency", "failed")
             logger.error(f"Error handling fluency done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
@@ -573,6 +538,11 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            
+            # Update status to in_progress
+            db_service = DatabaseService()
+            db_service.update_status_logs(submission_url, question_number, "grammar", "in_progress")
+            
             total_questions = message_data.get("total_questions")
             
             # Defensive logic for missing total_questions
@@ -591,9 +561,14 @@ class AnalysisWebhook:
             # Check if all analyses are complete now that grammar is done
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
+            # Update status to completed
+            db_service.update_status_logs(submission_url, question_number, "grammar", "completed")
+            
             return {"status": "success", "message": "Grammar analysis completion acknowledged"}
             
         except Exception as e:
+            # Update status to failed if there's an error
+            db_service.update_status_logs(submission_url, question_number, "grammar", "failed")
             logger.error(f"Error handling grammar done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
@@ -637,6 +612,11 @@ class AnalysisWebhook:
             
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
+            
+            # Update status to in_progress
+            db_service = DatabaseService()
+            db_service.update_status_logs(submission_url, question_number, "vocabulary", "in_progress")
+            
             total_questions = message_data.get("total_questions")
             
             # Defensive logic for missing total_questions
@@ -655,9 +635,14 @@ class AnalysisWebhook:
             # Check if all analyses are complete now that vocabulary is done
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
+            # Update status to completed
+            db_service.update_status_logs(submission_url, question_number, "vocabulary", "completed")
+            
             return {"status": "success", "message": "Vocabulary analysis completion acknowledged"}
             
         except Exception as e:
+            # Update status to failed if there's an error
+            db_service.update_status_logs(submission_url, question_number, "vocabulary", "failed")
             logger.error(f"Error handling vocabulary done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 

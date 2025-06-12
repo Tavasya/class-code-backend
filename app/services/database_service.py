@@ -2,6 +2,7 @@ from app.core.config import supabase, SUPABASE_URL
 import logging
 from typing import List, Dict, Any, Optional
 import json
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -333,3 +334,63 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error fetching assignment by id {assignment_id}: {str(e)}")
             return None
+
+    def update_status_logs(self, submission_url: str, question_number: int, analysis_type: str, status: str) -> bool:
+        """Update the status logs for a specific analysis type in a question."""
+        operation = "UPDATE_STATUS_LOGS"
+        
+        self._log_operation_start(operation,
+                                submission_url=submission_url,
+                                question_number=question_number,
+                                analysis_type=analysis_type,
+                                status=status)
+        
+        try:
+            # First get the current submission
+            submission = self.get_submission_by_url(submission_url)
+            if not submission:
+                self._log_operation_error(operation, f"Submission not found: {submission_url}")
+                return False
+            
+            # Get current status logs or initialize new ones
+            current_logs = submission.get('status_logs', {})
+            if not current_logs:
+                current_logs = {
+                    "submission_started": datetime.now().isoformat(),
+                    "total_questions": submission.get('total_questions', 1),
+                    "questions": {}
+                }
+            
+            # Initialize question status if not exists
+            question_key = str(question_number)
+            if question_key not in current_logs["questions"]:
+                current_logs["questions"][question_key] = {
+                    "pronunciation": "not_started",
+                    "fluency": "not_started",
+                    "grammar": "not_started",
+                    "vocabulary": "not_started",
+                    "started_at": datetime.now().isoformat()
+                }
+            
+            # Update the specific analysis status
+            current_logs["questions"][question_key][analysis_type] = status
+            
+            # Update the submission
+            result = self.supabase.table('submissions').update({
+                "status_logs": current_logs
+            }).eq('id', submission_url).execute()
+            
+            if result.error:
+                self._log_operation_error(operation, str(result.error))
+                return False
+            
+            self._log_operation_success(operation,
+                                      submission_url=submission_url,
+                                      question_number=question_number,
+                                      analysis_type=analysis_type,
+                                      status=status)
+            return True
+        
+        except Exception as e:
+            self._log_operation_error(operation, str(e))
+            return False

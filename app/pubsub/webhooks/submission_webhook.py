@@ -6,6 +6,8 @@ from app.pubsub.client import PubSubClient
 from app.pubsub.utils import parse_pubsub_message
 from app.pubsub.webhooks.audio_webhook import AudioWebhook
 from app.pubsub.webhooks.transcription_webhook import TranscriptionWebhook
+from app.services.database_service import DatabaseService
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,27 @@ class SubmissionWebhook:
             
             submission_url = message_data.get("submission_url", "unknown")
             audio_urls = message_data.get("audio_urls", [])
+            
+            # Initialize status logs
+            db_service = DatabaseService()
+            initial_logs = {
+                "submission_started": datetime.now().isoformat(),
+                "total_questions": len(audio_urls),
+                "questions": {}
+            }
+            
+            # Initialize status for each question
+            for q_num in range(1, len(audio_urls) + 1):
+                initial_logs["questions"][str(q_num)] = {
+                    "pronunciation": "not_started",
+                    "fluency": "not_started",
+                    "grammar": "not_started",
+                    "vocabulary": "not_started",
+                    "started_at": datetime.now().isoformat()
+                }
+            
+            # Update the submission with initial status logs
+            db_service.update_submission_status_logs(submission_url, initial_logs)
             
             logger.info(f"Starting parallel processing for submission {submission_url} with {len(audio_urls)} audio files")
             
