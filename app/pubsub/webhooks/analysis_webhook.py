@@ -966,4 +966,48 @@ class AnalysisWebhook:
                 logger.error(f"🆔 Failed submission URL: {submission_url}")
             import traceback
             logger.error(f"📋 Full webhook error traceback: {traceback.format_exc()}")
-            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") 
+            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+    async def _check_and_publish_completion(self, submission_url: str, question_number: int, total_questions: int):
+        """Check if all analyses are complete and publish completion if they are."""
+        try:
+            state = self._get_or_create_analysis_state(submission_url, question_number)
+            
+            # Check if all analyses are complete
+            all_done = all([
+                state.get("pronunciation_done", False),
+                state.get("grammar_done", False),
+                state.get("lexical_done", False),
+                state.get("fluency_done", False),
+                state.get("vocabulary_done", False)
+            ])
+            
+            if all_done:
+                logger.info(f"All analyses complete for question {question_number}")
+                
+                # Compile all results
+                analysis_results = {
+                    "pronunciation": state.get("pronunciation_result"),
+                    "grammar": state.get("grammar_result"),
+                    "lexical": state.get("lexical_result"),
+                    "fluency": state.get("fluency_result"),
+                    "vocabulary": state.get("vocabulary_result")
+                }
+                
+                # Publish analysis complete message
+                self.pubsub_client.publish_message_by_name(
+                    "ANALYSIS_COMPLETE",
+                    {
+                        "question_number": question_number,
+                        "submission_url": submission_url,
+                        "total_questions": total_questions,
+                        "analysis_results": analysis_results
+                    }
+                )
+                
+                # Clean up state
+                self._cleanup_analysis_state(submission_url, question_number)
+                
+        except Exception as e:
+            logger.error(f"Error checking completion for question {question_number}: {str(e)}")
+            raise 

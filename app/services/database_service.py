@@ -380,8 +380,9 @@ class DatabaseService:
                 "status_logs": current_logs
             }).eq('id', submission_url).execute()
             
-            if result.error:
-                self._log_operation_error(operation, str(result.error))
+            # Check if the update was successful by looking at the data
+            if not result.data:
+                self._log_operation_error(operation, "No data returned from update operation")
                 return False
             
             self._log_operation_success(operation,
@@ -415,8 +416,9 @@ class DatabaseService:
                 "status_logs": status_logs
             }).eq('id', submission_url).execute()
             
-            if result.error:
-                self._log_operation_error(operation, str(result.error))
+            # Check if the update was successful by looking at the data
+            if not result.data:
+                self._log_operation_error(operation, "No data returned from update operation")
                 return False
             
             self._log_operation_success(operation,
