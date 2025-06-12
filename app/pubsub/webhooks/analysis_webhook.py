@@ -949,14 +949,18 @@ class AnalysisWebhook:
                     logger.info(f"✅ SUCCESS: Updated submission {submission_url} in Supabase database with ID: {submission_db_id}")
                     logger.info(f"📋 Database record updated: table=submissions, id={submission_db_id}, status=graded, recordings_count={len(recording_urls or [])}")
                 else:
-                    logger.error(f"❌ FAILED: Could not update submission {submission_url} in Supabase database - update_submission_results returned None")
+                    error_msg = f"Failed to update submission {submission_url} in Supabase database"
+                    logger.error(f"❌ {error_msg} - update_submission_results returned None")
                     logger.error(f"🔍 Check if submission {submission_url} exists in database and has correct permissions")
+                    raise HTTPException(status_code=500, detail=error_msg)
                     
             except Exception as e:
-                logger.error(f"💥 EXCEPTION during Supabase database operation for submission {submission_url}: {str(e)}")
+                error_msg = f"Exception during Supabase database operation for submission {submission_url}: {str(e)}"
+                logger.error(f"💥 {error_msg}")
                 logger.error(f"🔍 Exception type: {type(e).__name__}")
                 import traceback
                 logger.error(f"📋 Full traceback for submission {submission_url}: {traceback.format_exc()}")
+                raise HTTPException(status_code=500, detail=error_msg)
 
             logger.info(f"🏁 Completed all operations for submission: {submission_url}")
             
