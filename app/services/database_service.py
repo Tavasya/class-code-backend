@@ -394,3 +394,36 @@ class DatabaseService:
         except Exception as e:
             self._log_operation_error(operation, str(e))
             return False
+
+    def update_submission_status_logs(self, submission_url: str, status_logs: Dict[str, Any]) -> bool:
+        """Update the entire status logs for a submission."""
+        operation = "UPDATE_SUBMISSION_STATUS_LOGS"
+        
+        self._log_operation_start(operation,
+                                submission_url=submission_url,
+                                status_logs_size=len(str(status_logs)))
+        
+        try:
+            # First check if the submission exists
+            submission = self.get_submission_by_url(submission_url)
+            if not submission:
+                self._log_operation_error(operation, f"Submission not found: {submission_url}")
+                return False
+            
+            # Update the submission with the new status logs
+            result = self.supabase.table('submissions').update({
+                "status_logs": status_logs
+            }).eq('id', submission_url).execute()
+            
+            if result.error:
+                self._log_operation_error(operation, str(result.error))
+                return False
+            
+            self._log_operation_success(operation,
+                                      submission_url=submission_url,
+                                      status_logs_size=len(str(status_logs)))
+            return True
+        
+        except Exception as e:
+            self._log_operation_error(operation, str(e))
+            return False
