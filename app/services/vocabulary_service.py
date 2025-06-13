@@ -9,7 +9,7 @@ from app.utils.vocabulary_utils import vocabulary_tools
 # Setup logging
 logger = logging.getLogger(__name__)
 
-MODEL = "gpt-4"
+MODEL = "gpt-4o-mini"
 
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
