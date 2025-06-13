@@ -985,13 +985,15 @@ class AnalysisWebhook:
             if all_done:
                 logger.info(f"All analyses complete for question {question_number}")
                 
-                # Compile all results
+                # Compile all results INCLUDING the missing fields
                 analysis_results = {
                     "pronunciation": state.get("pronunciation_result"),
                     "grammar": state.get("grammar_result"),
                     "lexical": state.get("lexical_result"),
                     "fluency": state.get("fluency_result"),
-                    "vocabulary": state.get("vocabulary_result")
+                    "vocabulary": state.get("vocabulary_result"),
+                    "original_audio_url": state.get("audio_url"),
+                    "transcript": state.get("transcript")
                 }
                 
                 # Publish analysis complete message
