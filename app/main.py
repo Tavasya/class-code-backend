@@ -7,6 +7,18 @@ from app.api.v1.router import api_router
 from app.services.file_manager_service import file_manager
 import logging
 from app.utils.vocabulary_utils import initialize_vocabulary_tools
+import sentry_sdk
+
+# Initialize Sentry SDK
+sentry_sdk.init(
+    dsn="https://1f8ebec20c93a839d96da4a9f009c676@o4509532792815616.ingest.us.sentry.io/4509532796747776",
+    # Add data like request headers and IP for users,
+    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+    send_default_pii=True,
+    # Capture 100% of the transactions for performance monitoring.
+    # We recommend adjusting this value in production.
+    traces_sample_rate=1.0,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +79,11 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
         logger.info("Stopped periodic file cleanup task")
+
+@app.get("/sentry-debug")
+async def trigger_error():
+    """Sentry debug endpoint to verify installation by triggering an error"""
+    division_by_zero = 1 / 0
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
