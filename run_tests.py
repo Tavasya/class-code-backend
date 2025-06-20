@@ -30,6 +30,7 @@ def main():
         print("  python run_tests.py grammar       # Test grammar service") 
         print("  python run_tests.py transcription # Test transcription service")
         print("  python run_tests.py fluency       # Test fluency service")
+        print("  python run_tests.py audio         # Test audio service")
         print("  python run_tests.py all           # Run all standalone tests")
         sys.exit(1)
     
@@ -43,11 +44,13 @@ def main():
         run_pytest_command(["tests/standalone/test_transcription.py"])
     elif service == "fluency":
         run_pytest_command(["tests/standalone/test_fluency.py"])
+    elif service == "audio":
+        run_pytest_command(["tests/standalone/test_audio.py"])
     elif service == "all":
         run_pytest_command(["tests/standalone/"])
     else:
         print(f"Unknown service: {service}")
-        print("Available options: vocabulary, grammar, transcription, fluency, all")
+        print("Available options: vocabulary, grammar, transcription, fluency, audio, all")
         sys.exit(1)
 
 if __name__ == "__main__":
