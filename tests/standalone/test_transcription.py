@@ -10,9 +10,8 @@ class TestTranscriptionService:
     async def test_transcription_from_url(self):
         """Test transcription with a sample audio URL"""
         
-        # NOTE: You'll need to replace this with an actual audio URL
-        # For now, this will help you see the structure
-        test_audio_url = "https://your-audio-file-url.wav"
+        # Real audio file from Supabase storage
+        test_audio_url = "https://drcsbokflpzbhuzsksws.supabase.co/storage/v1/object/public/recordings/recordings/fd90cb13-6723-405c-bf9f-89917b9a89bc/e19e5f34-8d68-4ba4-a387-de3022af8874/fd90cb13-6723-405c-bf9f-89917b9a89bc_e19e5f34-8d68-4ba4-a387-de3022af8874_card-1748924855537_1750262342399.webm"
         
         print(f"\n🎙️  Testing Transcription Service")
         print("=" * 60)
