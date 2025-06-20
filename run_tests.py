@@ -26,17 +26,30 @@ def run_pytest_command(command_args):
 def main():
     if len(sys.argv) < 2:
         print("Available test options:")
+        print()
+        print("🔧 STANDALONE SERVICE TESTS:")
         print("  python run_tests.py vocabulary    # Test vocabulary service")
         print("  python run_tests.py grammar       # Test grammar service") 
         print("  python run_tests.py transcription # Test transcription service")
         print("  python run_tests.py fluency       # Test fluency service")
         print("  python run_tests.py audio         # Test audio service")
         print("  python run_tests.py pronunciation # Test pronunciation service")
-        print("  python run_tests.py all           # Run all standalone tests")
+        print()
+        print("🌐 API INTEGRATION TESTS:")
+        print("  python run_tests.py api-health     # Test health endpoint")
+        print("  python run_tests.py api-submission # Test submission endpoint")
+        print("  python run_tests.py api-analysis   # Test analysis endpoints")
+        print("  python run_tests.py api-all        # Test all API endpoints")
+        print()
+        print("📦 TEST SUITES:")
+        print("  python run_tests.py standalone     # All standalone service tests")
+        print("  python run_tests.py api            # All API integration tests")
+        print("  python run_tests.py all            # Everything (standalone + API)")
         sys.exit(1)
     
     service = sys.argv[1].lower()
     
+    # Standalone service tests
     if service == "vocabulary":
         run_pytest_command(["tests/standalone/test_vocabulary.py"])
     elif service == "grammar":
@@ -49,11 +62,27 @@ def main():
         run_pytest_command(["tests/standalone/test_audio.py"])
     elif service == "pronunciation":
         run_pytest_command(["tests/standalone/test_pronunciation.py"])
-    elif service == "all":
+    
+    # API integration tests
+    elif service == "api-health":
+        run_pytest_command(["tests/api/test_health_endpoint.py"])
+    elif service == "api-submission":
+        run_pytest_command(["tests/api/test_submission_endpoint.py"])
+    elif service == "api-analysis":
+        run_pytest_command(["tests/api/test_analysis_endpoints.py"])
+    elif service == "api-all":
+        run_pytest_command(["tests/api/"])
+    
+    # Test suites
+    elif service == "standalone":
         run_pytest_command(["tests/standalone/"])
+    elif service == "api":
+        run_pytest_command(["tests/api/"])
+    elif service == "all":
+        run_pytest_command(["tests/"])
     else:
-        print(f"Unknown service: {service}")
-        print("Available options: vocabulary, grammar, transcription, fluency, audio, pronunciation, all")
+        print(f"Unknown test option: {service}")
+        print("Run 'python run_tests.py' without arguments to see available options.")
         sys.exit(1)
 
 if __name__ == "__main__":
