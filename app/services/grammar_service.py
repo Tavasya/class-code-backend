@@ -2,6 +2,7 @@ import re
 import logging
 import aiohttp
 import json
+import asyncio
 from typing import Dict, List, Any
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 import difflib
@@ -215,6 +216,76 @@ def simplify_single_word_corrections(
         processed_sentences.append(processed_corrections_for_sentence)
     return processed_sentences
 
+def create_grammar_prompt_for_single_sentence(sentence: str) -> str:
+    """Create optimized prompt for single sentence grammar analysis"""
+    return f"""
+You are an expert in English grammar. Analyze the following sentence, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
+
+Your job is to detect and correct grammar mistakes related to:
+- Subject-verb agreement (e.g., "he don't" → "he doesn't")
+- Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
+- Article usage (e.g., "i went to store" → "i went to the store")
+- Singular/plural form (e.g., "they is happy" → "they are happy")
+- Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
+- Preposition use (e.g., "i am good in english" → "i am good at english")
+- Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+
+IMPORTANT: Always analyze complete phrases, not just single words. Grammar issues often involve multiple words working together.
+
+Sentence: "{sentence}"
+
+Provide corrections in JSON format:
+[
+    {{
+        "type": "grammar",
+        "original_phrase": "problematic phrase",
+        "suggested_correction": "corrected phrase", 
+        "explanation": "brief explanation"
+    }}
+]
+
+Return ONLY the JSON array. No other text or markdown formatting.
+"""
+
+async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int) -> Dict[str, Any]:
+    """Analyze grammar for a single sentence"""
+    logger.info(f"Analyzing grammar for sentence {sentence_idx}")
+    
+    if not sentence or not sentence.strip():
+        return {
+            "sentence_idx": sentence_idx,
+            "sentence": sentence,
+            "corrections": [],
+            "success": True
+        }
+    
+    try:
+        prompt = create_grammar_prompt_for_single_sentence(sentence)
+        result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
+        
+        corrections = []
+        if result and isinstance(result, list):
+            for correction in result:
+                if isinstance(correction, dict) and all(k in correction for k in ["type", "original_phrase", "suggested_correction", "explanation"]):
+                    corrections.append(correction)
+        
+        return {
+            "sentence_idx": sentence_idx,
+            "sentence": sentence,
+            "corrections": corrections,
+            "success": result is not None
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing sentence {sentence_idx}: {e}")
+        return {
+            "sentence_idx": sentence_idx,
+            "sentence": sentence,
+            "corrections": [],
+            "success": False,
+            "error": str(e)
+        }
+
 async def check_grammar(sentences: List[str]) -> List[List[Dict[str, Any]]]:
     """Check grammar for each sentence"""
     logger.info(f"Checking grammar for {len(sentences)} sentences")
@@ -302,6 +373,65 @@ Here are the sentences to analyze:
         logger.exception(f"Error in grammar checking: {str(e)}")
         return [[] for _ in sentences]
 
+def aggregate_grammar_results(results: List[Dict], sentences: List[str]) -> Dict[str, Any]:
+    """Aggregate grammar results from parallel sentence processing"""
+    grammar_corrections_dict = {}
+    total_corrections = 0
+    failed_sentences = []
+    successful_sentences = 0
+    
+    for result in results:
+        if isinstance(result, Exception):
+            failed_sentences.append(str(result))
+            continue
+        
+        if not result.get("success", False):
+            failed_sentences.append(result.get("error", "Unknown error"))
+            continue
+        
+        successful_sentences += 1
+        sentence_idx = result["sentence_idx"]
+        corrections = result["corrections"]
+        
+        for correction_idx, correction in enumerate(corrections):
+            key = f"sentence_{sentence_idx}_{correction_idx}"
+            
+            # Enhance correction with context
+            enhanced_correction = correction.copy()
+            enhanced_correction.update({
+                "sentence_index": sentence_idx,
+                "phrase_index": 0,  # Will be updated by enhance_grammar_corrections_with_context if needed
+                "sentence_text": sentences[sentence_idx]
+            })
+            
+            grammar_corrections_dict[key] = {
+                "original": sentences[sentence_idx],
+                "corrections": [enhanced_correction]
+            }
+            total_corrections += 1
+    
+    # Calculate grade based on total corrections
+    if total_corrections == 0:
+        grade = 100
+    elif total_corrections <= 2:
+        grade = 90
+    elif total_corrections <= 4:
+        grade = 80
+    elif total_corrections <= 6:
+        grade = 70
+    else:
+        grade = max(60 - (total_corrections - 6) * 5, 0)
+    
+    logger.info(f"Grammar analysis completed: {successful_sentences}/{len(sentences)} sentences successful, {total_corrections} corrections found")
+    
+    return {
+        "grade": grade,
+        "grammar_corrections": grammar_corrections_dict,
+        "failed_sentences": len(failed_sentences),
+        "successful_sentences": successful_sentences,
+        "total_corrections": total_corrections
+    }
+
 async def analyze_grammar(transcript: str) -> Dict[str, Any]:
     """Analyze grammar in a transcript"""
     logger.info(f"Starting grammar analysis for transcript of length: {len(transcript)}")
@@ -316,62 +446,12 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         sentences = split_into_sentences(transcript)
         logger.info(f"Analyzing {len(sentences)} sentences")
         
-        # Get grammar analysis
-        raw_corrections = await check_grammar(sentences)
+        # Process sentences in parallel
+        tasks = [analyze_single_sentence_grammar(sentence, idx) for idx, sentence in enumerate(sentences)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Simplify single-word grammar corrections
-        simplified_corrections = []
-        for sentence_items in raw_corrections:
-            sentence_processed = []
-            for item in sentence_items:
-                if item.get("type") == "grammar":
-                    correction = {
-                        "original_phrase": item["original_phrase"],
-                        "suggested_correction": item["suggested_correction"],
-                        "explanation": item["explanation"]
-                    }
-                    simplified = simplify_single_word_corrections([[correction]])
-                    if simplified and simplified[0]:
-                        sentence_processed.extend(
-                            [dict(item, **corr) for corr in simplified[0]]
-                        )
-            simplified_corrections.append(sentence_processed)
-        
-        # Enhance with context
-        enhanced_corrections = enhance_grammar_corrections_with_context(
-            sentences, 
-            simplified_corrections
-        )
-        
-        # Format results for API response
-        grammar_corrections_dict = {}
-        total_corrections = 0
-        
-        for sentence_idx, sentence_items in enumerate(enhanced_corrections):
-            for item_idx, item in enumerate(sentence_items):
-                key = f"sentence_{sentence_idx}_{item_idx}"
-                grammar_corrections_dict[key] = {
-                    "original": sentences[sentence_idx],
-                    "corrections": [item]
-                }
-                total_corrections += 1
-        
-        # Calculate grade
-        if total_corrections == 0:
-            grade = 100
-        elif total_corrections <= 2:
-            grade = 90
-        elif total_corrections <= 4:
-            grade = 80
-        elif total_corrections <= 6:
-            grade = 70
-        else:
-            grade = max(60 - (total_corrections - 6) * 5, 0)
-        
-        return {
-            "grade": grade,
-            "grammar_corrections": grammar_corrections_dict,
-        }
+        # Aggregate results
+        return aggregate_grammar_results(results, sentences)
         
     except Exception as e:
         logger.exception("Error in grammar analysis")
