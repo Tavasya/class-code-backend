@@ -438,6 +438,10 @@ class PronunciationService:
                 assessment = word.get("PronunciationAssessment", {})
                 accuracy_score = assessment.get("AccuracyScore", 0)
                 
+                # Skip words with accuracy score over 70 (don't add to JSON)
+                if accuracy_score > 70:
+                    continue
+                
                 # Convert timings from 100-nanosecond units to seconds
                 offset_seconds = word.get("Offset", 0) / 10000000
                 duration_seconds = word.get("Duration", 0) / 10000000
