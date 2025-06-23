@@ -828,6 +828,53 @@ class AnalysisWebhook:
             }
             logger.info(f"Compiled section averages for {submission_url}: {overall_assignment_score_json}")
 
+            # --- BEGIN: Paragraph Restructuring Processing ---
+            logger.info(f"🔄 Starting paragraph restructuring for {submission_url}")
+            try:
+                from app.services.paragraph_restructuring_service import restructure_paragraph
+                
+                # Process each question for paragraph restructuring
+                for question_num, analysis_results in question_results.items():
+                    if analysis_results and isinstance(analysis_results, dict):
+                        # Extract transcript from analysis results
+                        transcript = ""
+                        
+                        # Try to get transcript from top level first
+                        if "transcript" in analysis_results:
+                            transcript = analysis_results["transcript"] or ""
+                        # Fallback to pronunciation results
+                        elif "pronunciation" in analysis_results and isinstance(analysis_results["pronunciation"], dict):
+                            transcript = analysis_results["pronunciation"].get("transcript", "")
+                        
+                        if transcript and transcript.strip():
+                            logger.info(f"📝 Processing paragraph restructuring for question {question_num}")
+                            
+                            # Restructure paragraph using all analysis results for band detection
+                            restructuring_result = await restructure_paragraph(
+                                transcript=transcript,
+                                analysis_results=analysis_results
+                            )
+                            
+                            # Add restructuring result to question results
+                            analysis_results["paragraph_restructuring"] = {
+                                "original_band": restructuring_result.original_band,
+                                "target_band": restructuring_result.target_band,
+                                "improved_transcript": restructuring_result.improved_transcript
+                            }
+                            
+                            logger.info(f"✅ Paragraph restructuring completed for question {question_num}: {restructuring_result.original_band} → {restructuring_result.target_band}")
+                        else:
+                            logger.warning(f"⚠️ No transcript found for question {question_num}, skipping paragraph restructuring")
+                            
+                logger.info(f"🎉 Paragraph restructuring completed for all questions in {submission_url}")
+                
+            except Exception as e:
+                logger.error(f"💥 Error in paragraph restructuring for {submission_url}: {str(e)}")
+                import traceback
+                logger.error(f"📋 Paragraph restructuring error traceback: {traceback.format_exc()}")
+                # Continue with submission processing even if restructuring fails
+            # --- END: Paragraph Restructuring Processing ---
+
             # Store results for testing/retrieval
             results_store.store_result(submission_url, message_data)
             logger.info(f"💾 Stored results in memory cache for submission: {submission_url}")

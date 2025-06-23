@@ -268,7 +268,7 @@ class DatabaseService:
             section_feedback = {}
             #w
             # Add each analysis type if it exists and has the expected format
-            for analysis_type in ["fluency", "grammar", "lexical", "pronunciation", "vocabulary"]:
+            for analysis_type in ["fluency", "grammar", "lexical", "pronunciation", "paragraph_restructuring", "vocabulary"]:
                 if analysis_type in analysis_results:
                     result = analysis_results[analysis_type]
                     if isinstance(result, dict):
@@ -285,6 +285,13 @@ class DatabaseService:
                                 "grade": result.get("grade", 0),
                                 "grammar_corrections": result.get("grammar_corrections", {}),
                                 "issues": [f"Found {len(result.get('grammar_corrections', {}))} grammar corrections"]
+                            }
+                        elif analysis_type == "paragraph_restructuring":
+                            # Simple handling for paragraph restructuring - no grade/issues needed
+                            section_feedback[analysis_type] = {
+                                "original_band": result.get("original_band", ""),
+                                "target_band": result.get("target_band", ""), 
+                                "improved_transcript": result.get("improved_transcript", "")
                             }
                         elif "grade" in result and "issues" in result:
                             section_feedback[analysis_type] = result
