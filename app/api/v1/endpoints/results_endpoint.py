@@ -16,7 +16,7 @@ async def get_submission_results(submission_url: str) -> List[Dict[str, Any]]:
     if transformed_results is not None:
         return transformed_results
     
-    # If no results found, raise 404
+    # If no results found, raise 404, e
     raise HTTPException(
         status_code=404, 
         detail=f"No results found for submission: {submission_url}"
