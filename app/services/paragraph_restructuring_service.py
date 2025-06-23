@@ -119,21 +119,22 @@ async def call_openai_for_restructuring(transcript: str, current_band: str, targ
     
     # Create CEFR-specific improvement prompt
     prompt = f"""
-You are an expert English language teacher specializing in CEFR levels. Please restructure the following paragraph to improve it from {current_band} level to {target_band} level.
+You are an expert English language teacher specializing in CEFR levels. Please improve the following paragraph from {current_band} level to {target_band} level.
+
+IMPORTANT: Make REALISTIC, incremental improvements that a student progressing from {current_band} to {target_band} would actually make. Don't make it too advanced or sophisticated.
 
 Original paragraph (current level: {current_band}):
 "{transcript}"
 
 Target level: {target_band}
 
-Instructions for {current_band} to {target_band} improvement:
 {get_improvement_instructions(current_band, target_band)}
 
-Please provide ONLY the improved paragraph. Do not include any explanations, markers, or additional text. The improved paragraph should:
-1. Maintain the original meaning and context
-2. Use vocabulary appropriate for {target_band} level
-3. Employ sentence structures typical of {target_band} level
-4. Include cohesive devices suitable for {target_band} level
+Please provide ONLY the improved paragraph. Do not include explanations or additional text. The improved paragraph should:
+1. Keep the same basic meaning and natural tone
+2. Make realistic improvements a {target_band} level student would write
+3. Not sound too formal, academic, or overly sophisticated
+4. Feel natural and conversational like the original
 
 Improved paragraph:
 """
@@ -182,38 +183,54 @@ def get_improvement_instructions(current_band: str, target_band: str) -> str:
     
     improvements = {
         ("A1", "A2"): """
-- Replace basic vocabulary with slightly more varied words
-- Use simple connectors (and, but, because)
-- Add basic adjectives and adverbs
-- Use present continuous and simple past more naturally
+Make these SIMPLE, natural improvements:
+- Add basic connecting words like 'and', 'but', 'because'
+- Use slightly more descriptive words (but keep them simple)
+- Make one or two sentences a bit longer
+- Keep the same natural, conversational tone
+- Don't make it sound too formal or academic
+
+Example: "I like food" becomes "I really like food because it's delicious"
 """,
         ("A2", "B1"): """
-- Introduce intermediate vocabulary and expressions
-- Use a wider range of connectors (however, although, despite)
-- Include conditional sentences (if/when clauses)
-- Add more complex verb tenses (present perfect, past continuous)
-- Use modal verbs for probability and advice
+Make these MODERATE, realistic improvements:
+- Add some descriptive adjectives and simple adverbs
+- Use connecting words like 'although', 'while', 'since' (sparingly)
+- Include slightly more specific vocabulary
+- Add simple reasoning or personal opinions
+- Keep it conversational and natural
+- Don't overuse complex structures
+
+Example: "I like books" becomes "I enjoy reading books, especially mystery novels, because they're exciting and help me relax"
 """,
         ("B1", "B2"): """
-- Use advanced vocabulary and idiomatic expressions
-- Employ sophisticated connectors (nevertheless, consequently, furthermore)
-- Include complex grammatical structures (relative clauses, participle clauses)
-- Use passive voice appropriately
-- Add hedging language and tentative expressions
+Make these realistic intermediate improvements:
+- Use more varied vocabulary and some less common words
+- Add some complex sentences (but not too many)
+- Include better explanations and examples
+- Use linking words like 'however', 'therefore', 'as a result'
+- Show clearer organization of ideas
+- Keep it natural, not overly formal
+
+Example: Keep the improvement proportional and realistic for this level
 """,
         ("B2", "C1"): """
-- Demonstrate precise and nuanced vocabulary
-- Use advanced discourse markers and cohesive devices
-- Employ complex sentence structures with embedded clauses
-- Include abstract concepts and sophisticated arguments
-- Use advanced grammatical features (inversion, cleft sentences)
+Make these advanced but natural improvements:
+- Use more sophisticated vocabulary and occasional idiomatic expressions
+- Create more complex sentence structures
+- Add nuanced reasoning and better examples
+- Use advanced linking devices appropriately
+- Show deeper analysis while staying natural
+- Maintain good flow and readability
 """,
         ("C1", "C2"): """
-- Use highly sophisticated and precise vocabulary
-- Employ complex rhetorical devices and advanced discourse markers
-- Demonstrate complete grammatical control with stylistic variation
-- Include subtle nuances in meaning and register
-- Show mastery of linguistic features for effect
+Make these expert-level improvements:
+- Use precise, sophisticated vocabulary where appropriate
+- Create well-structured, eloquent expressions
+- Use advanced techniques naturally
+- Demonstrate native-like fluency
+- Include subtle implications and sophisticated reasoning
+- Perfect grammar with stylistic variety
 """
     }
     
