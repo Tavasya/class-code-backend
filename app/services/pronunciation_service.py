@@ -412,15 +412,22 @@ class PronunciationService:
                     processed_result, improvement_suggestion
                 )
                 
-                # Mark pronunciation service as complete for this session
+                # Mark service as complete which triggers cleanup
                 if session_id:
                     try:
                         await file_manager.mark_service_complete(session_id, "pronunciation")
-                        logger.info(f"Marked pronunciation service complete for session {session_id}")
                     except Exception as e:
-                        logger.warning(f"Failed to mark pronunciation service complete for session {session_id}: {str(e)}")
+                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
-                return standardized_result
+                # Since only pronunciation service needs the WAV file, clean it up immediately
+                try:
+                    if os.path.exists(audio_file):
+                        os.unlink(audio_file)
+                        logger.info(f"Cleaned up WAV file after pronunciation analysis: {audio_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up WAV file {audio_file}: {str(e)}")
+                
+                return PronunciationService._transform_to_standardized_format(processed_result, improvement_suggestion)
                 
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logger.warning(f"No speech recognized: {result.no_match_details}")
