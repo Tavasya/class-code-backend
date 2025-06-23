@@ -234,6 +234,99 @@ class PronunciationService:
         return "", []
 
     @staticmethod
+    def chunk_text_into_phrases(reference_text: str) -> List[Dict[str, Any]]:
+        """
+        Break reference text into natural speech phrases/breath groups
+        
+        Args:
+            reference_text: The text to be chunked into phrases
+            
+        Returns:
+            List of phrase dictionaries with phrase text and metadata
+        """
+        try:
+            import re
+            
+            if not reference_text or not reference_text.strip():
+                return []
+            
+            phrases = []
+            
+            # Split on major punctuation and natural pause points
+            sentences = re.split(r'[.!?]+', reference_text)
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if not sentence:
+                    continue
+                
+                # Split at commas first, then handle conjunctions more carefully
+                comma_parts = sentence.split(',')
+                parts = []
+                
+                for comma_part in comma_parts:
+                    comma_part = comma_part.strip()
+                    if not comma_part:
+                        continue
+                    
+                    # Check for conjunctions at the beginning and split accordingly
+                    conjunction_pattern = r'^\s*(and|but|or|so|however|therefore|although)\s+'
+                    match = re.match(conjunction_pattern, comma_part, re.IGNORECASE)
+                    
+                    if match:
+                        # Split at the conjunction
+                        conjunction = match.group(1)
+                        rest = comma_part[match.end():].strip()
+                        if rest:  # Only add if there's content after the conjunction
+                            parts.append(rest)
+                    else:
+                        parts.append(comma_part)
+                
+                for part in parts:
+                    part = part.strip()
+                    words = part.split()
+                    
+                    # Only create phrases with at least 2 words
+                    if len(words) >= 2:
+                        phrases.append({
+                            "phrase": part,
+                            "word_count": len(words),
+                            "words": words,
+                            "type": "breath_group"
+                        })
+                    elif len(words) == 1:
+                        # Single words can be their own phrase (e.g., "Yes.", "No.")
+                        phrases.append({
+                            "phrase": part,
+                            "word_count": 1,
+                            "words": words,
+                            "type": "single_word"
+                        })
+            
+            # If no phrases were created (edge case), create one phrase from the whole text
+            if not phrases and reference_text.strip():
+                words = reference_text.strip().split()
+                phrases.append({
+                    "phrase": reference_text.strip(),
+                    "word_count": len(words),
+                    "words": words,
+                    "type": "full_text"
+                })
+            
+            return phrases
+            
+        except Exception as e:
+            logger.warning(f"Error chunking text into phrases: {str(e)}")
+            # Fallback: treat entire text as one phrase
+            words = reference_text.strip().split() if reference_text else []
+            return [{
+                "phrase": reference_text.strip() if reference_text else "",
+                "word_count": len(words),
+                "words": words,
+                "type": "fallback"
+            }] if reference_text else []
+
+    @staticmethod
     async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze pronunciation using Azure Speech Services with a provided reference text
@@ -302,7 +395,12 @@ class PronunciationService:
                 # Process the results using existing method
                 processed_result = PronunciationService.process_pronunciation_result(azure_result, reference_text)
                 
-                # Get improvement suggestion
+                # Add phrase chunking analysis
+                phrase_chunks = PronunciationService.chunk_text_into_phrases(reference_text)
+                processed_result["phrase_chunks"] = phrase_chunks
+                processed_result["total_phrases"] = len(phrase_chunks)
+                
+                # Get improvement suggestion (now with phrase awareness)
                 improvement_suggestion = await PronunciationService.get_improvement_suggestion(
                     processed_result["transcript"],
                     processed_result["critical_errors"],
@@ -668,5 +766,7 @@ class PronunciationService:
             "azure_transcript": processed_result.get("azure_transcript", ""), # Text recognized by Azure
             "issues": issues # Compiled list of textual feedback issues
         }
+        
+        # Note: phrase_chunks are used internally for analysis but not exposed in final response
         
         return standardized_output
