@@ -1,3 +1,4 @@
+import re
 import logging
 import aiohttp
 import json
@@ -10,6 +11,8 @@ from app.utils.vocabulary_utils import vocabulary_tools
 # Setup logging
 logger = logging.getLogger(__name__)
 
+# Version 3: Collocation-based vocabulary analysis with categorization (similar to grammar service)
+# Previous v2: CEFR-based vocabulary analysis (legacy, commented out)
 MODEL = "gpt-4o-mini"
 
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
@@ -67,53 +70,97 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
 
     return None
 
+# LEGACY CEFR-based vocabulary analysis - commented out for collocation approach
+# def create_vocabulary_prompt_for_single_sentence(sentence: str) -> str:
+#     """Create optimized prompt for single sentence vocabulary analysis"""
+#     return f"""
+# You are an expert in English vocabulary analysis specializing in CEFR levels and word usage.
+# 
+# Analyze this sentence for vocabulary improvement opportunities: "{sentence}"
+# 
+# Identify:
+# 1. Basic level words (A1-A2) that could be replaced with more advanced vocabulary
+# 2. Words that are used in an incorrect or unnatural context
+# 3. Opportunities to use more sophisticated vocabulary, even if the current word is already advanced
+# 
+# IMPORTANT: When suggesting replacements, you MUST follow this progression:
+# - For A1 words, suggest ONLY A2 alternatives
+# - For A2 words, suggest ONLY B1 alternatives
+# - For B1 words, suggest ONLY B2 alternatives
+# - For B2 words, suggest ONLY C1 alternatives
+# 
+# Never skip levels in your suggestions. Each suggestion should be exactly one level higher than the original word.
+# 
+# For each issue identified, provide:
+# - The original word
+# - A suggested replacement word
+# - The CEFR level of both words
+# - A brief explanation of why the change would improve the text
+# - Example usage of the suggested word
+# 
+# Present the results in JSON format:
+# [
+#     {{
+#         "original_word": "[word_from_text]",
+#         "suggested_word": "[better_alternative]",
+#         "original_level": "[CEFR_level]",
+#         "suggested_level": "[higher_CEFR_level]",
+#         "explanation": "[reason_for_improvement]",
+#         "examples": ["[example_sentence_with_suggested_word]"]
+#     }}
+# ]
+# 
+# ONLY analyze the actual words present in the sentence provided above. Do not suggest changes for words that are not in the text.
+# 
+# Return ONLY the JSON array. No other text or markdown formatting.
+# """
+
 def create_vocabulary_prompt_for_single_sentence(sentence: str) -> str:
-    """Create optimized prompt for single sentence vocabulary analysis"""
+    """Create optimized prompt for single sentence collocation analysis"""
     return f"""
-You are an expert in English vocabulary analysis specializing in CEFR levels and word usage.
+You are an expert in English vocabulary and collocation analysis. Analyze the following sentence for incorrect word usage and poor word choices on a word-by-word basis.
 
-Analyze this sentence for vocabulary improvement opportunities: "{sentence}"
+Sentence: "{sentence}"
 
-Identify:
-1. Basic level words (A1-A2) that could be replaced with more advanced vocabulary
-2. Words that are used in an incorrect or unnatural context
-3. Opportunities to use more sophisticated vocabulary, even if the current word is already advanced
+Your job is to identify words that are:
+1. Used incorrectly in context (wrong word choice)
+2. Poor collocations (words that don't naturally go together)
+3. Unnatural or awkward word selections
+4. Misspelled or malformed words
+5. Words that could be replaced with more appropriate alternatives
+6. Vocabulary that doesn't fit the register or style
+7. Words used in wrong grammatical contexts
+8. Redundant or unnecessary words
+9. Missing words that would improve collocations
+10. Other vocabulary issues
 
-IMPORTANT: When suggesting replacements, you MUST follow this progression:
-- For A1 words, suggest ONLY A2 alternatives
-- For A2 words, suggest ONLY B1 alternatives
-- For B1 words, suggest ONLY B2 alternatives
-- For B2 words, suggest ONLY C1 alternatives
-
-Never skip levels in your suggestions. Each suggestion should be exactly one level higher than the original word.
+IMPORTANT: Focus on individual words and their immediate context. Analyze each word for appropriateness, correctness, and natural usage.
 
 For each issue identified, provide:
-- The original word
-- A suggested replacement word
-- The CEFR level of both words
-- A brief explanation of why the change would improve the text
-- Example usage of the suggested word
+- The problematic word
+- A suggested replacement word 
+- The category number (1-10 from above)
+- A brief explanation of the issue
+- Example usage of the correct word
 
 Present the results in JSON format:
 [
     {{
-        "original_word": "[word_from_text]",
-        "suggested_word": "[better_alternative]",
-        "original_level": "[CEFR_level]",
-        "suggested_level": "[higher_CEFR_level]",
+        "type": "vocabulary",
+        "category": [category_number],
+        "original_word": "[problematic_word]",
+        "suggested_word": "[better_alternative]", 
         "explanation": "[reason_for_improvement]",
-        "examples": ["[example_sentence_with_suggested_word]"]
+        "examples": ["[example_with_suggested_word]"]
     }}
 ]
 
-ONLY analyze the actual words present in the sentence provided above. Do not suggest changes for words that are not in the text.
-
-Return ONLY the JSON array. No other text or markdown formatting.
+ONLY analyze words that are actually present in the sentence. Return ONLY the JSON array.
 """
 
 async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -> Dict[str, Any]:
-    """Analyze vocabulary for a single sentence"""
-    logger.info(f"Analyzing vocabulary for sentence {sentence_idx}")
+    """Analyze vocabulary collocations for a single sentence"""
+    logger.info(f"Analyzing vocabulary collocations for sentence {sentence_idx}")
     
     if not sentence or not sentence.strip():
         return {
@@ -130,7 +177,7 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
         suggestions = []
         if result and isinstance(result, list):
             for suggestion in result:
-                if isinstance(suggestion, dict) and all(k in suggestion for k in ["original_word", "suggested_word", "original_level", "suggested_level", "explanation", "examples"]):
+                if isinstance(suggestion, dict) and all(k in suggestion for k in ["type", "category", "original_word", "suggested_word", "explanation", "examples"]):
                     suggestions.append(suggestion)
         
         return {
@@ -151,7 +198,7 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
         }
 
 def aggregate_vocabulary_results(results: List[Dict], sentences: List[str]) -> Dict[str, Any]:
-    """Aggregate vocabulary results from parallel sentence processing"""
+    """Aggregate vocabulary collocation results from parallel sentence processing"""
     vocabulary_suggestions = {}
     total_suggestions = 0
     failed_sentences = []
@@ -171,37 +218,34 @@ def aggregate_vocabulary_results(results: List[Dict], sentences: List[str]) -> D
         suggestions = result["suggestions"]
         
         for suggestion_idx, suggestion in enumerate(suggestions):
-            key = f"{sentence_idx}_{suggestion_idx}"
+            key = f"sentence_{sentence_idx}_{suggestion_idx}"
             
             vocabulary_suggestions[key] = {
+                "type": suggestion.get("type", "vocabulary"),
+                "category": suggestion.get("category", 10),  # Default to "Other" category
                 "original_word": suggestion.get("original_word", ""),
                 "suggested_word": suggestion.get("suggested_word", ""),
-                "original_level": suggestion.get("original_level", ""),
-                "suggested_level": suggestion.get("suggested_level", ""),
-                "word_type": "unknown",  # Could be enhanced with POS tagging
-                "examples": suggestion.get("examples", []),
                 "explanation": suggestion.get("explanation", ""),
+                "examples": suggestion.get("examples", []),
                 "sentence_index": sentence_idx,
                 "phrase_index": suggestion_idx,
                 "sentence_text": sentences[sentence_idx]
             }
             total_suggestions += 1
     
-    # Calculate grade based on number of vocabulary suggestions
+    # Calculate grade based on number of vocabulary suggestions (similar to grammar service)
     if total_suggestions == 0:
         grade = 100
-    elif total_suggestions <= 1:
-        grade = 95
     elif total_suggestions <= 2:
         grade = 90
-    elif total_suggestions <= 3:
-        grade = 85
     elif total_suggestions <= 4:
         grade = 80
+    elif total_suggestions <= 6:
+        grade = 70
     else:
-        grade = max(75 - (total_suggestions - 4) * 5, 50)
+        grade = max(60 - (total_suggestions - 6) * 5, 0)
     
-    logger.info(f"Vocabulary analysis completed: {successful_sentences}/{len(sentences)} sentences successful, {total_suggestions} suggestions found")
+    logger.info(f"Vocabulary collocation analysis completed: {successful_sentences}/{len(sentences)} sentences successful, {total_suggestions} suggestions found")
     
     return {
         "grade": grade,
@@ -239,19 +283,61 @@ def enhance_vocabulary_suggestions_with_context(sentences: List[str], vocab_sugg
             
     return vocab_suggestions_per_sentence
 
-async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
-    """Analyze vocabulary in a transcript"""
-    try:
-        # Ensure NLP processor is initialized
-        if vocabulary_tools.nlp_processor is None:
-            logger.info("Initializing NLP processor...")
-            vocabulary_tools.initialize()
-            if vocabulary_tools.nlp_processor is None:
-                raise RuntimeError("Failed to initialize NLP processor")
+# LEGACY CEFR-based analysis using NLP processor - commented out
+# async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
+#     """Analyze vocabulary in a transcript"""
+#     try:
+#         # Ensure NLP processor is initialized
+#         if vocabulary_tools.nlp_processor is None:
+#             logger.info("Initializing NLP processor...")
+#             vocabulary_tools.initialize()
+#             if vocabulary_tools.nlp_processor is None:
+#                 raise RuntimeError("Failed to initialize NLP processor")
+# 
+#         # Split transcript into sentences
+#         doc = vocabulary_tools.nlp_processor(transcript)
+#         sentences = [sent.text.strip() for sent in doc.sents]
+#         
+#         # Process sentences in parallel
+#         tasks = [analyze_single_sentence_vocabulary(sentence, idx) for idx, sentence in enumerate(sentences)]
+#         results = await asyncio.gather(*tasks, return_exceptions=True)
+#         
+#         # Aggregate results
+#         return aggregate_vocabulary_results(results, sentences)
+# 
+#     except Exception as e:
+#         logger.exception(f"Error in vocabulary analysis: {str(e)}")
+#         return {
+#             "grade": 0,
+#             "vocabulary_suggestions": {}
+#         }
 
-        # Split transcript into sentences
-        doc = vocabulary_tools.nlp_processor(transcript)
-        sentences = [sent.text.strip() for sent in doc.sents]
+def split_into_sentences(text: str) -> List[str]:
+    """Split text into sentences using regex (similar to grammar service)"""
+    logger.info("Splitting text into sentences")
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    sentence_pattern = r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s'
+    sentences = re.split(sentence_pattern, text)
+    
+    result = [s.strip() for s in sentences if s.strip()]
+    logger.info(f"Split text into {len(result)} sentences")
+    
+    return result
+
+async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
+    """Analyze vocabulary collocations in a transcript"""
+    logger.info(f"Starting vocabulary collocation analysis for transcript of length: {len(transcript)}")
+    
+    if not transcript or not transcript.strip():
+        return {
+            "grade": 100,
+            "vocabulary_suggestions": {},
+        }
+        
+    try:
+        sentences = split_into_sentences(transcript)
+        logger.info(f"Analyzing {len(sentences)} sentences for vocabulary collocations")
         
         # Process sentences in parallel
         tasks = [analyze_single_sentence_vocabulary(sentence, idx) for idx, sentence in enumerate(sentences)]
@@ -259,10 +345,10 @@ async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
         
         # Aggregate results
         return aggregate_vocabulary_results(results, sentences)
-
+        
     except Exception as e:
-        logger.exception(f"Error in vocabulary analysis: {str(e)}")
+        logger.exception("Error in vocabulary collocation analysis")
         return {
             "grade": 0,
-            "vocabulary_suggestions": {}
+            "vocabulary_suggestions": {},
         } 

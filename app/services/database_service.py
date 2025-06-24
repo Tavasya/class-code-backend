@@ -219,7 +219,7 @@ class DatabaseService:
         duration_feedback_map = {str(fb['question_number']): fb for fb in (duration_feedback or [])}
         
         # Add version at the top of the array
-        transformed_results.append({"version": "v2"})
+        transformed_results.append({"version": "v3"})
         
         # Log duration feedback mapping
         for question_id, analysis_results in question_results.items():
