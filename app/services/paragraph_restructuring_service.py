@@ -294,7 +294,7 @@ async def restructure_paragraph(
             improved_transcript=transcript
         )
 
-
+#
 async def analyze_paragraph_restructuring(request: ParagraphRestructuringRequest) -> ParagraphRestructuringResult:
     """
     Analyze and restructure paragraph from request
