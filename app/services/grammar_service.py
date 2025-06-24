@@ -231,7 +231,8 @@ Your job is to detect and correct grammar mistakes related to:
 7. Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
 8. Disfluencies (e.g., "um", "uh")
 9. Punctuation issues
-10. Other
+10 Mispellings (e.g., "M not too sure by testing this." → "I'm not too sure about testing this.")
+11. Other
 
 IMPORTANT: Always analyze complete phrases, not just single words. Grammar issues often involve multiple words working together.
 
