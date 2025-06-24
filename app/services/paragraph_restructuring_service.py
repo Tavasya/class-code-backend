@@ -128,6 +128,7 @@ CRITICAL REQUIREMENTS:
 - Make only REALISTIC improvements for IELTS Speaking
 - Maintain natural, conversational tone
 - Do NOT make it overly formal or academic
+- REMOVE ALL DISFLUENCIES (such as 'um', 'uh', false starts, and filler words)
 
 Original IELTS Speaking script:
 "{transcript}"
