@@ -222,13 +222,16 @@ def create_grammar_prompt_for_single_sentence(sentence: str) -> str:
 You are an expert in English grammar. Analyze the following sentence, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
 
 Your job is to detect and correct grammar mistakes related to:
-- Subject-verb agreement (e.g., "he don't" → "he doesn't")
-- Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
-- Article usage (e.g., "i went to store" → "i went to the store")
-- Singular/plural form (e.g., "they is happy" → "they are happy")
-- Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
-- Preposition use (e.g., "i am good in english" → "i am good at english")
-- Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+1. Subject-verb agreement (e.g., "he don't" → "he doesn't")
+2. Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
+3. Article usage (e.g., "i went to store" → "i went to the store")
+4. Singular/plural form (e.g., "they is happy" → "they are happy")
+5. Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
+6. Preposition use (e.g., "i am good in english" → "i am good at english")
+7. Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+8. Disfluencies (e.g., "um", "uh")
+9. Punctuation issues
+10. Other
 
 IMPORTANT: Always analyze complete phrases, not just single words. Grammar issues often involve multiple words working together.
 
@@ -238,6 +241,7 @@ Provide corrections in JSON format:
 [
     {{
         "type": "grammar",
+        "category": 1,
         "original_phrase": "problematic phrase",
         "suggested_correction": "corrected phrase", 
         "explanation": "brief explanation"
@@ -299,13 +303,14 @@ async def check_grammar(sentences: List[str]) -> List[List[Dict[str, Any]]]:
 You are an expert in English grammar. Analyze the following transcript, which is based on a spoken response. Since it is derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
 
 Your job is to detect and correct grammar mistakes related to:
-- Subject-verb agreement (e.g., "he don't" → "he doesn't")
-- Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
-- Article usage (e.g., "i went to store" → "i went to the store")
-- Singular/plural form (e.g., "they is happy" → "they are happy")
-- Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
-- Preposition use (e.g., "i am good in english" → "i am good at english")
-- Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+1. Subject-verb agreement (e.g., "he don't" → "he doesn't")
+2. Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
+3. Article usage (e.g., "i went to store" → "i went to the store")
+4. Singular/plural form (e.g., "they is happy" → "they are happy")
+5. Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
+6. Preposition use (e.g., "i am good in english" → "i am good at english")
+7. Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+8. Other
 
 IMPORTANT: Always analyze complete phrases, not just single words. Grammar issues often involve multiple words working together.
 For example:

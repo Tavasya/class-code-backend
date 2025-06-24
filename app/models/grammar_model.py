@@ -6,6 +6,7 @@ class GrammarCorrection(BaseModel):
     original_phrase: str
     suggested_correction: str
     explanation: str
+    category: Optional[int] = None
     sentence_index: Optional[int] = None
     phrase_index: Optional[int] = None
     sentence_text: Optional[str] = None
