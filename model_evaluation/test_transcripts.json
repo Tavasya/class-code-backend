@@ -1,0 +1,88 @@
+{
+  "test_transcripts": [
+    {
+      "id": "easy_1",
+      "complexity": "Easy",
+      "expected_score_range": [8, 10],
+      "transcript": "I went to the store yesterday. I bought some apples and oranges. The cashier was very friendly. I had a good experience shopping there.",
+      "description": "Clean, grammatically correct speech with proper structure"
+    },
+    {
+      "id": "easy_2", 
+      "complexity": "Easy",
+      "expected_score_range": [8, 10],
+      "transcript": "My sister called me this morning. She wanted to know if I could help her move next weekend. I told her I would be happy to help.",
+      "description": "Simple past tense, clear communication"
+    },
+    {
+      "id": "medium_1",
+      "complexity": "Medium", 
+      "expected_score_range": [6, 8],
+      "transcript": "Yesterday I go to the store and I buyed some fruits. The store it was very busy and I wait in line for long time. But the staff they was helpful and I get everything I need.",
+      "description": "Mixed tenses, redundant pronouns, some errors"
+    },
+    {
+      "id": "medium_2",
+      "complexity": "Medium",
+      "expected_score_range": [6, 8], 
+      "transcript": "I am working on this project for three weeks now. My boss he told me that I need to finish it by Friday but I don't think I can make it on time.",
+      "description": "Tense inconsistency, redundant pronoun"
+    },
+    {
+      "id": "hard_1",
+      "complexity": "Hard",
+      "expected_score_range": [4, 6],
+      "transcript": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing. The store were very expensive and they was many peoples waiting in the lines.",
+      "description": "Multiple errors: pronoun case, subject-verb agreement, double negative, plural forms"
+    },
+    {
+      "id": "hard_2",
+      "complexity": "Hard", 
+      "expected_score_range": [4, 6],
+      "transcript": "I been trying to call my doctor for appointment but they never answer the phone. Every time I calls them it just rings and rings until I gives up.",
+      "description": "Missing auxiliaries, subject-verb disagreement"
+    },
+    {
+      "id": "very_hard_1",
+      "complexity": "Very Hard",
+      "expected_score_range": [1, 4],
+      "transcript": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+      "description": "Multiple errors with filler words, double negatives, tense issues, run-on sentence"
+    },
+    {
+      "id": "very_hard_2",
+      "complexity": "Very Hard",
+      "expected_score_range": [1, 4], 
+      "transcript": "Me I don't understand why my teacher she always give me bad grades even though I tries really hard and I study every night but she don't seems to care about how much effort I puts into my homeworks.",
+      "description": "Severe grammatical errors throughout"
+    },
+    {
+      "id": "conversational_1",
+      "complexity": "Complex Conversational",
+      "expected_score_range": [3, 6],
+      "transcript": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+      "description": "Natural speech patterns with embedded errors, run-on structure"
+    },
+    {
+      "id": "conversational_2", 
+      "complexity": "Complex Conversational",
+      "expected_score_range": [3, 6],
+      "transcript": "You know what I mean like when you're trying to tell someone something important but they just don't get it and you keep explaining but it's like talking to a wall and you starts to wonder if maybe you're the one who don't make sense.",
+      "description": "Stream of consciousness with grammatical errors embedded in natural flow"
+    },
+    {
+      "id": "pronunciation_focused",
+      "complexity": "Pronunciation Issues",
+      "expected_score_range": [5, 8],
+      "transcript": "I was walking down da street and I seen dis cat dat was really cute. Da cat it was sitting on da fence and it look like it want some food from me.",
+      "description": "Pronunciation/dialect features that might be transcription artifacts rather than grammar errors"
+    },
+    {
+      "id": "fragments",
+      "complexity": "Fragmented Speech", 
+      "expected_score_range": [2, 5],
+      "transcript": "So I went to... you know that place... the one with all the... anyway I was there and this guy he... I can't remember his name but he was like... really rude to me.",
+      "description": "Incomplete thoughts and sentence fragments typical in speech"
+    }
+  ]
+}

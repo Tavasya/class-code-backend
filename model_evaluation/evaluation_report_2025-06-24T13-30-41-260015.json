@@ -1,0 +1,539 @@
+{
+  "timestamp": "2025-06-24T13:30:41.260015",
+  "summary": {
+    "total_tests": 5,
+    "successful_api_calls": 5,
+    "failed_api_calls": 0,
+    "average_evaluation_score": 0,
+    "evaluation_scores": []
+  },
+  "detailed_results": [
+    {
+      "transcript": "I went to the store yesterday. I bought some apples and oranges. The cashier was very friendly. I had a good experience shopping there.",
+      "expected_complexity": "Easy",
+      "api_success": true,
+      "api_response": {
+        "status": "success",
+        "grammar_corrections": {},
+        "grade": 100.0,
+        "error": null
+      },
+      "corrections_count": 0,
+      "api_grade": 100.0,
+      "evaluation": {
+        "error": "Evaluation failed: No module named 'app'"
+      },
+      "expected_score_range": [
+        8,
+        10
+      ]
+    },
+    {
+      "transcript": "Yesterday I go to the store and I buyed some fruits. The store it was very busy and I wait in line for long time. But the staff they was helpful and I get everything I need.",
+      "expected_complexity": "Medium",
+      "api_success": true,
+      "api_response": {
+        "status": "success",
+        "grammar_corrections": {
+          "sentence_0_0": {
+            "original": "Yesterday I go to the store and I buyed some fruits.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 2,
+                "original_phrase": "I go to the store",
+                "suggested_correction": "I went to the store",
+                "explanation": "The verb tense should be past tense to match 'yesterday'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Yesterday I go to the store and I buyed some fruits."
+              }
+            ]
+          },
+          "sentence_0_1": {
+            "original": "Yesterday I go to the store and I buyed some fruits.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 2,
+                "original_phrase": "I buyed some fruits",
+                "suggested_correction": "I bought some fruits",
+                "explanation": "The correct past tense of 'buy' is 'bought'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Yesterday I go to the store and I buyed some fruits."
+              }
+            ]
+          },
+          "sentence_1_0": {
+            "original": "The store it was very busy and I wait in line for long time.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "The store it was very busy",
+                "suggested_correction": "The store was very busy",
+                "explanation": "The subject 'The store' should not be followed by 'it'; the verb should directly follow the subject.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store it was very busy and I wait in line for long time."
+              }
+            ]
+          },
+          "sentence_1_1": {
+            "original": "The store it was very busy and I wait in line for long time.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 2,
+                "original_phrase": "I wait in line for long time",
+                "suggested_correction": "I waited in line for a long time",
+                "explanation": "The verb tense should be past tense 'waited' to maintain consistency with the context.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store it was very busy and I wait in line for long time."
+              }
+            ]
+          },
+          "sentence_1_2": {
+            "original": "The store it was very busy and I wait in line for long time.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 3,
+                "original_phrase": "for long time",
+                "suggested_correction": "for a long time",
+                "explanation": "The article 'a' is needed before 'long time' to make the phrase grammatically correct.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store it was very busy and I wait in line for long time."
+              }
+            ]
+          },
+          "sentence_2_0": {
+            "original": "But the staff they was helpful and I get everything I need.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "the staff they was",
+                "suggested_correction": "the staff were",
+                "explanation": "The subject 'staff' is treated as a plural noun, so the verb should be 'were' instead of 'was'.",
+                "sentence_index": 2,
+                "phrase_index": 0,
+                "sentence_text": "But the staff they was helpful and I get everything I need."
+              }
+            ]
+          },
+          "sentence_2_1": {
+            "original": "But the staff they was helpful and I get everything I need.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 2,
+                "original_phrase": "I get everything I need",
+                "suggested_correction": "I got everything I needed",
+                "explanation": "The verb tense should be past tense to maintain consistency with the previous clause.",
+                "sentence_index": 2,
+                "phrase_index": 0,
+                "sentence_text": "But the staff they was helpful and I get everything I need."
+              }
+            ]
+          }
+        },
+        "grade": 55.0,
+        "error": null
+      },
+      "corrections_count": 7,
+      "api_grade": 55.0,
+      "evaluation": {
+        "error": "Evaluation failed: No module named 'app'"
+      },
+      "expected_score_range": [
+        6,
+        8
+      ]
+    },
+    {
+      "transcript": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing. The store were very expensive and they was many peoples waiting in the lines.",
+      "expected_complexity": "Hard",
+      "api_success": true,
+      "api_response": {
+        "status": "success",
+        "grammar_corrections": {
+          "sentence_0_0": {
+            "original": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "Me and my friend we goes",
+                "suggested_correction": "My friend and I go",
+                "explanation": "The subject 'Me and my friend' should be 'My friend and I' for proper subject pronoun usage, and 'goes' should be 'go' to match the plural subject.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing."
+              }
+            ]
+          },
+          "sentence_0_1": {
+            "original": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 3,
+                "original_phrase": "to store",
+                "suggested_correction": "to the store",
+                "explanation": "The definite article 'the' is needed before 'store' to specify which store.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing."
+              }
+            ]
+          },
+          "sentence_0_2": {
+            "original": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 2,
+                "original_phrase": "yesterday but we doesn't have",
+                "suggested_correction": "yesterday, but we didn't have",
+                "explanation": "The verb 'doesn't' should be in the past tense 'didn't' to maintain tense consistency with 'yesterday.'",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing."
+              }
+            ]
+          },
+          "sentence_0_3": {
+            "original": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 4,
+                "original_phrase": "we can't bought nothing",
+                "suggested_correction": "we can't buy anything",
+                "explanation": "'Bought' should be 'buy' to match the modal 'can,' and 'nothing' should be 'anything' for correct negative construction.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Me and my friend we goes to store yesterday but we doesn't have enough money so we can't bought nothing."
+              }
+            ]
+          },
+          "sentence_1_0": {
+            "original": "The store were very expensive and they was many peoples waiting in the lines.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "The store were",
+                "suggested_correction": "The store was",
+                "explanation": "The subject 'store' is singular, so the verb should be 'was' instead of 'were'.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store were very expensive and they was many peoples waiting in the lines."
+              }
+            ]
+          },
+          "sentence_1_1": {
+            "original": "The store were very expensive and they was many peoples waiting in the lines.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "they was",
+                "suggested_correction": "they were",
+                "explanation": "'They' is plural, so the correct verb form is 'were' instead of 'was'.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store were very expensive and they was many peoples waiting in the lines."
+              }
+            ]
+          },
+          "sentence_1_2": {
+            "original": "The store were very expensive and they was many peoples waiting in the lines.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 4,
+                "original_phrase": "many peoples",
+                "suggested_correction": "many people",
+                "explanation": "'People' is already the plural form, so 'peoples' is incorrect.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store were very expensive and they was many peoples waiting in the lines."
+              }
+            ]
+          },
+          "sentence_1_3": {
+            "original": "The store were very expensive and they was many peoples waiting in the lines.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 6,
+                "original_phrase": "waiting in the lines",
+                "suggested_correction": "waiting in line",
+                "explanation": "The phrase 'in line' is the correct expression for a queue, rather than 'in the lines'.",
+                "sentence_index": 1,
+                "phrase_index": 0,
+                "sentence_text": "The store were very expensive and they was many peoples waiting in the lines."
+              }
+            ]
+          }
+        },
+        "grade": 50.0,
+        "error": null
+      },
+      "corrections_count": 8,
+      "api_grade": 50.0,
+      "evaluation": {
+        "error": "Evaluation failed: No module named 'app'"
+      },
+      "expected_score_range": [
+        4,
+        6
+      ]
+    },
+    {
+      "transcript": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+      "expected_complexity": "Very Hard",
+      "api_success": true,
+      "api_response": {
+        "status": "success",
+        "grammar_corrections": {
+          "sentence_0_0": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "we was going",
+                "suggested_correction": "we were going",
+                "explanation": "The subject 'we' requires the plural verb 'were' instead of 'was'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_1": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "we doesn't had",
+                "suggested_correction": "we didn't have",
+                "explanation": "The correct form is 'didn't have' for past tense with 'we'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_2": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "the store it don't take",
+                "suggested_correction": "the store doesn't take",
+                "explanation": "The subject 'the store' requires the singular verb 'doesn't' instead of 'don't'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_3": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "we couldn't bought nothing",
+                "suggested_correction": "we couldn't buy anything",
+                "explanation": "'Couldn't' is followed by the base form of the verb 'buy', and 'nothing' should be replaced with 'anything' for correct negative construction.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_4": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "we was very disappointing",
+                "suggested_correction": "we were very disappointed",
+                "explanation": "'Disappointing' is an adjective that describes something that causes disappointment, while 'disappointed' describes the feeling of the subject.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_5": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 3,
+                "original_phrase": "to store",
+                "suggested_correction": "to the store",
+                "explanation": "The definite article 'the' is needed before 'store' to specify which store.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_6": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 6,
+                "original_phrase": "need some foods",
+                "suggested_correction": "need some food",
+                "explanation": "'Food' is an uncountable noun and does not need to be pluralized.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          },
+          "sentence_0_7": {
+            "original": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 7,
+                "original_phrase": "because we really need some foods for the party we was having",
+                "suggested_correction": "because we really needed some food for the party we were having",
+                "explanation": "The verb 'need' should be in the past tense 'needed' to maintain tense consistency.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "Um so like yesterday me and my friends we was going to store but like we doesn't had no money and the store it don't take no cards so we couldn't bought nothing and we was very disappointing because we really need some foods for the party we was having."
+              }
+            ]
+          }
+        },
+        "grade": 50.0,
+        "error": null
+      },
+      "corrections_count": 8,
+      "api_grade": 50.0,
+      "evaluation": {
+        "error": "Evaluation failed: No module named 'app'"
+      },
+      "expected_score_range": [
+        1,
+        4
+      ]
+    },
+    {
+      "transcript": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+      "expected_complexity": "Complex Conversational",
+      "api_success": true,
+      "api_response": {
+        "status": "success",
+        "grammar_corrections": {
+          "sentence_0_0": {
+            "original": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "he don't understand",
+                "suggested_correction": "he doesn't understand",
+                "explanation": "The subject 'he' requires the verb 'does' for correct subject-verb agreement.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow."
+              }
+            ]
+          },
+          "sentence_0_1": {
+            "original": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 4,
+                "original_phrase": "I keeps repeating myself",
+                "suggested_correction": "I keep repeating myself",
+                "explanation": "The subject 'I' requires the base form 'keep' instead of 'keeps'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow."
+              }
+            ]
+          },
+          "sentence_0_2": {
+            "original": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 6,
+                "original_phrase": "nothing I say don't make no sense",
+                "suggested_correction": "nothing I say makes any sense",
+                "explanation": "The verb 'make' should be 'makes' for subject-verb agreement, and 'no' should be replaced with 'any' for correct usage.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow."
+              }
+            ]
+          },
+          "sentence_0_3": {
+            "original": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 1,
+                "original_phrase": "I needs to get this done",
+                "suggested_correction": "I need to get this done",
+                "explanation": "The subject 'I' requires the base form 'need' instead of 'needs'.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow."
+              }
+            ]
+          },
+          "sentence_0_4": {
+            "original": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow.",
+            "corrections": [
+              {
+                "type": "grammar",
+                "category": 7,
+                "original_phrase": "because this is really important",
+                "suggested_correction": "because this project is really important",
+                "explanation": "The phrase lacks clarity; adding 'project' specifies what is important.",
+                "sentence_index": 0,
+                "phrase_index": 0,
+                "sentence_text": "So basically what happened was I'm trying to explain to my boss about this project but he don't understand what I'm saying and I keeps repeating myself but nothing I say don't make no sense to him and I'm getting frustrated because this is really important and I needs to get this done by tomorrow."
+              }
+            ]
+          }
+        },
+        "grade": 70.0,
+        "error": null
+      },
+      "corrections_count": 5,
+      "api_grade": 70.0,
+      "evaluation": {
+        "error": "Evaluation failed: No module named 'app'"
+      },
+      "expected_score_range": [
+        3,
+        6
+      ]
+    }
+  ],
+  "recommendations": [
+    "Overall performance needs improvement - consider refining prompts"
+  ]
+}
