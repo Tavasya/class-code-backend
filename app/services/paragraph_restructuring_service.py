@@ -117,27 +117,24 @@ async def call_openai_for_restructuring(transcript: str, current_band: str, targ
     """
     logger.info(f"Calling OpenAI to restructure from {current_band} to {target_band}")
     
-    # Create CEFR-specific improvement prompt
-    prompt = f"""
-You are an expert English language teacher specializing in CEFR levels. Please improve the following paragraph from {current_band} level to {target_band} level.
+    # Count original word count for length constraint
+    original_word_count = len(transcript.split())
+    
+    # Create IELTS-focused improvement prompt based on user's tested format
+    prompt = f"""Boost this IELTS Speaking script to +1.0 band score with 5% more advanced vocabulary.
 
-IMPORTANT: Make REALISTIC, incremental improvements that a student progressing from {current_band} to {target_band} would actually make. Don't make it too advanced or sophisticated.
+CRITICAL REQUIREMENTS:
+- Keep the SAME LENGTH as the original (around {original_word_count} words)
+- Make only REALISTIC improvements for IELTS Speaking
+- Maintain natural, conversational tone
+- Do NOT make it overly formal or academic
 
-Original paragraph (current level: {current_band}):
+Original IELTS Speaking script:
 "{transcript}"
 
-Target level: {target_band}
+Instructions: Replace only 5% of words with slightly more advanced vocabulary while keeping the same meaning, structure, and approximate length. The improved version should sound natural and achievable for an IELTS speaker trying to improve by 1 band level.
 
-{get_improvement_instructions(current_band, target_band)}
-
-Please provide ONLY the improved paragraph. Do not include explanations or additional text. The improved paragraph should:
-1. Keep the same basic meaning and natural tone
-2. Make realistic improvements a {target_band} level student would write
-3. Not sound too formal, academic, or overly sophisticated
-4. Feel natural and conversational like the original
-
-Improved paragraph:
-"""
+Improved script:"""
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -151,15 +148,15 @@ Improved paragraph:
                 "messages": [
                     {
                         "role": "system", 
-                        "content": "You are an expert English language teacher specializing in CEFR levels and language progression."
+                        "content": "You are an expert IELTS examiner and language teacher. You specialize in making realistic, incremental improvements to IELTS Speaking responses while maintaining natural conversational tone and appropriate length."
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                "max_tokens": 500,
-                "temperature": 0.3
+                "max_tokens": 200,
+                "temperature": 0.2
             }
             
             async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
