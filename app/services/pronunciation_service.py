@@ -412,24 +412,24 @@ class PronunciationService:
                     processed_result, improvement_suggestion
                 )
                 
-                # Mark service as complete which triggers cleanup
-                if session_id:
-                    try:
-                        await file_manager.mark_service_complete(session_id, "pronunciation")
-                    except Exception as e:
-                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                # Skip early cleanup to prevent file deletion during processing
+                # if session_id:
+                #     try:
+                #         await file_manager.mark_service_complete(session_id, "pronunciation")
+                #     except Exception as e:
+                #         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 
                 return PronunciationService._transform_to_standardized_format(processed_result, improvement_suggestion)
                 
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logger.warning(f"No speech recognized: {result.no_match_details}")
-                # Still mark service as complete even if no match
-                if session_id:
-                    try:
-                        await file_manager.mark_service_complete(session_id, "pronunciation")
-                    except Exception as e:
-                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                # Skip early cleanup to prevent file deletion during processing
+                # if session_id:
+                #     try:
+                #         await file_manager.mark_service_complete(session_id, "pronunciation")
+                #     except Exception as e:
+                #         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 return {
                     "grade": 0,
@@ -442,12 +442,12 @@ class PronunciationService:
                 if cancellation.reason == speechsdk.CancellationReason.Error:
                     logger.error(f"Error details: {cancellation.error_details}")
                 
-                # Mark service as complete even on error
-                if session_id:
-                    try:
-                        await file_manager.mark_service_complete(session_id, "pronunciation")
-                    except Exception as e:
-                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                # Skip early cleanup to prevent file deletion during processing
+                # if session_id:
+                #     try:
+                #         await file_manager.mark_service_complete(session_id, "pronunciation")
+                #     except Exception as e:
+                #         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 error_msg = f"Recognition canceled: {cancellation.reason}"
                 if hasattr(cancellation, 'error_details'):
@@ -461,12 +461,12 @@ class PronunciationService:
         except Exception as e:
             logger.exception("Error in analyze_pronunciation")
             
-            # Mark service as complete even on error to prevent hanging
-            if session_id:
-                try:
-                    await file_manager.mark_service_complete(session_id, "pronunciation")
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
+            # Skip early cleanup to prevent file deletion during processing
+            # if session_id:
+            #     try:
+            #         await file_manager.mark_service_complete(session_id, "pronunciation")
+            #     except Exception as cleanup_error:
+            #         logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
             
             return {
                 "grade": 0,
