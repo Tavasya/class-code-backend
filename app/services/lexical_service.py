@@ -42,7 +42,10 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 "temperature": 0.1
             }
 
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=60, connect=10)
+            connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300, use_dns_cache=True)
+            
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
                 async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -60,8 +63,14 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                         if attempt == max_retries:
                             return None
 
+        except (aiohttp.ClientError, BrokenPipeError, ConnectionResetError, OSError) as e:
+            logger.warning(f"Connection error in API call (attempt {attempt + 1}): {str(e)}")
+            if attempt == max_retries:
+                logger.error(f"Max retries reached for API call: {str(e)}")
+                return None
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
         except Exception as e:
-            logger.exception(f"Error in API call: {str(e)}")
+            logger.exception(f"Unexpected error in API call: {str(e)}")
             if attempt == max_retries:
                 return None
 
