@@ -345,8 +345,53 @@ class PronunciationService:
                 raise ValueError("PronunciationService now only accepts local file paths, not URLs. "
                                "Audio URLs should be converted to local files by AudioService first.")
             
-            # Verify file exists
+            # Verify file exists - trigger retry if missing
             if not os.path.exists(audio_file):
+                logger.warning(f"Audio file not found: {audio_file}. Attempting to trigger audio pipeline retry.")
+                
+                # Try to get original audio URL and submission info from session_id
+                if session_id:
+                    try:
+                        from app.services.file_manager_service import FileManagerService
+                        from app.pubsub.client import PubSubClient
+                        
+                        file_manager = FileManagerService()
+                        session_info = await file_manager.get_session_info(session_id)
+                        
+                        if session_info and session_info.get('metadata'):
+                            metadata = session_info['metadata']
+                            original_audio_url = metadata.get('original_audio_url')
+                            question_number = metadata.get('question_number')
+                            submission_url = metadata.get('submission_url')
+                            
+                            if all([original_audio_url, question_number, submission_url]):
+                                # Trigger audio pipeline retry
+                                pubsub_client = PubSubClient()
+                                retry_message = {
+                                    "audio_url": original_audio_url,
+                                    "question_number": question_number,
+                                    "submission_url": submission_url,
+                                    "retry_reason": "pronunciation_file_not_found"
+                                }
+                                
+                                message_id = pubsub_client.publish_message_by_name(
+                                    topic_name="STUDENT_SUBMISSION",
+                                    message=retry_message
+                                )
+                                
+                                logger.info(f"Audio pipeline retry triggered with message ID: {message_id}")
+                                
+                                return {
+                                    "grade": 0,
+                                    "issues": [{
+                                        "type": "retry",
+                                        "message": f"Audio file not found. Pipeline retry initiated (Message ID: {message_id})"
+                                    }]
+                                }
+                    except Exception as retry_error:
+                        logger.error(f"Failed to trigger audio pipeline retry: {str(retry_error)}")
+                
+                # Fallback if retry couldn't be triggered
                 raise FileNotFoundError(f"Audio file not found: {audio_file}")
             
             # Set up the Speech config
@@ -412,24 +457,24 @@ class PronunciationService:
                     processed_result, improvement_suggestion
                 )
                 
-                # Skip early cleanup to prevent file deletion during processing
-                # if session_id:
-                #     try:
-                #         await file_manager.mark_service_complete(session_id, "pronunciation")
-                #     except Exception as e:
-                #         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                # Mark service complete for proper file lifecycle management
+                if session_id:
+                    try:
+                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                    except Exception as e:
+                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 
                 return PronunciationService._transform_to_standardized_format(processed_result, improvement_suggestion)
                 
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logger.warning(f"No speech recognized: {result.no_match_details}")
-                # Skip early cleanup to prevent file deletion during processing
-                # if session_id:
-                #     try:
-                #         await file_manager.mark_service_complete(session_id, "pronunciation")
-                #     except Exception as e:
-                #         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                # Mark service complete for proper file lifecycle management
+                if session_id:
+                    try:
+                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                    except Exception as e:
+                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 return {
                     "grade": 0,
@@ -442,12 +487,12 @@ class PronunciationService:
                 if cancellation.reason == speechsdk.CancellationReason.Error:
                     logger.error(f"Error details: {cancellation.error_details}")
                 
-                # Skip early cleanup to prevent file deletion during processing
-                # if session_id:
-                #     try:
-                #         await file_manager.mark_service_complete(session_id, "pronunciation")
-                #     except Exception as e:
-                #         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+                # Mark service complete for proper file lifecycle management
+                if session_id:
+                    try:
+                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                    except Exception as e:
+                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 error_msg = f"Recognition canceled: {cancellation.reason}"
                 if hasattr(cancellation, 'error_details'):
@@ -461,12 +506,12 @@ class PronunciationService:
         except Exception as e:
             logger.exception("Error in analyze_pronunciation")
             
-            # Skip early cleanup to prevent file deletion during processing
-            # if session_id:
-            #     try:
-            #         await file_manager.mark_service_complete(session_id, "pronunciation")
-            #     except Exception as cleanup_error:
-            #         logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
+            # Mark service complete even on failure to prevent stuck sessions
+            if session_id:
+                try:
+                    await file_manager.mark_service_complete(session_id, "pronunciation")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
             
             return {
                 "grade": 0,

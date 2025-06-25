@@ -45,10 +45,10 @@ async def startup_event():
     global cleanup_task
     
     async def periodic_cleanup_loop():
-        """Run periodic cleanup every 5 minutes"""
+        """Run periodic cleanup every 15 minutes"""
         while True:
             try:
-                await asyncio.sleep(300)  # Sleep for 5 minutes
+                await asyncio.sleep(900)  # Sleep for 15 minutes (less aggressive)
                 await file_manager.periodic_cleanup()
                 logger.info("Completed periodic file cleanup")
             except Exception as e:

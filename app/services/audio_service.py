@@ -22,11 +22,20 @@ class AudioService:
             
             # Register file with dependencies (pronunciation service will use this file)
             dependent_services = {"pronunciation"}  # Only pronunciation service needs the converted file
+            
+            # Store metadata for potential retries
+            metadata = {
+                "original_audio_url": audio_url,
+                "question_number": question_number,
+                "submission_url": submission_url
+            }
+            
             await file_manager.register_file_session(
                 session_id=session_id,
                 file_path=wav_path,
                 dependent_services=dependent_services,
-                cleanup_timeout_minutes=30  # Cleanup after 30 minutes if services don't complete
+                cleanup_timeout_minutes=30,  # Cleanup after 30 minutes if services don't complete
+                metadata=metadata
             )
             
             return {

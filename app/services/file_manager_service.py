@@ -21,15 +21,17 @@ class FileManagerService:
     
     def generate_session_id(self, submission_url: str, question_number: int) -> str:
         """Generate a unique session ID for file tracking"""
-        timestamp = int(datetime.now().timestamp())
-        return f"session_{hash(submission_url)}_{question_number}_{timestamp}"
+        timestamp = datetime.now().timestamp()
+        unique_id = str(uuid.uuid4())[:8]  # Use UUID for uniqueness
+        return f"session_{hash(submission_url)}_{question_number}_{int(timestamp)}_{unique_id}"
     
     async def register_file_session(
         self, 
         session_id: str, 
         file_path: str, 
         dependent_services: Set[str],
-        cleanup_timeout_minutes: int = 60
+        cleanup_timeout_minutes: int = 60,
+        metadata: Optional[Dict] = None
     ) -> None:
         """Register a file session with its dependencies"""
         async with self._lock:
@@ -37,7 +39,8 @@ class FileManagerService:
                 "file_path": file_path,
                 "created_at": datetime.now(),
                 "cleanup_timeout": datetime.now() + timedelta(minutes=cleanup_timeout_minutes),
-                "cleanup_completed": False
+                "cleanup_completed": False,
+                "metadata": metadata or {}
             }
             self._file_dependencies[session_id] = dependent_services.copy()
             
@@ -113,9 +116,10 @@ class FileManagerService:
         for session_id in sessions_to_cleanup:
             await self.force_cleanup_session(session_id)
     
-    def get_session_info(self, session_id: str) -> Optional[Dict]:
+    async def get_session_info(self, session_id: str) -> Optional[Dict]:
         """Get information about a file session"""
-        return self._file_sessions.get(session_id)
+        async with self._lock:
+            return self._file_sessions.get(session_id)
     
     def get_active_sessions(self) -> Dict[str, Dict]:
         """Get all active file sessions (for debugging/monitoring)"""
