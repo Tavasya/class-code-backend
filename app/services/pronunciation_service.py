@@ -345,54 +345,65 @@ class PronunciationService:
                 raise ValueError("PronunciationService now only accepts local file paths, not URLs. "
                                "Audio URLs should be converted to local files by AudioService first.")
             
-            # Verify file exists - trigger retry if missing
-            if not os.path.exists(audio_file):
-                logger.warning(f"Audio file not found: {audio_file}. Attempting to trigger audio pipeline retry.")
-                
-                # Try to get original audio URL and submission info from session_id
-                if session_id:
-                    try:
-                        from app.services.file_manager_service import FileManagerService
-                        from app.pubsub.client import PubSubClient
-                        
-                        file_manager = FileManagerService()
-                        session_info = await file_manager.get_session_info(session_id)
-                        
-                        if session_info and session_info.get('metadata'):
-                            metadata = session_info['metadata']
-                            original_audio_url = metadata.get('original_audio_url')
-                            question_number = metadata.get('question_number')
-                            submission_url = metadata.get('submission_url')
+            # Verify file exists with retry mechanism
+            max_wait_attempts = 5
+            wait_time = 1  # Start with 1 second
+            
+            for attempt in range(max_wait_attempts):
+                if os.path.exists(audio_file):
+                    break
+                    
+                if attempt < max_wait_attempts - 1:
+                    logger.info(f"Audio file not ready yet: {audio_file}. Waiting {wait_time}s (attempt {attempt + 1}/{max_wait_attempts})")
+                    await asyncio.sleep(wait_time)
+                    wait_time *= 1.5  # Exponential backoff
+                else:
+                    logger.warning(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}. Attempting to trigger audio pipeline retry.")
+                    
+                    # Try to get original audio URL and submission info from session_id
+                    if session_id:
+                        try:
+                            from app.services.file_manager_service import FileManagerService
+                            from app.pubsub.client import PubSubClient
                             
-                            if all([original_audio_url, question_number, submission_url]):
-                                # Trigger audio pipeline retry
-                                pubsub_client = PubSubClient()
-                                retry_message = {
-                                    "audio_url": original_audio_url,
-                                    "question_number": question_number,
-                                    "submission_url": submission_url,
-                                    "retry_reason": "pronunciation_file_not_found"
-                                }
+                            file_manager = FileManagerService()
+                            session_info = await file_manager.get_session_info(session_id)
+                            
+                            if session_info and session_info.get('metadata'):
+                                metadata = session_info['metadata']
+                                original_audio_url = metadata.get('original_audio_url')
+                                question_number = metadata.get('question_number')
+                                submission_url = metadata.get('submission_url')
                                 
-                                message_id = pubsub_client.publish_message_by_name(
-                                    topic_name="STUDENT_SUBMISSION",
-                                    message=retry_message
-                                )
-                                
-                                logger.info(f"Audio pipeline retry triggered with message ID: {message_id}")
-                                
-                                return {
-                                    "grade": 0,
-                                    "issues": [{
-                                        "type": "retry",
-                                        "message": f"Audio file not found. Pipeline retry initiated (Message ID: {message_id})"
-                                    }]
-                                }
-                    except Exception as retry_error:
-                        logger.error(f"Failed to trigger audio pipeline retry: {str(retry_error)}")
-                
-                # Fallback if retry couldn't be triggered
-                raise FileNotFoundError(f"Audio file not found: {audio_file}")
+                                if all([original_audio_url, question_number, submission_url]):
+                                    # Trigger audio pipeline retry
+                                    pubsub_client = PubSubClient()
+                                    retry_message = {
+                                        "audio_url": original_audio_url,
+                                        "question_number": question_number,
+                                        "submission_url": submission_url,
+                                        "retry_reason": "pronunciation_file_not_found"
+                                    }
+                                    
+                                    message_id = pubsub_client.publish_message_by_name(
+                                        topic_name="STUDENT_SUBMISSION",
+                                        message=retry_message
+                                    )
+                                    
+                                    logger.info(f"Audio pipeline retry triggered with message ID: {message_id}")
+                                    
+                                    return {
+                                        "grade": 0,
+                                        "issues": [{
+                                            "type": "retry",
+                                            "message": f"Audio file not found after {max_wait_attempts} attempts. Pipeline retry initiated (Message ID: {message_id})"
+                                        }]
+                                    }
+                        except Exception as retry_error:
+                            logger.error(f"Failed to trigger audio pipeline retry: {str(retry_error)}")
+                    
+                    # Fallback if retry couldn't be triggered
+                    raise FileNotFoundError(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}")
             
             # Set up the Speech config
             speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)

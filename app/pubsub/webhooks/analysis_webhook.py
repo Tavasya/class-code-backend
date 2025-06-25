@@ -214,7 +214,7 @@ class AnalysisWebhook:
             # 2. Grammar Analysis Task
             async def grammar_task():
                 try:
-                    grammar_result = await analyze_grammar(transcript)
+                    grammar_result = await analyze_grammar(transcript, submission_url, question_number)
                     state["grammar_result"] = grammar_result
                     state["grammar_done"] = True
                     
@@ -312,7 +312,7 @@ class AnalysisWebhook:
             
             # Update status to in_progress
             db_service = DatabaseService()
-            db_service.update_status_logs(submission_url, question_number, "pronunciation", "in_progress")
+            await db_service.update_status_logs(submission_url, question_number, "pronunciation", "in_progress")
             
             pronunciation_result = message_data["result"]
             transcript = message_data["transcript"]
@@ -378,14 +378,7 @@ class AnalysisWebhook:
                     
                     total_pause_duration = sentence_pause_time + comma_pause_time + thought_pause_time
                     
-                    logger.info(
-                        f"⏱️ Pause Duration Breakdown:\n"
-                        f"  • Sentence pauses: {sentence_pause_time:.1f}s ({sentence_count} × {PAUSE_BETWEEN_SENTENCES}s)\n"
-                        f"  • Comma pauses: {comma_pause_time:.1f}s ({comma_count} × {PAUSE_FOR_COMMA}s)\n"
-                        f"  • Thought pauses: {thought_pause_time:.1f}s ({thought_pauses} × {PAUSE_FOR_THOUGHT}s)\n"
-                        f"  📊 Total pause duration: {total_pause_duration:.1f}s"
-                    )
-                    
+                
                     # Calculate pause impact factor with more emphasis on longer texts
                     # New formula that scales better with text length
                     pause_impact_factor = min(0.95, max(0.75, 1.0 - (word_count / 300)))
@@ -416,25 +409,7 @@ class AnalysisWebhook:
                         wpm_calculated = round((word_count / adjusted_duration) * 60, 1)
                         # Add a sanity check cap for extremely high WPM values
                         wpm_calculated = min(wpm_calculated, 300)  # Cap at 300 WPM which is very fast but possible
-                        logger.info(
-                            f"🎉 WPM Calculation Complete!\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"📊 Final Results:\n"
-                            f"  • Words counted: {word_count}\n"
-                            f"  • Original duration: {audio_duration_from_pron_result:.1f}s\n"
-                            f"  • Base speaking time: {base_speaking_time:.1f}s\n"
-                            f"  • Adjusted duration: {adjusted_duration:.1f}s\n"
-                            f"  • Words per minute: {wpm_calculated} WPM\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"📝 Speech Components:\n"
-                            f"  • Sentences: {sentence_count}\n"
-                            f"  • Commas: {comma_count}\n"
-                            f"  • Thought pauses: {thought_pauses}\n"
-                            f"⏱️ Timing Adjustments:\n"
-                            f"  • Total pause time: {total_pause_duration:.1f}s\n"
-                            f"  • Impact factor: {pause_impact_factor:.2f}\n"
-                            f"  • Final pause reduction: {adjusted_pause_duration:.1f}s"
-                        )
+                     
                     else:
                         logger.warning("⚠️ Transcript word count is 0. WPM will be 0.")
                 else:
@@ -479,13 +454,13 @@ class AnalysisWebhook:
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             # Update status to completed
-            db_service.update_status_logs(submission_url, question_number, "pronunciation", "completed")
+            await db_service.update_status_logs(submission_url, question_number, "pronunciation", "completed")
             
             return {"status": "success", "message": "Pronunciation analysis completion acknowledged"}
             
         except Exception as e:
             # Update status to failed if there's an error
-            db_service.update_status_logs(submission_url, question_number, "pronunciation", "failed")
+            await db_service.update_status_logs(submission_url, question_number, "pronunciation", "failed")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
     async def handle_fluency_done_webhook(self, request: Request) -> Dict[str, str]:
@@ -499,7 +474,7 @@ class AnalysisWebhook:
             
             # Update status to in_progress
             db_service = DatabaseService()
-            db_service.update_status_logs(submission_url, question_number, "fluency", "in_progress")
+            await db_service.update_status_logs(submission_url, question_number, "fluency", "in_progress")
             
             total_questions = message_data.get("total_questions")
             
@@ -520,13 +495,13 @@ class AnalysisWebhook:
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             # Update status to completed
-            db_service.update_status_logs(submission_url, question_number, "fluency", "completed")
+            await db_service.update_status_logs(submission_url, question_number, "fluency", "completed")
             
             return {"status": "success", "message": "Fluency analysis completion acknowledged"}
             
         except Exception as e:
             # Update status to failed if there's an error
-            db_service.update_status_logs(submission_url, question_number, "fluency", "failed")
+            await db_service.update_status_logs(submission_url, question_number, "fluency", "failed")
             logger.error(f"Error handling fluency done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
@@ -541,7 +516,7 @@ class AnalysisWebhook:
             
             # Update status to in_progress
             db_service = DatabaseService()
-            db_service.update_status_logs(submission_url, question_number, "grammar", "in_progress")
+            await db_service.update_status_logs(submission_url, question_number, "grammar", "in_progress")
             
             total_questions = message_data.get("total_questions")
             
@@ -562,13 +537,13 @@ class AnalysisWebhook:
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             # Update status to completed
-            db_service.update_status_logs(submission_url, question_number, "grammar", "completed")
+            await db_service.update_status_logs(submission_url, question_number, "grammar", "completed")
             
             return {"status": "success", "message": "Grammar analysis completion acknowledged"}
             
         except Exception as e:
             # Update status to failed if there's an error
-            db_service.update_status_logs(submission_url, question_number, "grammar", "failed")
+            await db_service.update_status_logs(submission_url, question_number, "grammar", "failed")
             logger.error(f"Error handling grammar done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
@@ -615,7 +590,7 @@ class AnalysisWebhook:
             
             # Update status to in_progress
             db_service = DatabaseService()
-            db_service.update_status_logs(submission_url, question_number, "vocabulary", "in_progress")
+            await db_service.update_status_logs(submission_url, question_number, "vocabulary", "in_progress")
             
             total_questions = message_data.get("total_questions")
             
@@ -636,13 +611,13 @@ class AnalysisWebhook:
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             # Update status to completed
-            db_service.update_status_logs(submission_url, question_number, "vocabulary", "completed")
+            await db_service.update_status_logs(submission_url, question_number, "vocabulary", "completed")
             
             return {"status": "success", "message": "Vocabulary analysis completion acknowledged"}
             
         except Exception as e:
             # Update status to failed if there's an error
-            db_service.update_status_logs(submission_url, question_number, "vocabulary", "failed")
+            await db_service.update_status_logs(submission_url, question_number, "vocabulary", "failed")
             logger.error(f"Error handling vocabulary done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 MODEL = "gpt-4o-mini"
 
-async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
+async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2, submission_url: str = None, question_number: int = None) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
     logger.info(f"Calling OpenAI API with format validation, expecting: {expected_format}")
     
@@ -46,14 +46,22 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 "temperature": 0.1
             }
             
-            async with aiohttp.ClientSession() as session:
+            # Track API call
+            if submission_url:
+                try:
+                    from app.services.api_call_tracker import api_call_tracker
+                    await api_call_tracker.increment_openai_call(submission_url, "grammar", question_number)
+                except Exception as e:
+                    logger.warning(f"Failed to track API call: {str(e)}")
+            
+            timeout = aiohttp.ClientTimeout(total=60, connect=10)
+            connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300, use_dns_cache=True)
+            
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
                 async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
                         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        
-                        # Log the raw response for debugging
-                        logger.info(f"Raw API response: {content}")
                         
                         if "```json" in content or "```" in content:
                             json_pattern = r"```(?:json)?\s*(.*?)\s*```"
@@ -83,8 +91,14 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                         if attempt == max_retries:
                             return None
                         
+        except (aiohttp.ClientError, BrokenPipeError, ConnectionResetError, OSError) as e:
+            logger.warning(f"Connection error in API call (attempt {attempt + 1}): {str(e)}")
+            if attempt == max_retries:
+                logger.error(f"Max retries reached for API call: {str(e)}")
+                return None
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
         except Exception as e:
-            logger.exception(f"Error in API call: {str(e)}")
+            logger.exception(f"Unexpected error in API call: {str(e)}")
             if attempt == max_retries:
                 return None
             
@@ -252,7 +266,7 @@ Provide corrections in JSON format:
 Return ONLY the JSON array. No other text or markdown formatting.
 """
 
-async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int) -> Dict[str, Any]:
+async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int, submission_url: str = None, question_number: int = None) -> Dict[str, Any]:
     """Analyze grammar for a single sentence"""
     logger.info(f"Analyzing grammar for sentence {sentence_idx}")
     
@@ -266,7 +280,7 @@ async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int) -> D
     
     try:
         prompt = create_grammar_prompt_for_single_sentence(sentence)
-        result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
+        result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2, submission_url=submission_url, question_number=question_number)
         
         corrections = []
         if result and isinstance(result, list):
@@ -291,7 +305,7 @@ async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int) -> D
             "error": str(e)
         }
 
-async def check_grammar(sentences: List[str]) -> List[List[Dict[str, Any]]]:
+async def check_grammar(sentences: List[str], submission_url: str = None, question_number: int = None) -> List[List[Dict[str, Any]]]:
     """Check grammar for each sentence"""
     logger.info(f"Checking grammar for {len(sentences)} sentences")
     
@@ -348,7 +362,7 @@ Here are the sentences to analyze:
         
         prompt += "\n\nProvide ONLY the JSON array with corrections. No other text or markdown formatting."
         
-        corrections = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
+        corrections = await call_openai_with_retry(prompt, expected_format="list", max_retries=2, submission_url=submission_url, question_number=question_number)
         
         if corrections is None:
             logger.warning("Failed to get corrections from API")
@@ -438,7 +452,7 @@ def aggregate_grammar_results(results: List[Dict], sentences: List[str]) -> Dict
         "total_corrections": total_corrections
     }
 
-async def analyze_grammar(transcript: str) -> Dict[str, Any]:
+async def analyze_grammar(transcript: str, submission_url: str = None, question_number: int = None) -> Dict[str, Any]:
     """Analyze grammar in a transcript"""
     logger.info(f"Starting grammar analysis for transcript of length: {len(transcript)}")
     
@@ -453,7 +467,7 @@ async def analyze_grammar(transcript: str) -> Dict[str, Any]:
         logger.info(f"Analyzing {len(sentences)} sentences")
         
         # Process sentences in parallel
-        tasks = [analyze_single_sentence_grammar(sentence, idx) for idx, sentence in enumerate(sentences)]
+        tasks = [analyze_single_sentence_grammar(sentence, idx, submission_url, question_number) for idx, sentence in enumerate(sentences)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Aggregate results

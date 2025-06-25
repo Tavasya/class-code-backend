@@ -4,7 +4,8 @@
       "Bash(gcloud logging read:*)",
       "Bash(gcloud run services describe:*)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

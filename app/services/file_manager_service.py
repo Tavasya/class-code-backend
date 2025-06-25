@@ -57,14 +57,23 @@ class FileManagerService:
             if service_name in dependencies:
                 dependencies.remove(service_name)
                 logger.info(f"Service {service_name} completed for session {session_id}. Remaining: {dependencies}")
+            else:
+                logger.info(f"Service {service_name} was not in dependencies for session {session_id} (already completed or not required)")
             
             # Check if all services are complete
             if not dependencies:
-                logger.info(f"All services completed for session {session_id}. Ready for cleanup.")
-                await self._cleanup_file_session(session_id)
+                logger.info(f"All services completed for session {session_id}. Scheduling cleanup with delay.")
+                # Add delay to ensure all services finish their cleanup
+                asyncio.create_task(self._delayed_cleanup(session_id))
                 return True
             
             return False
+    
+    async def _delayed_cleanup(self, session_id: str, delay_seconds: float = 5.0) -> None:
+        """Clean up session after a delay to ensure all services complete"""
+        await asyncio.sleep(delay_seconds)
+        async with self._lock:
+            await self._cleanup_file_session(session_id)
     
     async def _cleanup_file_session(self, session_id: str) -> None:
         """Clean up files for a completed session"""

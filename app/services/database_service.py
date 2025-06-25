@@ -342,7 +342,7 @@ class DatabaseService:
             logger.error(f"Error fetching assignment by id {assignment_id}: {str(e)}")
             return None
 
-    def update_status_logs(self, submission_url: str, question_number: int, analysis_type: str, status: str) -> bool:
+    async def update_status_logs(self, submission_url: str, question_number: int, analysis_type: str, status: str) -> bool:
         """Update the status logs for a specific analysis type in a question."""
         operation = "UPDATE_STATUS_LOGS"
         
@@ -381,6 +381,14 @@ class DatabaseService:
             
             # Update the specific analysis status
             current_logs["questions"][question_key][analysis_type] = status
+            
+            # Add API call counts to status logs
+            try:
+                from app.services.api_call_tracker import api_call_tracker
+                call_counts = await api_call_tracker.get_submission_call_counts(submission_url)
+                current_logs["api_call_counts"] = call_counts
+            except Exception as e:
+                logger.warning(f"Failed to add API call counts to status logs: {str(e)}")
             
             # Update the submission
             result = self.supabase.table('submissions').update({
