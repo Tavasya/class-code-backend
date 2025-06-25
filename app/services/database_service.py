@@ -368,7 +368,7 @@ class DatabaseService:
                     "questions": {}
                 }
             
-            # Initialize question status if not exists
+            # Initialize question status if not exists, preserving existing statuses
             question_key = str(question_number)
             if question_key not in current_logs["questions"]:
                 current_logs["questions"][question_key] = {
@@ -378,6 +378,20 @@ class DatabaseService:
                     "vocabulary": "not_started",
                     "started_at": datetime.now().isoformat()
                 }
+            else:
+                # Preserve existing question status and only add missing analysis types
+                existing_question = current_logs["questions"][question_key]
+                default_statuses = {
+                    "pronunciation": "not_started",
+                    "fluency": "not_started", 
+                    "grammar": "not_started",
+                    "vocabulary": "not_started"
+                }
+                for analysis_key, default_status in default_statuses.items():
+                    if analysis_key not in existing_question:
+                        existing_question[analysis_key] = default_status
+                if "started_at" not in existing_question:
+                    existing_question["started_at"] = datetime.now().isoformat()
             
             # Update the specific analysis status
             current_logs["questions"][question_key][analysis_type] = status

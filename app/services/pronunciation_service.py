@@ -4,6 +4,7 @@ import logging
 import re
 import aiohttp
 import tempfile
+import asyncio
 import azure.cognitiveservices.speech as speechsdk
 from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
@@ -421,9 +422,10 @@ class PronunciationService:
             recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
             pron_config.apply_to(recognizer)
             
-            # Run recognition
+            # Run recognition in thread pool to avoid blocking the event loop
             logger.info(f"Starting pronunciation assessment on {audio_file} with reference text")
-            result = recognizer.recognize_once()
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, recognizer.recognize_once)
             
             # Process result based on recognition outcome
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
