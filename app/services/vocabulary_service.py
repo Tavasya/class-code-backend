@@ -118,7 +118,7 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
 def create_vocabulary_prompt_for_single_sentence(sentence: str) -> str:
     """Create optimized prompt for single sentence collocation analysis"""
     return f"""
-You are an expert in English vocabulary and collocation analysis. Analyze the following sentence for incorrect word usage and poor word choices on a word-by-word basis.
+You are an expert in English vocabulary and collocation analysis. Analyze the following sentence for incorrect word usage and poor word choices on a word-by-word basis. If you chose a word in a sentence you dont need to choose it again. 
 
 Sentence: "{sentence}"
 

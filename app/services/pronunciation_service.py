@@ -419,13 +419,6 @@ class PronunciationService:
                     except Exception as e:
                         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
-                # Since only pronunciation service needs the WAV file, clean it up immediately
-                try:
-                    if os.path.exists(audio_file):
-                        os.unlink(audio_file)
-                        logger.info(f"Cleaned up WAV file after pronunciation analysis: {audio_file}")
-                except Exception as e:
-                    logger.warning(f"Failed to clean up WAV file {audio_file}: {str(e)}")
                 
                 return PronunciationService._transform_to_standardized_format(processed_result, improvement_suggestion)
                 
