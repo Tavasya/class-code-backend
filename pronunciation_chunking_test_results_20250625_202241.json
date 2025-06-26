@@ -1,0 +1,238 @@
+{
+  "test_session": {
+    "timestamp": "2025-06-25T20:21:16.945428",
+    "session_id": "test_chunking_session",
+    "test_results": [
+      {
+        "message": "🧪 Testing Pronunciation Service with Chunking Integration",
+        "timestamp": "2025-06-25T20:21:16.945439"
+      },
+      {
+        "message": "============================================================",
+        "timestamp": "2025-06-25T20:21:16.945507"
+      },
+      {
+        "message": "📁 Audio file exists: True",
+        "timestamp": "2025-06-25T20:21:16.945529"
+      },
+      {
+        "message": "📏 Audio file size: 3770958 bytes",
+        "timestamp": "2025-06-25T20:21:16.945540"
+      },
+      {
+        "message": "\n🔍 Test 1/3: Short transcript (standard analysis)",
+        "timestamp": "2025-06-25T20:21:16.945547"
+      },
+      {
+        "message": "📝 Word count: 7 words",
+        "timestamp": "2025-06-25T20:21:16.945554"
+      },
+      {
+        "message": "🎯 Expected method: standard",
+        "timestamp": "2025-06-25T20:21:16.945559"
+      },
+      {
+        "message": "📄 Transcript preview: I bought a ticket to Costa Rica....",
+        "timestamp": "2025-06-25T20:21:16.945563"
+      },
+      {
+        "message": "🎤 Analyzing pronunciation...",
+        "timestamp": "2025-06-25T20:21:16.945568"
+      },
+      {
+        "message": "✅ Analysis successful!",
+        "timestamp": "2025-06-25T20:21:32.546015"
+      },
+      {
+        "message": "📊 Grade: 24.6",
+        "timestamp": "2025-06-25T20:21:32.546093"
+      },
+      {
+        "message": "📊 Accuracy: 51.0",
+        "timestamp": "2025-06-25T20:21:32.546115"
+      },
+      {
+        "message": "📊 Fluency: 5.0",
+        "timestamp": "2025-06-25T20:21:32.546130"
+      },
+      {
+        "message": "📊 Words analyzed: 7",
+        "timestamp": "2025-06-25T20:21:32.546142"
+      },
+      {
+        "message": "📊 Issues: 2",
+        "timestamp": "2025-06-25T20:21:32.546153"
+      },
+      {
+        "message": "\n🔍 Test 2/3: Medium transcript (streaming analysis)",
+        "timestamp": "2025-06-25T20:21:32.546166"
+      },
+      {
+        "message": "📝 Word count: 37 words",
+        "timestamp": "2025-06-25T20:21:32.546181"
+      },
+      {
+        "message": "🎯 Expected method: streaming",
+        "timestamp": "2025-06-25T20:21:32.546193"
+      },
+      {
+        "message": "📄 Transcript preview: I bought a ticket to Costa Rica. Costa Rica is something me and my friends have planning a place of ...",
+        "timestamp": "2025-06-25T20:21:32.546204"
+      },
+      {
+        "message": "🎤 Analyzing pronunciation...",
+        "timestamp": "2025-06-25T20:21:32.546218"
+      },
+      {
+        "message": "✅ Analysis successful!",
+        "timestamp": "2025-06-25T20:21:48.387370"
+      },
+      {
+        "message": "📊 Grade: 62.4",
+        "timestamp": "2025-06-25T20:21:48.388128"
+      },
+      {
+        "message": "📊 Accuracy: 92.0",
+        "timestamp": "2025-06-25T20:21:48.388143"
+      },
+      {
+        "message": "📊 Fluency: 41.0",
+        "timestamp": "2025-06-25T20:21:48.388150"
+      },
+      {
+        "message": "📊 Words analyzed: 37",
+        "timestamp": "2025-06-25T20:21:48.388156"
+      },
+      {
+        "message": "📊 Issues: 2",
+        "timestamp": "2025-06-25T20:21:48.388163"
+      },
+      {
+        "message": "\n🔍 Test 3/3: Long transcript (chunking analysis)",
+        "timestamp": "2025-06-25T20:21:48.388169"
+      },
+      {
+        "message": "📝 Word count: 217 words",
+        "timestamp": "2025-06-25T20:21:48.388183"
+      },
+      {
+        "message": "🎯 Expected method: chunking",
+        "timestamp": "2025-06-25T20:21:48.388190"
+      },
+      {
+        "message": "📄 Transcript preview: I bought a ticket to Costa Rica. Costa Rica is something me and my friends have planning a place of ...",
+        "timestamp": "2025-06-25T20:21:48.388195"
+      },
+      {
+        "message": "🎤 Analyzing pronunciation...",
+        "timestamp": "2025-06-25T20:21:48.388206"
+      },
+      {
+        "message": "✅ Analysis successful!",
+        "timestamp": "2025-06-25T20:22:41.051102"
+      },
+      {
+        "message": "📊 Grade: 47.26666666666667",
+        "timestamp": "2025-06-25T20:22:41.051452"
+      },
+      {
+        "message": "📊 Accuracy: 57.5",
+        "timestamp": "2025-06-25T20:22:41.051461"
+      },
+      {
+        "message": "📊 Fluency: 39.666666666666664",
+        "timestamp": "2025-06-25T20:22:41.051467"
+      },
+      {
+        "message": "📊 Words analyzed: 155",
+        "timestamp": "2025-06-25T20:22:41.051474"
+      },
+      {
+        "message": "📊 Issues: 2",
+        "timestamp": "2025-06-25T20:22:41.051479"
+      },
+      {
+        "message": "\n🔧 Testing helper methods...",
+        "timestamp": "2025-06-25T20:22:41.051487"
+      },
+      {
+        "message": "📦 Testing text chunking with 217 words...",
+        "timestamp": "2025-06-25T20:22:41.051501"
+      },
+      {
+        "message": "✅ Created 30 phrase chunks",
+        "timestamp": "2025-06-25T20:22:41.051542"
+      },
+      {
+        "message": "   Chunk 1: 7 words - I bought a ticket to Costa Rica...",
+        "timestamp": "2025-06-25T20:22:41.051550"
+      },
+      {
+        "message": "   Chunk 2: 16 words - Costa Rica is something me and my friends have pla...",
+        "timestamp": "2025-06-25T20:22:41.051555"
+      },
+      {
+        "message": "   Chunk 3: 7 words - It is a country that is beautiful...",
+        "timestamp": "2025-06-25T20:22:41.051560"
+      },
+      {
+        "message": "\n📋 Test Summary:",
+        "timestamp": "2025-06-25T20:22:41.051567"
+      },
+      {
+        "message": "✅ Successful: 3/3",
+        "timestamp": "2025-06-25T20:22:41.051572"
+      },
+      {
+        "message": "❌ Failed: 0/3",
+        "timestamp": "2025-06-25T20:22:41.051577"
+      },
+      {
+        "message": "📈 Success rate: 100.0%",
+        "timestamp": "2025-06-25T20:22:41.051583"
+      }
+    ]
+  },
+  "test_cases": [
+    {
+      "test_name": "Short transcript (standard analysis)",
+      "word_count": 7,
+      "expected_method": "standard",
+      "status": "success",
+      "grade": 24.6,
+      "accuracy_score": 51.0,
+      "fluency_score": 5.0,
+      "word_count_analyzed": 7,
+      "issues_count": 2
+    },
+    {
+      "test_name": "Medium transcript (streaming analysis)",
+      "word_count": 37,
+      "expected_method": "streaming",
+      "status": "success",
+      "grade": 62.4,
+      "accuracy_score": 92.0,
+      "fluency_score": 41.0,
+      "word_count_analyzed": 37,
+      "issues_count": 2
+    },
+    {
+      "test_name": "Long transcript (chunking analysis)",
+      "word_count": 217,
+      "expected_method": "chunking",
+      "status": "success",
+      "grade": 47.26666666666667,
+      "accuracy_score": 57.5,
+      "fluency_score": 39.666666666666664,
+      "word_count_analyzed": 155,
+      "issues_count": 2
+    }
+  ],
+  "summary": {
+    "total_tests": 3,
+    "successful_tests": 3,
+    "failed_tests": 0,
+    "success_rate": 100.0,
+    "audio_file_available": true
+  }
+}

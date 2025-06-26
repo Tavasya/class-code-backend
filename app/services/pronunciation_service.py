@@ -365,9 +365,6 @@ class PronunciationService:
                     # Try to get original audio URL and submission info from session_id
                     if session_id:
                         try:
-                            from app.services.file_manager_service import FileManagerService
-                            from app.pubsub.client import PubSubClient
-                            
                             file_manager_service = FileManagerService()
                             session_info = await file_manager_service.get_session_info(session_id)
                             
@@ -379,6 +376,7 @@ class PronunciationService:
                                 
                                 if all([original_audio_url, question_number, submission_url]):
                                     # Trigger audio pipeline retry
+                                    from app.pubsub.client import PubSubClient
                                     pubsub_client = PubSubClient()
                                     retry_message = {
                                         "audio_url": original_audio_url,
@@ -896,18 +894,23 @@ class PronunciationService:
                 logger.warning(f"Could not get audio duration: {e}, using estimated timing")
                 total_duration = len(words) * 0.6  # Estimate ~0.6 seconds per word
             
-            # Calculate time per chunk
-            chunk_duration = total_duration / len(text_chunks)
+            # No longer using fixed chunk duration - using word-based timing instead
             
-            # Process each chunk
+            # Process each chunk with accurate timestamp tracking
             all_results = []
             combined_words = []
+            cumulative_words_processed = 0
             
             for i, chunk in enumerate(text_chunks):
                 logger.info(f"Processing chunk {i+1}/{len(text_chunks)}: {chunk['word_count']} words")
                 
-                # Calculate time range for this chunk
-                start_time = i * chunk_duration
+                # Calculate time range for this chunk based on word position
+                # More accurate: estimate time based on word position rather than equal splits
+                words_per_second = len(words) / total_duration if total_duration > 0 else 1.5  # fallback rate
+                chunk_start_time = cumulative_words_processed / words_per_second
+                estimated_chunk_duration = chunk['word_count'] / words_per_second
+                
+                logger.info(f"   Chunk timing: start={chunk_start_time:.2f}s, duration={estimated_chunk_duration:.2f}s")
                 
                 # Create temporary audio chunk
                 temp_chunk_file = None
@@ -915,13 +918,14 @@ class PronunciationService:
                     temp_chunk_file = tempfile.mktemp(suffix='.wav')
                     cmd = [
                         'ffmpeg', '-y', '-i', audio_file,
-                        '-ss', str(start_time), '-t', str(chunk_duration),
+                        '-ss', str(chunk_start_time), '-t', str(estimated_chunk_duration + 1.0),  # Add 1s buffer
                         '-c', 'copy', temp_chunk_file
                     ]
                     
                     result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     if result.returncode != 0:
                         logger.warning(f"Failed to extract audio chunk {i+1}")
+                        cumulative_words_processed += chunk['word_count']
                         continue
                     
                     # Process this chunk with standard analysis
@@ -930,16 +934,23 @@ class PronunciationService:
                     if chunk_result:
                         logger.info(f"Chunk {i+1} processed successfully")
                         
-                        # Extract words and adjust their timestamps
+                        # Extract words and adjust their timestamps accurately
                         if "NBest" in chunk_result and chunk_result["NBest"]:
                             chunk_words = chunk_result["NBest"][0].get("Words", [])
                             
                             for word_data in chunk_words:
-                                # Adjust timestamps to account for chunk offset
-                                word_data["Offset"] = word_data.get("Offset", 0) + int(start_time * 10000000)
+                                # Calculate accurate global timestamp
+                                # Original offset from chunk + chunk start time in global audio
+                                original_offset_seconds = word_data.get("Offset", 0) / 10000000  # Convert to seconds
+                                global_offset_seconds = chunk_start_time + original_offset_seconds
+                                
+                                # Update with accurate global timestamp
+                                word_data["Offset"] = int(global_offset_seconds * 10000000)  # Convert back to 100-nanosecond units
+                                
                                 combined_words.append(word_data)
                         
                         all_results.append(chunk_result)
+                        logger.info(f"   Added {len(chunk_words)} words with timestamps starting at {chunk_start_time:.2f}s")
                     else:
                         logger.warning(f"Chunk {i+1} failed to process")
                 
@@ -950,6 +961,9 @@ class PronunciationService:
                             os.unlink(temp_chunk_file)
                         except:
                             pass
+                
+                # Update cumulative count for next chunk
+                cumulative_words_processed += chunk['word_count']
             
             # Combine results
             if all_results:
