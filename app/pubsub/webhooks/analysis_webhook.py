@@ -1080,10 +1080,10 @@ class AnalysisWebhook:
                     "transcript": state.get("transcript")
                 }
                 
-                # Start concurrent improvement processing
-                asyncio.create_task(self._process_question_improvement(submission_url, question_number, analysis_results))
+                # Process paragraph improvement synchronously to ensure it's included in results
+                await self._process_question_improvement(submission_url, question_number, analysis_results)
                 
-                # Publish analysis complete message
+                # Publish analysis complete message with paragraph restructuring included
                 self.pubsub_client.publish_message_by_name(
                     "ANALYSIS_COMPLETE",
                     {

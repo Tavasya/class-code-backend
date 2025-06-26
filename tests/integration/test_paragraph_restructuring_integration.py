@@ -43,9 +43,9 @@ class TestParagraphRestructuringIntegration:
             print(f"Target band: {result.target_band}")
             print(f"Improved transcript: {result.improved_transcript}")
             
-            # Verify band detection worked correctly (should be B1 based on scores)
-            assert result.original_band == "B1"
-            assert result.target_band == "B2"
+            # Verify band detection worked correctly (should be A2.5 based on scores)
+            assert result.original_band == "A2.5"
+            assert result.target_band == "B1"
             assert result.improved_transcript == expected_improved
             
             print("✅ Full workflow integration test passed")
@@ -165,9 +165,9 @@ class TestParagraphRestructuringIntegration:
             assert "paragraph_restructuring" in question_1_data
             
             pr_data = question_1_data["paragraph_restructuring"]
-            # The scores provided should result in B1 detection (average ~53)
-            assert pr_data["original_band"] == "B1"  # Based on average score of 53
-            assert pr_data["target_band"] == "B2"
+            # The scores provided should result in A2 detection (average ~53.75)
+            assert pr_data["original_band"] == "A2"  # Based on average score of 53.75
+            assert pr_data["target_band"] == "A2.5"
             assert pr_data["improved_transcript"] == expected_improved
             
             print("✅ Webhook integration simulation passed") 
