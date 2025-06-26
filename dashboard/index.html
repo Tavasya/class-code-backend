@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowTracer - Codebase Flow Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b, #334155);
+            padding: 2rem;
+            border-bottom: 1px solid #334155;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            color: #94a3b8;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #f1f5f9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #60a5fa;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .scenario-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .scenario-item {
+            background: #334155;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .scenario-item:hover {
+            background: #475569;
+            transform: translateX(4px);
+        }
+
+        .scenario-item.active {
+            background: #1e40af;
+            border-left: 4px solid #60a5fa;
+        }
+
+        .scenario-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .scenario-desc {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .visualization-area {
+            grid-column: span 2;
+            min-height: 600px;
+        }
+
+        .flow-diagram {
+            width: 100%;
+            height: 600px;
+            overflow: auto;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .btn-secondary {
+            background: #374151;
+            color: #e5e7eb;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #94a3b8;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #334155;
+            border-top: 4px solid #60a5fa;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            color: #ef4444;
+            background: #1f2937;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #ef4444;
+        }
+
+        .flow-node {
+            fill: #1e293b;
+            stroke: #60a5fa;
+            stroke-width: 2;
+            cursor: pointer;
+        }
+
+        .flow-node:hover {
+            fill: #334155;
+        }
+
+        .flow-link {
+            stroke: #64748b;
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+
+        .flow-text {
+            fill: #e2e8f0;
+            font-size: 12px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        .legend {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .api { background: #3b82f6; }
+        .database { background: #10b981; }
+        .external { background: #f59e0b; }
+        .business { background: #8b5cf6; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>FlowTracer</h1>
+            <p>AI-powered codebase flow visualization and analysis</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>📊 Codebase Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-number" id="total-functions">-</div>
+                        <div class="stat-label">Functions</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="entry-points">-</div>
+                        <div class="stat-label">Entry Points</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="scenarios">-</div>
+                        <div class="stat-label">Flow Scenarios</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🔍 Flow Scenarios</h3>
+                <div class="scenario-list" id="scenario-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading flow scenarios...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card visualization-area">
+            <h3>🌊 Data Flow Visualization</h3>
+            <div class="controls">
+                <button class="btn btn-primary" onclick="toggleView('tree')">Tree View</button>
+                <button class="btn btn-secondary" onclick="toggleView('graph')">Graph View</button>
+                <button class="btn btn-secondary" onclick="exportDiagram()">Export</button>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color api"></div>
+                    <span>API Endpoint</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color database"></div>
+                    <span>Database</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color external"></div>
+                    <span>External Call</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color business"></div>
+                    <span>Business Logic</span>
+                </div>
+            </div>
+            <div class="flow-diagram" id="flow-diagram">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Select a scenario to visualize
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
