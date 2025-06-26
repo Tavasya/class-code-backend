@@ -1,0 +1,10 @@
+{
+  "base_url": "http://localhost:8080",
+  "concurrent_users": 5,
+  "requests_per_user": 10,
+  "test_duration": 300,
+  "request_timeout": 60,
+  "ramp_up_time": 30,
+  "think_time_min": 1,
+  "think_time_max": 5
+}
