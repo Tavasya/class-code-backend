@@ -5,10 +5,11 @@ import re
 import aiohttp
 import tempfile
 import asyncio
+import subprocess
 import azure.cognitiveservices.speech as speechsdk
 from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
-from app.services.file_manager_service import file_manager
+from app.services.file_manager_service import FileManagerService
 import unicodedata
 import cmudict
 
@@ -364,11 +365,8 @@ class PronunciationService:
                     # Try to get original audio URL and submission info from session_id
                     if session_id:
                         try:
-                            from app.services.file_manager_service import FileManagerService
-                            from app.pubsub.client import PubSubClient
-                            
-                            file_manager = FileManagerService()
-                            session_info = await file_manager.get_session_info(session_id)
+                            file_manager_service = FileManagerService()
+                            session_info = await file_manager_service.get_session_info(session_id)
                             
                             if session_info and session_info.get('metadata'):
                                 metadata = session_info['metadata']
@@ -378,6 +376,7 @@ class PronunciationService:
                                 
                                 if all([original_audio_url, question_number, submission_url]):
                                     # Trigger audio pipeline retry
+                                    from app.pubsub.client import PubSubClient
                                     pubsub_client = PubSubClient()
                                     retry_message = {
                                         "audio_url": original_audio_url,
@@ -406,115 +405,72 @@ class PronunciationService:
                     # Fallback if retry couldn't be triggered
                     raise FileNotFoundError(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}")
             
-            # Set up the Speech config
-            speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
-            audio_config = speechsdk.AudioConfig(filename=audio_file)
+            # Analyze transcript length and choose appropriate method
+            word_count = len(reference_text.split())
+            logger.info(f"Reference text has {word_count} words")
             
-            # Configure pronunciation assessment with the reference text
-            pron_config = speechsdk.PronunciationAssessmentConfig(
-                reference_text=reference_text,
-                grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
-                granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
-                enable_miscue=True
-            )
-            
-            # Create recognizer
-            recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-            pron_config.apply_to(recognizer)
-            
-            # Run recognition in thread pool to avoid blocking the event loop
-            logger.info(f"Starting pronunciation assessment on {audio_file} with reference text")
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, recognizer.recognize_once)
+            # Choose analysis method based on transcript length (using 65-word limit)
+            if word_count > 65:  # Long transcript - use chunking
+                logger.info("Using chunked analysis for long transcript")
+                azure_result = await PronunciationService._analyze_with_chunking(audio_file, reference_text)
+            elif word_count > 15:  # Medium transcript - use extended timeout
+                logger.info("Using streaming analysis with extended timeout")
+                azure_result = await PronunciationService._analyze_with_streaming(audio_file, reference_text)
+            else:
+                logger.info("Using standard analysis for short transcript")
+                azure_result = await PronunciationService._analyze_standard(audio_file, reference_text)
+                
+                # If standard fails, try extended as backup
+                if azure_result is None:
+                    logger.info("Standard analysis failed, trying streaming analysis as backup")
+                    azure_result = await PronunciationService._analyze_with_streaming(audio_file, reference_text)
             
             # Process result based on recognition outcome
-            if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                logger.info("Speech recognized successfully")
-                
-                # Get the detailed JSON result
-                json_result = result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
-                
-                if not json_result:
-                    # Mark service as complete even on error
-                    if session_id:
-                        try:
-                            await file_manager.mark_service_complete(session_id, "pronunciation")
-                        except Exception as e:
-                            logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
-                    
-                    return {
-                        "grade": 0,
-                        "issues": [{"type": "suggestion", "message": "No pronunciation assessment result returned from Azure Speech Services."}]
-                    }
-                
-                # Parse the JSON result
-                azure_result = json.loads(json_result)
-                
-                # Process the results using existing method
-                processed_result = PronunciationService.process_pronunciation_result(azure_result, reference_text)
-                
-                # Add phrase chunking analysis
-                phrase_chunks = PronunciationService.chunk_text_into_phrases(reference_text)
-                processed_result["phrase_chunks"] = phrase_chunks
-                processed_result["total_phrases"] = len(phrase_chunks)
-                
-                # Get improvement suggestion (now with phrase awareness)
-                improvement_suggestion = await PronunciationService.get_improvement_suggestion(
-                    processed_result["transcript"],
-                    processed_result["critical_errors"],
-                    processed_result["filler_words"]
-                )
-                
-                # Transform to standardized format
-                standardized_result = PronunciationService._transform_to_standardized_format(
-                    processed_result, improvement_suggestion
-                )
-                
-                # Mark service complete for proper file lifecycle management
+            if azure_result is None:
+                # Mark service as complete even on error
                 if session_id:
                     try:
-                        await file_manager.mark_service_complete(session_id, "pronunciation")
-                    except Exception as e:
-                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
-                
-                
-                return PronunciationService._transform_to_standardized_format(processed_result, improvement_suggestion)
-                
-            elif result.reason == speechsdk.ResultReason.NoMatch:
-                logger.warning(f"No speech recognized: {result.no_match_details}")
-                # Mark service complete for proper file lifecycle management
-                if session_id:
-                    try:
-                        await file_manager.mark_service_complete(session_id, "pronunciation")
+                        file_manager_service = FileManagerService()
+                        await file_manager_service.mark_service_complete(session_id, "pronunciation")
                     except Exception as e:
                         logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
                 
                 return {
                     "grade": 0,
-                    "issues": [{"type": "suggestion", "message": f"No speech recognized: {result.no_match_details.reason}"}]
+                    "issues": [{"type": "suggestion", "message": "No pronunciation assessment result returned from Azure Speech Services."}]
                 }
-                
-            elif result.reason == speechsdk.ResultReason.Canceled:
-                cancellation = result.cancellation_details
-                logger.error(f"Speech recognition canceled: {cancellation.reason}")
-                if cancellation.reason == speechsdk.CancellationReason.Error:
-                    logger.error(f"Error details: {cancellation.error_details}")
-                
-                # Mark service complete for proper file lifecycle management
-                if session_id:
-                    try:
-                        await file_manager.mark_service_complete(session_id, "pronunciation")
-                    except Exception as e:
-                        logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
-                
-                error_msg = f"Recognition canceled: {cancellation.reason}"
-                if hasattr(cancellation, 'error_details'):
-                    error_msg += f", {cancellation.error_details}"
-                
-                return {
-                    "grade": 0,
-                    "issues": [{"type": "suggestion", "message": error_msg}]
-                }
+            
+            logger.info("Speech recognized successfully")
+            
+            # Process the results using existing method
+            processed_result = PronunciationService.process_pronunciation_result(azure_result, reference_text)
+            
+            # Add phrase chunking analysis
+            phrase_chunks = PronunciationService.chunk_text_into_phrases(reference_text)
+            processed_result["phrase_chunks"] = phrase_chunks
+            processed_result["total_phrases"] = len(phrase_chunks)
+            
+            # Get improvement suggestion (now with phrase awareness)
+            improvement_suggestion = await PronunciationService.get_improvement_suggestion(
+                processed_result["transcript"],
+                processed_result["critical_errors"],
+                processed_result["filler_words"]
+            )
+            
+            # Transform to standardized format
+            standardized_result = PronunciationService._transform_to_standardized_format(
+                processed_result, improvement_suggestion
+            )
+            
+            # Mark service complete for proper file lifecycle management
+            if session_id:
+                try:
+                    file_manager_service = FileManagerService()
+                    await file_manager_service.mark_service_complete(session_id, "pronunciation")
+                except Exception as e:
+                    logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
+            
+            return standardized_result
                 
         except Exception as e:
             logger.exception("Error in analyze_pronunciation")
@@ -522,7 +478,8 @@ class PronunciationService:
             # Mark service complete even on failure to prevent stuck sessions
             if session_id:
                 try:
-                    await file_manager.mark_service_complete(session_id, "pronunciation")
+                    file_manager_service = FileManagerService()
+                    await file_manager_service.mark_service_complete(session_id, "pronunciation")
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
             
@@ -826,3 +783,236 @@ class PronunciationService:
         # Note: phrase_chunks are used internally for analysis but not exposed in final response
         
         return standardized_output
+
+    @staticmethod
+    async def _analyze_standard(audio_file: str, reference_text: str):
+        """Standard recognize_once implementation for short transcripts"""
+        try:
+            speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
+            audio_config = speechsdk.AudioConfig(filename=audio_file)
+            
+            pron_config = speechsdk.PronunciationAssessmentConfig(
+                reference_text=reference_text,
+                grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
+                granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
+                enable_miscue=True
+            )
+            
+            recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+            pron_config.apply_to(recognizer)
+            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, recognizer.recognize_once)
+            
+            if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                json_result = result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
+                if json_result:
+                    return json.loads(json_result)
+                    
+            logger.warning(f"Standard analysis failed: {result.reason}")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Error in standard analysis: {str(e)}")
+            return None
+
+    @staticmethod 
+    async def _analyze_with_streaming(audio_file: str, reference_text: str):
+        """Extended recognition with longer timeouts for medium transcripts"""
+        try:
+            speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
+            
+            # Configure for longer audio processing
+            speech_config.set_property(speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "30000")
+            speech_config.set_property(speechsdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, "30000")
+            speech_config.set_property(speechsdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, "2000")
+            speech_config.request_word_level_timestamps()
+            
+            audio_config = speechsdk.AudioConfig(filename=audio_file)
+            
+            pron_config = speechsdk.PronunciationAssessmentConfig(
+                reference_text=reference_text,
+                grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
+                granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
+                enable_miscue=True
+            )
+            
+            recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+            pron_config.apply_to(recognizer)
+            
+            logger.info(f"Starting extended pronunciation assessment with {len(reference_text.split())} words")
+            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, recognizer.recognize_once)
+            
+            if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                json_result = result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
+                if json_result:
+                    logger.info("Extended pronunciation analysis completed")
+                    return json.loads(json_result)
+                    
+            logger.warning(f"Streaming analysis failed: {result.reason}")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Error in streaming analysis: {str(e)}")
+            return None
+
+    @staticmethod
+    async def _analyze_with_chunking(audio_file: str, reference_text: str):
+        """Chunked pronunciation analysis for long transcripts (>65 words)"""
+        try:
+            import subprocess
+            
+            logger.info(f"Starting chunked pronunciation analysis with {len(reference_text.split())} words")
+            
+            # Split reference text into chunks (40 words each, based on 65-word limit)
+            words = reference_text.split()
+            chunk_size = 40
+            text_chunks = []
+            
+            for i in range(0, len(words), chunk_size):
+                chunk_words = words[i:i + chunk_size]
+                chunk_text = " ".join(chunk_words)
+                text_chunks.append({
+                    "text": chunk_text,
+                    "start_word": i,
+                    "end_word": min(i + chunk_size, len(words)),
+                    "word_count": len(chunk_words)
+                })
+            
+            logger.info(f"Split into {len(text_chunks)} chunks")
+            
+            # Get audio duration
+            try:
+                cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', 
+                       '-of', 'csv=p=0', audio_file]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                total_duration = float(result.stdout.strip())
+                logger.info(f"Total audio duration: {total_duration:.1f} seconds")
+            except Exception as e:
+                logger.warning(f"Could not get audio duration: {e}, using estimated timing")
+                total_duration = len(words) * 0.6  # Estimate ~0.6 seconds per word
+            
+            # No longer using fixed chunk duration - using word-based timing instead
+            
+            # Process each chunk with accurate timestamp tracking
+            all_results = []
+            combined_words = []
+            cumulative_words_processed = 0
+            
+            for i, chunk in enumerate(text_chunks):
+                logger.info(f"Processing chunk {i+1}/{len(text_chunks)}: {chunk['word_count']} words")
+                
+                # Calculate time range for this chunk based on word position
+                # More accurate: estimate time based on word position rather than equal splits
+                words_per_second = len(words) / total_duration if total_duration > 0 else 1.5  # fallback rate
+                chunk_start_time = cumulative_words_processed / words_per_second
+                estimated_chunk_duration = chunk['word_count'] / words_per_second
+                
+                logger.info(f"   Chunk timing: start={chunk_start_time:.2f}s, duration={estimated_chunk_duration:.2f}s")
+                
+                # Create temporary audio chunk
+                temp_chunk_file = None
+                try:
+                    temp_chunk_file = tempfile.mktemp(suffix='.wav')
+                    cmd = [
+                        'ffmpeg', '-y', '-i', audio_file,
+                        '-ss', str(chunk_start_time), '-t', str(estimated_chunk_duration + 1.0),  # Add 1s buffer
+                        '-c', 'copy', temp_chunk_file
+                    ]
+                    
+                    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if result.returncode != 0:
+                        logger.warning(f"Failed to extract audio chunk {i+1}")
+                        cumulative_words_processed += chunk['word_count']
+                        continue
+                    
+                    # Process this chunk with standard analysis
+                    chunk_result = await PronunciationService._analyze_standard(temp_chunk_file, chunk['text'])
+                    
+                    if chunk_result:
+                        logger.info(f"Chunk {i+1} processed successfully")
+                        
+                        # Extract words and adjust their timestamps accurately
+                        if "NBest" in chunk_result and chunk_result["NBest"]:
+                            chunk_words = chunk_result["NBest"][0].get("Words", [])
+                            
+                            for word_data in chunk_words:
+                                # Calculate accurate global timestamp
+                                # Original offset from chunk + chunk start time in global audio
+                                original_offset_seconds = word_data.get("Offset", 0) / 10000000  # Convert to seconds
+                                global_offset_seconds = chunk_start_time + original_offset_seconds
+                                
+                                # Update with accurate global timestamp
+                                word_data["Offset"] = int(global_offset_seconds * 10000000)  # Convert back to 100-nanosecond units
+                                
+                                combined_words.append(word_data)
+                        
+                        all_results.append(chunk_result)
+                        logger.info(f"   Added {len(chunk_words)} words with timestamps starting at {chunk_start_time:.2f}s")
+                    else:
+                        logger.warning(f"Chunk {i+1} failed to process")
+                
+                finally:
+                    # Clean up temporary file
+                    if temp_chunk_file and os.path.exists(temp_chunk_file):
+                        try:
+                            os.unlink(temp_chunk_file)
+                        except:
+                            pass
+                
+                # Update cumulative count for next chunk
+                cumulative_words_processed += chunk['word_count']
+            
+            # Combine results
+            if all_results:
+                logger.info(f"Combining {len(all_results)} chunk results")
+                
+                # Calculate overall scores (average of chunk scores)
+                total_pron_score = 0
+                total_accuracy_score = 0
+                total_fluency_score = 0
+                valid_chunks = 0
+                
+                for chunk_result in all_results:
+                    if "NBest" in chunk_result and chunk_result["NBest"]:
+                        assessment = chunk_result["NBest"][0].get("PronunciationAssessment", {})
+                        total_pron_score += assessment.get("PronScore", 0)
+                        total_accuracy_score += assessment.get("AccuracyScore", 0)
+                        total_fluency_score += assessment.get("FluencyScore", 0)
+                        valid_chunks += 1
+                
+                if valid_chunks > 0:
+                    avg_pron_score = total_pron_score / valid_chunks
+                    avg_accuracy_score = total_accuracy_score / valid_chunks
+                    avg_fluency_score = total_fluency_score / valid_chunks
+                else:
+                    avg_pron_score = avg_accuracy_score = avg_fluency_score = 0
+                
+                # Create combined result
+                combined_result = {
+                    "Duration": int(total_duration * 10000000),  # Convert to 100-nanosecond units
+                    "DisplayText": " ".join([chunk["text"] for chunk in text_chunks]),
+                    "NBest": [{
+                        "PronunciationAssessment": {
+                            "PronScore": avg_pron_score,
+                            "AccuracyScore": avg_accuracy_score,
+                            "FluencyScore": avg_fluency_score,
+                            "CompletenessScore": 100  # Assume complete
+                        },
+                        "Words": combined_words
+                    }]
+                }
+                
+                logger.info(f"Chunked analysis completed! Combined scores - Pronunciation: {avg_pron_score:.1f}, Accuracy: {avg_accuracy_score:.1f}, Fluency: {avg_fluency_score:.1f}")
+                logger.info(f"Total words processed: {len(combined_words)}")
+                
+                return combined_result
+            else:
+                logger.warning("No chunks processed successfully")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Error in chunked analysis: {str(e)}")
+            return None
