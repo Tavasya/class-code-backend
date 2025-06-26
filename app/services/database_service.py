@@ -147,6 +147,14 @@ class DatabaseService:
             # Add overall_assignment_score (JSON object) if provided
             if overall_assignment_score is not None:
                 update_data["overall_assignment_score"] = overall_assignment_score # Supabase client handles dict as JSON
+                
+                # Extract IELTS overall band score for the grade column
+                ielts_overall_band = overall_assignment_score.get("ielts_overall_band")
+                if ielts_overall_band is not None:
+                    update_data["grade"] = ielts_overall_band
+                    logger.info(f"🎯 Setting grade column to IELTS overall band: {ielts_overall_band}")
+                else:
+                    logger.warning("⚠️ No IELTS overall band score found in overall_assignment_score")
             
             # Log the data being updated
             log_message_parts = [
@@ -156,6 +164,8 @@ class DatabaseService:
             ]
             if overall_assignment_score is not None:
                 log_message_parts.append(f"overall_assignment_score={json.dumps(overall_assignment_score)}")
+            if "grade" in update_data:
+                log_message_parts.append(f"grade={update_data['grade']}")
 
             logger.info(f"📝 Data to update for {submission_url}: {', '.join(log_message_parts)}")
 
@@ -177,6 +187,8 @@ class DatabaseService:
                 }
                 if overall_assignment_score is not None:
                     success_log_kwargs["overall_assignment_score"] = json.dumps(overall_assignment_score)
+                if "grade" in update_data:
+                    success_log_kwargs["grade"] = update_data["grade"]
                 
                 self._log_operation_success(operation, **success_log_kwargs)
                 return submission_db_id

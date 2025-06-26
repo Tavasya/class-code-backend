@@ -803,6 +803,59 @@ class AnalysisWebhook:
             }
             logger.info(f"Compiled section averages for {submission_url}: {overall_assignment_score_json}")
 
+            # --- BEGIN: IELTS Score Calculation ---
+            ielts_score = None
+            try:
+                from app.services.ielts_scoring_service import IELTSScoringService
+                
+                # Get assignment questions for IELTS scoring
+                db_service = DatabaseService()
+                submission_row = db_service.get_submission_by_url(submission_url)
+                questions = []
+                
+                if submission_row and 'assignment_id' in submission_row:
+                    assignment_row = db_service.get_assignment_by_id(submission_row['assignment_id'])
+                    if assignment_row and 'questions' in assignment_row:
+                        import json
+                        questions = json.loads(assignment_row['questions'])
+                        logger.info(f"📊 Retrieved {len(questions)} questions for IELTS scoring")
+                    else:
+                        logger.warning(f"Could not fetch assignment or questions for assignment_id: {submission_row.get('assignment_id')}")
+                else:
+                    logger.warning(f"Could not fetch submission or assignment_id for submission_url: {submission_url}")
+                
+                if questions:
+                    # Initialize IELTS scoring service
+                    ielts_service = IELTSScoringService()
+                    
+                    # Calculate IELTS score
+                    ielts_score = ielts_service.calculate_ielts_score(question_results, questions)
+                    
+                    # Add IELTS score to overall assignment score
+                    overall_assignment_score_json.update({
+                        "ielts_overall_band": ielts_score.overall,
+                        "ielts_fluency_and_coherence": ielts_score.fluency_and_coherence,
+                        "ielts_lexical_resource": ielts_score.lexical_resource,
+                        "ielts_grammatical_range_and_accuracy": ielts_score.grammatical_range_and_accuracy,
+                        "ielts_pronunciation": ielts_score.pronunciation
+                    })
+                    
+                    logger.info(f"🎯 IELTS scores calculated for {submission_url}:")
+                    logger.info(f"  Overall Band: {ielts_score.overall}")
+                    logger.info(f"  Fluency & Coherence: {ielts_score.fluency_and_coherence}")
+                    logger.info(f"  Lexical Resource: {ielts_score.lexical_resource}")
+                    logger.info(f"  Grammatical Range & Accuracy: {ielts_score.grammatical_range_and_accuracy}")
+                    logger.info(f"  Pronunciation: {ielts_score.pronunciation}")
+                else:
+                    logger.warning(f"⚠️ No questions found for IELTS scoring for submission: {submission_url}")
+                    
+            except Exception as e:
+                logger.error(f"💥 Error calculating IELTS score for {submission_url}: {str(e)}")
+                import traceback
+                logger.error(f"📋 IELTS scoring error traceback: {traceback.format_exc()}")
+                # Continue with submission processing even if IELTS scoring fails
+            # --- END: IELTS Score Calculation ---
+
             # --- BEGIN: Paragraph Restructuring Processing ---
             logger.info(f"🔄 Starting paragraph restructuring for {submission_url}")
             try:
