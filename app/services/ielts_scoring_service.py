@@ -17,7 +17,7 @@ class IELTSScore:
     overall: float
 
 class IELTSScoringService:
-    """Service for calculating IELTS band scores based on analysis results"""
+    """Service for calculating IELTS band scores based on analysis results using the exact user algorithm"""
     
     def __init__(self):
         """Initialize the IELTS scoring service"""
@@ -34,7 +34,7 @@ class IELTSScoringService:
     
     def calculate_ielts_score(self, question_results: Dict[str, Any], questions: List[Dict]) -> IELTSScore:
         """
-        Calculate IELTS band score based on analysis results
+        Calculate IELTS band score based on analysis results using the exact user algorithm
         
         Args:
             question_results: Dictionary of question analysis results
@@ -46,7 +46,7 @@ class IELTSScoringService:
         try:
             logger.info(f"Starting IELTS score calculation for {len(question_results)} questions")
             
-            # Process all questions to extract assessment data
+            # Process all questions to extract assessment data (similar to user's _process_report_data)
             processed_data = []
             
             for q_num, q_data in question_results.items():
@@ -96,7 +96,7 @@ class IELTSScoringService:
                 logger.warning("No valid assessment data found for IELTS scoring")
                 return self._create_default_score()
             
-            # Calculate IELTS scores using the algorithm
+            # Use the exact user algorithm
             return self._predict_ielts_band_score(processed_data)
             
         except Exception as e:
@@ -104,7 +104,7 @@ class IELTSScoringService:
             return self._create_default_score()
     
     def _predict_ielts_band_score(self, assessment_data: List[Dict]) -> IELTSScore:
-        """Predict IELTS band score based on assessment data using the provided algorithm"""
+        """Predict IELTS band score based on assessment data using the exact user algorithm"""
         try:
             # Initialize scores
             fluency_scores = []
@@ -119,7 +119,7 @@ class IELTSScoringService:
             total_words = 0
             low_cohesive_count = 0
             
-            # Process each response
+            # Process each response using the exact user algorithm
             for data in assessment_data:
                 feedback = data['section_feedback']
                 transcript = data.get('transcript', '').strip()
@@ -174,18 +174,18 @@ class IELTSScoringService:
                         lexical_score = min(lexical_score, 3.5)
                         grammar_score = min(grammar_score, 4.0)
                 
-                # Use LLM for nuanced fluency assessment (skip for empty/minimal responses)
-                if not (is_empty_response or is_minimal_response):
-                    llm_fluency_score = self._llm_assess_fluency(transcript, data['question'])
-                    fluency_score = self._adjust_fluency_score(
-                        fluency_score, fluency_data, data.get('duration_feedback', {}), 
-                        feedback.get('paragraph_restructuring', {}), llm_fluency_score
-                    )
+                # Apply additional factors based on detailed feedback
+                paragraph_data = feedback.get('paragraph_restructuring', {})
                 
-                # Apply detailed adjustments
+                # Use LLM for nuanced fluency assessment (skip for empty/minimal responses)
+                if is_empty_response or is_minimal_response:
+                    llm_fluency_score = fluency_score
+                else:
+                    llm_fluency_score = self._llm_assess_fluency(transcript, data['question'])
+                
                 fluency_score = self._adjust_fluency_score(
                     fluency_score, fluency_data, data.get('duration_feedback', {}), 
-                    feedback.get('paragraph_restructuring', {}), fluency_score
+                    paragraph_data, llm_fluency_score
                 )
                 grammar_score = self._adjust_grammar_score(grammar_score, grammar_data)
                 lexical_score = self._adjust_lexical_score(lexical_score, lexical_data, vocabulary_data)
@@ -266,6 +266,9 @@ class IELTSScoringService:
             avg_grammar = round(avg_grammar * 2) / 2
             avg_lexical = round(avg_lexical * 2) / 2
             avg_pronunciation = round(avg_pronunciation * 2) / 2
+            
+            # Apply hard limits as requested by user
+            overall_score = max(4.5, min(6.0, overall_score))
             
             logger.info(f"IELTS scores calculated - Overall: {overall_score}, Fluency: {avg_fluency}, Grammar: {avg_grammar}, Lexical: {avg_lexical}, Pronunciation: {avg_pronunciation}")
             

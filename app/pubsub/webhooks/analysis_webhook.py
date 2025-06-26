@@ -31,6 +31,8 @@ class AnalysisWebhook:
         self._analysis_state: Dict[str, Dict] = {}
         # NEW: Submission-level aggregation state
         self._submission_state: Dict[str, Dict] = {}
+        # NEW: Improvement tracking state
+        self._improvement_state: Dict[str, Dict] = {}
         
     def _get_analysis_state_key(self, submission_url: str, question_number: int) -> str:
         """Generate a unique key for analysis state tracking"""
@@ -856,52 +858,8 @@ class AnalysisWebhook:
                 # Continue with submission processing even if IELTS scoring fails
             # --- END: IELTS Score Calculation ---
 
-            # --- BEGIN: Paragraph Restructuring Processing ---
-            logger.info(f"🔄 Starting paragraph restructuring for {submission_url}")
-            try:
-                from app.services.paragraph_restructuring_service import restructure_paragraph
-                
-                # Process each question for paragraph restructuring
-                for question_num, analysis_results in question_results.items():
-                    if analysis_results and isinstance(analysis_results, dict):
-                        # Extract transcript from analysis results
-                        transcript = ""
-                        
-                        # Try to get transcript from top level first
-                        if "transcript" in analysis_results:
-                            transcript = analysis_results["transcript"] or ""
-                        # Fallback to pronunciation results
-                        elif "pronunciation" in analysis_results and isinstance(analysis_results["pronunciation"], dict):
-                            transcript = analysis_results["pronunciation"].get("transcript", "")
-                        
-                        if transcript and transcript.strip():
-                            logger.info(f"📝 Processing paragraph restructuring for question {question_num}")
-                            
-                            # Restructure paragraph using all analysis results for band detection
-                            restructuring_result = await restructure_paragraph(
-                                transcript=transcript,
-                                analysis_results=analysis_results
-                            )
-                            
-                            # Add restructuring result to question results
-                            analysis_results["paragraph_restructuring"] = {
-                                "original_band": restructuring_result.original_band,
-                                "target_band": restructuring_result.target_band,
-                                "improved_transcript": restructuring_result.improved_transcript
-                            }
-                            
-                            logger.info(f"✅ Paragraph restructuring completed for question {question_num}: {restructuring_result.original_band} → {restructuring_result.target_band}")
-                        else:
-                            logger.warning(f"⚠️ No transcript found for question {question_num}, skipping paragraph restructuring")
-                            
-                logger.info(f"🎉 Paragraph restructuring completed for all questions in {submission_url}")
-                
-            except Exception as e:
-                logger.error(f"💥 Error in paragraph restructuring for {submission_url}: {str(e)}")
-                import traceback
-                logger.error(f"📋 Paragraph restructuring error traceback: {traceback.format_exc()}")
-                # Continue with submission processing even if restructuring fails
-            # --- END: Paragraph Restructuring Processing ---
+            # NOTE: Paragraph restructuring is now handled concurrently per question
+            # in _process_question_improvement() method when each question completes analysis
 
             # Store results for testing/retrieval
             results_store.store_result(submission_url, message_data)
@@ -1043,6 +1001,57 @@ class AnalysisWebhook:
             logger.error(f"📋 Full webhook error traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
+    async def _process_question_improvement(self, submission_url: str, question_number: int, analysis_results: Dict[str, Any]):
+        """Process paragraph improvement for a single question concurrently"""
+        try:
+            logger.info(f"🔄 Starting concurrent paragraph improvement for question {question_number}")
+            
+            from app.services.paragraph_restructuring_service import restructure_paragraph
+            
+            # Extract transcript from analysis results
+            transcript = ""
+            
+            # Try to get transcript from top level first
+            if "transcript" in analysis_results:
+                transcript = analysis_results["transcript"] or ""
+            # Fallback to pronunciation results
+            elif "pronunciation" in analysis_results and isinstance(analysis_results["pronunciation"], dict):
+                transcript = analysis_results["pronunciation"].get("transcript", "")
+            
+            if transcript and transcript.strip():
+                logger.info(f"📝 Processing paragraph restructuring for question {question_number}")
+                
+                # Restructure paragraph using all analysis results for band detection
+                restructuring_result = await restructure_paragraph(
+                    transcript=transcript,
+                    analysis_results=analysis_results
+                )
+                
+                # Add restructuring result to question results
+                analysis_results["paragraph_restructuring"] = {
+                    "original_band": restructuring_result.original_band,
+                    "target_band": restructuring_result.target_band,
+                    "improved_transcript": restructuring_result.improved_transcript
+                }
+                
+                logger.info(f"✅ Paragraph restructuring completed for question {question_number}: {restructuring_result.original_band} → {restructuring_result.target_band}")
+                
+                # Update improvement completion tracking
+                improvement_key = f"improvement:{submission_url}:{question_number}"
+                self._improvement_state[improvement_key] = {
+                    "completed": True,
+                    "result": restructuring_result
+                }
+                
+            else:
+                logger.warning(f"⚠️ No transcript found for question {question_number}, skipping paragraph restructuring")
+                
+        except Exception as e:
+            logger.error(f"💥 Error in concurrent paragraph restructuring for question {question_number}: {str(e)}")
+            import traceback
+            logger.error(f"📋 Improvement error traceback: {traceback.format_exc()}")
+            # Don't fail the whole process if one improvement fails
+
     async def _check_and_publish_completion(self, submission_url: str, question_number: int, total_questions: int):
         """Check if all analyses are complete and publish completion if they are."""
         try:
@@ -1070,6 +1079,9 @@ class AnalysisWebhook:
                     "original_audio_url": state.get("audio_url"),
                     "transcript": state.get("transcript")
                 }
+                
+                # Start concurrent improvement processing
+                asyncio.create_task(self._process_question_improvement(submission_url, question_number, analysis_results))
                 
                 # Publish analysis complete message
                 self.pubsub_client.publish_message_by_name(

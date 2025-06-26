@@ -11,24 +11,34 @@ from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 # Setup logging
 logger = logging.getLogger(__name__)
 
-# CEFR Band mappings
-CEFR_BANDS = ["A1", "A2", "B1", "B2", "C1", "C2"]
+# CEFR Band mappings with 0.5 increments
+CEFR_BANDS = ["A1", "A1.5", "A2", "A2.5", "B1", "B1.5", "B2", "B2.5", "C1", "C1.5", "C2"]
 BAND_PROGRESSION = {
-    "A1": "A2",
-    "A2": "B1", 
-    "B1": "B2",
-    "B2": "C1",
-    "C1": "C2",
+    "A1": "A1.5",
+    "A1.5": "A2",
+    "A2": "A2.5", 
+    "A2.5": "B1",
+    "B1": "B1.5",
+    "B1.5": "B2",
+    "B2": "B2.5",
+    "B2.5": "C1",
+    "C1": "C1.5",
+    "C1.5": "C2",
     "C2": "C2"  # C2 is the highest level
 }
 
 SCORE_TO_CEFR = {
-    (0, 30): "A1",
-    (31, 50): "A2", 
-    (51, 70): "B1",
-    (71, 85): "B2",
-    (86, 95): "C1",
-    (96, 100): "C2"
+    (0, 25): "A1",
+    (26, 40): "A1.5",
+    (41, 55): "A2", 
+    (56, 65): "A2.5",
+    (66, 75): "B1",
+    (76, 82): "B1.5",
+    (83, 88): "B2",
+    (89, 93): "B2.5",
+    (94, 97): "C1",
+    (98, 99): "C1.5",
+    (100, 100): "C2"
 }
 
 
@@ -120,22 +130,24 @@ async def call_openai_for_restructuring(transcript: str, current_band: str, targ
     # Count original word count for length constraint
     original_word_count = len(transcript.split())
     
-    # Create IELTS-focused improvement prompt based on user's tested format
-    prompt = f"""Boost this IELTS Speaking script to +1.0 band score with 5% more advanced vocabulary.
+    # Create simple, realistic improvement prompt
+    prompt = f"""Improve this transcript with simple, natural enhancements.
 
 CRITICAL REQUIREMENTS:
 - Keep the SAME LENGTH as the original (around {original_word_count} words)
-- Make only REALISTIC improvements for IELTS Speaking
-- Maintain natural, conversational tone
+- Make only SMALL, REALISTIC improvements
+- Keep it natural and conversational
 - Do NOT make it overly formal or academic
-- REMOVE ALL DISFLUENCIES (such as 'um', 'uh', false starts, and filler words)
+- Remove filler words like 'um', 'uh', 'like', 'you know'
+- Fix obvious grammar mistakes
+- Add simple connecting words where helpful
 
-Original IELTS Speaking script:
+Original transcript:
 "{transcript}"
 
-Instructions: Replace only 5% of words with slightly more advanced vocabulary while keeping the same meaning, structure, and approximate length. The improved version should sound natural and achievable for an IELTS speaker trying to improve by 1 band level.
+Instructions: Make small, natural improvements to make the transcript clearer and more fluent. Focus on removing disfluencies, fixing basic grammar, and adding simple connecting words. Keep the same meaning and approximate length. Make it sound more natural and polished.
 
-Improved script:"""
+Improved transcript:"""
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -149,7 +161,7 @@ Improved script:"""
                 "messages": [
                     {
                         "role": "system", 
-                        "content": "You are an expert IELTS examiner and language teacher. You specialize in making realistic, incremental improvements to IELTS Speaking responses while maintaining natural conversational tone and appropriate length."
+                        "content": "You are a helpful language assistant. You specialize in making simple, natural improvements to transcripts by removing disfluencies, fixing basic grammar, and adding connecting words. Keep improvements realistic and conversational."
                     },
                     {
                         "role": "user",
@@ -180,59 +192,97 @@ def get_improvement_instructions(current_band: str, target_band: str) -> str:
     """Get specific improvement instructions for CEFR level progression"""
     
     improvements = {
-        ("A1", "A2"): """
-Make these SIMPLE, natural improvements:
-- Add basic connecting words like 'and', 'but', 'because'
-- Use slightly more descriptive words (but keep them simple)
-- Make one or two sentences a bit longer
-- Keep the same natural, conversational tone
-- Don't make it sound too formal or academic
+        ("A1", "A1.5"): """
+Make these VERY SIMPLE improvements:
+- Remove filler words like 'um', 'uh', 'like'
+- Fix basic grammar mistakes
+- Add simple connecting words like 'and', 'but'
+- Keep sentences short and clear
+- Maintain natural tone
 
-Example: "I like food" becomes "I really like food because it's delicious"
+Example: "Um I like food and uh it's good" becomes "I like food and it's good"
 """,
-        ("A2", "B1"): """
-Make these MODERATE, realistic improvements:
-- Add some descriptive adjectives and simple adverbs
-- Use connecting words like 'although', 'while', 'since' (sparingly)
-- Include slightly more specific vocabulary
-- Add simple reasoning or personal opinions
-- Keep it conversational and natural
-- Don't overuse complex structures
+        ("A1.5", "A2"): """
+Make these SIMPLE improvements:
+- Remove disfluencies and filler words
+- Add basic descriptive words
+- Use simple connecting words like 'because', 'so'
+- Fix obvious grammar errors
+- Keep it conversational
 
-Example: "I like books" becomes "I enjoy reading books, especially mystery novels, because they're exciting and help me relax"
+Example: "I like food because it's delicious"
 """,
-        ("B1", "B2"): """
-Make these realistic intermediate improvements:
-- Use more varied vocabulary and some less common words
-- Add some complex sentences (but not too many)
-- Include better explanations and examples
-- Use linking words like 'however', 'therefore', 'as a result'
-- Show clearer organization of ideas
-- Keep it natural, not overly formal
+        ("A2", "A2.5"): """
+Make these MODERATE improvements:
+- Remove all disfluencies
+- Add some descriptive adjectives
+- Use connecting words like 'although', 'while'
+- Fix grammar mistakes
+- Add simple explanations
 
-Example: Keep the improvement proportional and realistic for this level
+Example: "I enjoy reading books, especially mystery novels, because they're exciting"
 """,
-        ("B2", "C1"): """
-Make these advanced but natural improvements:
-- Use more sophisticated vocabulary and occasional idiomatic expressions
-- Create more complex sentence structures
-- Add nuanced reasoning and better examples
-- Use advanced linking devices appropriately
-- Show deeper analysis while staying natural
-- Maintain good flow and readability
+        ("A2.5", "B1"): """
+Make these INTERMEDIATE improvements:
+- Use more varied vocabulary
+- Add some complex sentences
+- Include better explanations
+- Use linking words like 'however', 'therefore'
+- Show clearer organization
+
+Example: Keep improvements proportional and realistic
 """,
-        ("C1", "C2"): """
-Make these expert-level improvements:
-- Use precise, sophisticated vocabulary where appropriate
-- Create well-structured, eloquent expressions
+        ("B1", "B1.5"): """
+Make these ADVANCED INTERMEDIATE improvements:
+- Use more sophisticated vocabulary
+- Create varied sentence structures
+- Add nuanced explanations
+- Use advanced linking devices
+- Show better flow and organization
+""",
+        ("B1.5", "B2"): """
+Make these UPPER INTERMEDIATE improvements:
+- Use sophisticated vocabulary appropriately
+- Create complex but clear sentences
+- Add detailed explanations and examples
+- Use advanced linking devices naturally
+- Show excellent organization and flow
+""",
+        ("B2", "B2.5"): """
+Make these ADVANCED improvements:
+- Use precise, sophisticated vocabulary
+- Create well-structured expressions
+- Add nuanced reasoning
 - Use advanced techniques naturally
+- Demonstrate excellent fluency
+""",
+        ("B2.5", "C1"): """
+Make these UPPER ADVANCED improvements:
+- Use highly sophisticated vocabulary
+- Create eloquent, well-structured expressions
+- Add sophisticated reasoning and analysis
+- Use advanced techniques masterfully
+- Demonstrate near-native fluency
+""",
+        ("C1", "C1.5"): """
+Make these EXPERT improvements:
+- Use precise, academic vocabulary
+- Create masterful sentence structures
+- Add sophisticated analysis and reasoning
+- Use advanced techniques flawlessly
 - Demonstrate native-like fluency
-- Include subtle implications and sophisticated reasoning
-- Perfect grammar with stylistic variety
+""",
+        ("C1.5", "C2"): """
+Make these MASTERY improvements:
+- Use the most appropriate vocabulary for context
+- Create perfectly structured expressions
+- Add masterful analysis and reasoning
+- Use all techniques with perfect timing
+- Demonstrate complete mastery of the language
 """
     }
     
-    return improvements.get((current_band, target_band), "Improve vocabulary and sentence complexity appropriately.")
+    return improvements.get((current_band, target_band), "Make simple, natural improvements to vocabulary and sentence structure.")
 
 
 async def restructure_paragraph(
