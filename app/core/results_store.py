@@ -1,7 +1,7 @@
 """
 Simple in-memory results store for testing purposes
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import logging
 
@@ -38,6 +38,17 @@ class ResultsStore:
     def list_all_submissions(self) -> list:
         """List all submissions with results"""
         return list(self._results.keys())
+
+    def get_result_transformed(self, submission_url: str) -> Optional[List[Dict[str, Any]]]:
+        """Get transformed results from database"""
+        from app.services.database_service import DatabaseService
+        
+        try:
+            db_service = DatabaseService()
+            return db_service.get_transformed_results(submission_url)
+        except Exception as e:
+            logger.error(f"Failed to get transformed results for {submission_url}: {e}")
+            return None
 
 # Global instance
 results_store = ResultsStore() 

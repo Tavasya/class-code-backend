@@ -970,6 +970,18 @@ class AnalysisWebhook:
                     error_msg = f"Failed to update submission {submission_url} in Supabase database"
                     logger.error(f"❌ {error_msg} - update_submission_results returned None")
                     logger.error(f"🔍 Check if submission {submission_url} exists in database and has correct permissions")
+                    
+                    # Rollback status logs for all analyses to failed
+                    logger.warning(f"🔄 Rolling back status logs to 'failed' due to result storage failure")
+                    analysis_types = ["pronunciation", "fluency", "grammar", "vocabulary"]
+                    for question_num in question_results.keys():
+                        for analysis_type in analysis_types:
+                            try:
+                                await db_service.update_status_logs(submission_url, int(question_num), analysis_type, "failed")
+                                logger.info(f"🔄 Rolled back Q{question_num} {analysis_type} status to 'failed'")
+                            except Exception as rollback_error:
+                                logger.error(f"❌ Failed to rollback Q{question_num} {analysis_type} status: {rollback_error}")
+                    
                     raise HTTPException(status_code=500, detail=error_msg)
                     
             except Exception as e:
@@ -978,6 +990,21 @@ class AnalysisWebhook:
                 logger.error(f"🔍 Exception type: {type(e).__name__}")
                 import traceback
                 logger.error(f"📋 Full traceback for submission {submission_url}: {traceback.format_exc()}")
+                
+                # Rollback status logs for all analyses to failed on exception
+                logger.warning(f"🔄 Rolling back status logs to 'failed' due to database exception")
+                analysis_types = ["pronunciation", "fluency", "grammar", "vocabulary"]
+                try:
+                    for question_num in question_results.keys():
+                        for analysis_type in analysis_types:
+                            try:
+                                await db_service.update_status_logs(submission_url, int(question_num), analysis_type, "failed")
+                                logger.info(f"🔄 Rolled back Q{question_num} {analysis_type} status to 'failed'")
+                            except Exception as rollback_error:
+                                logger.error(f"❌ Failed to rollback Q{question_num} {analysis_type} status: {rollback_error}")
+                except Exception as rollback_exception:
+                    logger.error(f"❌ Critical error during status rollback: {rollback_exception}")
+                
                 raise HTTPException(status_code=500, detail=error_msg)
 
             logger.info(f"🏁 Completed all operations for submission: {submission_url}")

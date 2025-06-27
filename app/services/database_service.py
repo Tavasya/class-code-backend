@@ -470,3 +470,16 @@ class DatabaseService:
         except Exception as e:
             self._log_operation_error(operation, str(e))
             return False
+
+    def get_transformed_results(self, submission_url: str) -> Optional[List[Dict[str, Any]]]:
+        """Retrieve transformed results from database"""
+        operation = f"get_transformed_results for {submission_url}"
+        
+        try:
+            submission = self.get_submission_by_url(submission_url)
+            if submission and submission.get('section_feedback'):
+                return submission['section_feedback']
+            return None
+        except Exception as e:
+            self._log_operation_error(operation, str(e))
+            return None

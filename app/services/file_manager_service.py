@@ -69,7 +69,7 @@ class FileManagerService:
             
             return False
     
-    async def _delayed_cleanup(self, session_id: str, delay_seconds: float = 5.0) -> None:
+    async def _delayed_cleanup(self, session_id: str, delay_seconds: float = 30.0) -> None:
         """Clean up session after a delay to ensure all services complete"""
         await asyncio.sleep(delay_seconds)
         async with self._lock:
