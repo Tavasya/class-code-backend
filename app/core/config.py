@@ -22,6 +22,7 @@ CORS_ORIGINS = [
     "http://localhost:8081",
     "https://app.nativespeaking.ai",
     "http://localhost:5173",
+    "http://localhost:5174",
     "https://native-devserver.vercel.app"
 ]
 

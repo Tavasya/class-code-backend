@@ -7,10 +7,15 @@ logger = logging.getLogger(__name__)
 
 # Google Cloud Pub/Sub Configuration
 
-GCLOUD_PROJECT_ID = "classconnect-455912"
+# Production config
+# GCLOUD_PROJECT_ID = "classconnect-455912"
+# GOOGLE_CLOUD_PROJECT = GCLOUD_PROJECT_ID
+# GOOGLE_APPLICATION_CREDENTIALS="$HOME/classconnect-455912-1b47f642959c.json"
 
+# Demo/Emulator config
+GCLOUD_PROJECT_ID = "demo-project"
 GOOGLE_CLOUD_PROJECT = GCLOUD_PROJECT_ID
-GOOGLE_APPLICATION_CREDENTIALS="$HOME/classconnect-455912-1b47f642959c.json" 
+GOOGLE_APPLICATION_CREDENTIALS = None 
 
 # Retry Configuration
 # MAX_RETRIES = 3
