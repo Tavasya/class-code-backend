@@ -3,6 +3,8 @@ import logging
 import aiohttp
 import json
 import asyncio
+import os
+from datetime import datetime
 from typing import Dict, List, Any
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 from app.models.vocabulary_model import VocabularySuggestion, VocabularyFeedback
@@ -10,6 +12,30 @@ from app.utils.vocabulary_utils import vocabulary_tools
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Vocabulary debug log file
+VOCAB_LOG_FILE = "/tmp/vocabulary_debug.log"
+
+def vocab_log(message: str, question_number: int = None):
+    """Log vocabulary messages to separate file for easy debugging"""
+    try:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        q_prefix = f"Q{question_number} | " if question_number else ""
+        with open(VOCAB_LOG_FILE, 'a') as f:
+            f.write(f"{timestamp} | {q_prefix}{message}\n")
+        # Also log to regular logger
+        logger.info(f"{q_prefix}{message}")
+    except Exception:
+        # Fallback to regular logger only
+        logger.info(f"{q_prefix if question_number else ''}{message}")
+
+def init_vocab_log():
+    """Initialize vocabulary log file for new session"""
+    try:
+        with open(VOCAB_LOG_FILE, 'w') as f:
+            f.write(f"=== VOCABULARY DEBUG LOG - {datetime.now().isoformat()} ===\n")
+    except Exception:
+        pass
 
 # Version 3: Collocation-based vocabulary analysis with categorization (similar to grammar service)
 # Previous v2: CEFR-based vocabulary analysis (legacy, commented out)
@@ -45,7 +71,7 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 "temperature": 0.1
             }
 
-            timeout = aiohttp.ClientTimeout(total=60, connect=10)
+            timeout = aiohttp.ClientTimeout(total=30, connect=5)  # Reduced timeout
             connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300, use_dns_cache=True)
             
             async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
@@ -169,9 +195,10 @@ ONLY analyze words that are actually present in the sentence. Return ONLY the JS
 
 async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -> Dict[str, Any]:
     """Analyze vocabulary collocations for a single sentence"""
-    logger.info(f"Analyzing vocabulary collocations for sentence {sentence_idx}")
+    vocab_log(f"🔍 VOCAB: Analyzing sentence {sentence_idx} (len: {len(sentence)})")
     
     if not sentence or not sentence.strip():
+        vocab_log(f"🔍 VOCAB: Empty sentence {sentence_idx}, skipping")
         return {
             "sentence_idx": sentence_idx,
             "sentence": sentence,
@@ -181,7 +208,23 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
     
     try:
         prompt = create_vocabulary_prompt_for_single_sentence(sentence)
-        result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
+        
+        # Add timeout protection for individual sentence analysis
+        try:
+            result = await asyncio.wait_for(
+                call_openai_with_retry(prompt, expected_format="list", max_retries=1),  # Reduced retries
+                timeout=30.0  # 30 second timeout per sentence
+            )
+            vocab_log(f"✅ VOCAB: Sentence {sentence_idx} API call completed")
+        except asyncio.TimeoutError:
+            vocab_log(f"⚠️ VOCAB: Sentence {sentence_idx} timed out after 30s")
+            return {
+                "sentence_idx": sentence_idx,
+                "sentence": sentence,
+                "suggestions": [],
+                "success": False,
+                "error": "timeout"
+            }
         
         suggestions = []
         if result and isinstance(result, list):
@@ -189,6 +232,7 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
                 if isinstance(suggestion, dict) and all(k in suggestion for k in ["type", "category", "original_word", "suggested_word", "explanation", "examples"]):
                     suggestions.append(suggestion)
         
+        vocab_log(f"✅ VOCAB: Sentence {sentence_idx} completed with {len(suggestions)} suggestions")
         return {
             "sentence_idx": sentence_idx,
             "sentence": sentence,
@@ -197,7 +241,7 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
         }
         
     except Exception as e:
-        logger.error(f"Error analyzing vocabulary for sentence {sentence_idx}: {e}")
+        vocab_log(f"💥 VOCAB: Error analyzing sentence {sentence_idx}: {str(e)[:100]}")
         return {
             "sentence_idx": sentence_idx,
             "sentence": sentence,
@@ -334,11 +378,12 @@ def split_into_sentences(text: str) -> List[str]:
     
     return result
 
-async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
+async def analyze_vocabulary(transcript: str, question_number: int = None) -> Dict[str, Any]:
     """Analyze vocabulary collocations in a transcript"""
-    logger.info(f"Starting vocabulary collocation analysis for transcript of length: {len(transcript)}")
+    vocab_log(f"🔍 VOCAB: Starting vocabulary analysis for transcript of length: {len(transcript)}", question_number)
     
     if not transcript or not transcript.strip():
+        vocab_log(f"🔍 VOCAB: Empty transcript, returning default result", question_number)
         return {
             "grade": 100,
             "vocabulary_suggestions": {},
@@ -346,18 +391,44 @@ async def analyze_vocabulary(transcript: str) -> Dict[str, Any]:
         
     try:
         sentences = split_into_sentences(transcript)
-        logger.info(f"Analyzing {len(sentences)} sentences for vocabulary collocations")
+        vocab_log(f"🔍 VOCAB: Analyzing {len(sentences)} sentences for vocabulary collocations", question_number)
         
-        # Process sentences in parallel
+        # Process sentences in parallel with timeout protection
         tasks = [analyze_single_sentence_vocabulary(sentence, idx) for idx, sentence in enumerate(sentences)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Add timeout to prevent hanging
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=120.0  # 2 minute timeout
+            )
+            vocab_log(f"🔍 VOCAB: Parallel sentence analysis completed successfully", question_number)
+        except asyncio.TimeoutError:
+            vocab_log(f"💥 VOCAB: Timeout after 120s processing {len(sentences)} sentences", question_number)
+            # Return fallback result instead of failing
+            return {
+                "grade": 50,  # Neutral score for timeout
+                "vocabulary_suggestions": {},
+            }
+        
+        # Check for exceptions in results
+        exceptions = [r for r in results if isinstance(r, Exception)]
+        if exceptions:
+            vocab_log(f"⚠️ VOCAB: {len(exceptions)} sentence analyses failed, continuing with successful ones", question_number)
+            for i, exc in enumerate(exceptions):
+                vocab_log(f"⚠️ VOCAB: Sentence {i} failed: {str(exc)[:100]}", question_number)
         
         # Aggregate results
-        return aggregate_vocabulary_results(results, sentences)
+        vocab_log(f"🔍 VOCAB: Aggregating results from {len(results)} sentence analyses", question_number)
+        final_result = aggregate_vocabulary_results(results, sentences)
+        vocab_log(f"✅ VOCAB: Analysis completed successfully with grade: {final_result.get('grade', 'N/A')}", question_number)
+        return final_result
         
     except Exception as e:
-        logger.exception("Error in vocabulary collocation analysis")
+        vocab_log(f"💥 VOCAB: Critical error in vocabulary analysis: {str(e)}", question_number)
+        logger.exception("Full vocabulary analysis exception:")
+        # Return fallback result instead of failing
         return {
-            "grade": 0,
+            "grade": 25,  # Low score for error
             "vocabulary_suggestions": {},
         } 

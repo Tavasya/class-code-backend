@@ -1,7 +1,5 @@
 import logging
 import asyncio
-import json
-import os
 from typing import Dict, Any
 from datetime import datetime
 from fastapi import Request, HTTPException
@@ -35,60 +33,7 @@ class AnalysisWebhook:
         self._submission_state: Dict[str, Dict] = {}
         # NEW: Improvement tracking state
         self._improvement_state: Dict[str, Dict] = {}
-        # FIX: Add locks for thread-safe submission state updates
-        self._submission_locks: Dict[str, asyncio.Lock] = {}
-        # Question tracking file
-        self.tracking_file = "/tmp/question_tracking.json"
-        self._init_tracking_file()
-        # Initialize vocabulary debug log
-        try:
-            from app.services.vocabulary_service import init_vocab_log
-            init_vocab_log()
-        except Exception:
-            pass
         
-    def _init_tracking_file(self):
-        """Initialize the tracking file"""
-        try:
-            with open(self.tracking_file, 'w') as f:
-                json.dump({"sessions": {}, "start_time": datetime.now().isoformat()}, f, indent=2)
-        except Exception as e:
-            print(f"Failed to initialize tracking file: {e}")
-    
-    def _track_question(self, submission_url: str, question_number: int, event: str, data: Dict = None):
-        """Track question events to separate file"""
-        try:
-            # Read current data
-            if os.path.exists(self.tracking_file):
-                with open(self.tracking_file, 'r') as f:
-                    tracking_data = json.load(f)
-            else:
-                tracking_data = {"sessions": {}}
-            
-            # Initialize submission if not exists
-            if submission_url not in tracking_data["sessions"]:
-                tracking_data["sessions"][submission_url] = {"questions": {}}
-            
-            # Initialize question if not exists
-            q_key = str(question_number)
-            if q_key not in tracking_data["sessions"][submission_url]["questions"]:
-                tracking_data["sessions"][submission_url]["questions"][q_key] = {"events": []}
-            
-            # Add event
-            event_data = {
-                "timestamp": datetime.now().isoformat(),
-                "event": event,
-                "data": data or {}
-            }
-            tracking_data["sessions"][submission_url]["questions"][q_key]["events"].append(event_data)
-            
-            # Write back
-            with open(self.tracking_file, 'w') as f:
-                json.dump(tracking_data, f, indent=2)
-                
-        except Exception as e:
-            print(f"Failed to track question {question_number}: {e}")
-    
     def _get_analysis_state_key(self, submission_url: str, question_number: int) -> str:
         """Generate a unique key for analysis state tracking"""
         return f"analysis:{submission_url}:{question_number}"
@@ -136,20 +81,11 @@ class AnalysisWebhook:
             }
         return self._submission_state[key]
         
-    def _get_submission_lock(self, submission_url: str) -> asyncio.Lock:
-        """Get or create a lock for thread-safe submission state updates"""
-        if submission_url not in self._submission_locks:
-            self._submission_locks[submission_url] = asyncio.Lock()
-        return self._submission_locks[submission_url]
-        
     def _cleanup_submission_state(self, submission_url: str):
         """Clean up submission state after completion"""
         key = self._get_submission_state_key(submission_url)
         if key in self._submission_state:
             del self._submission_state[key]
-        # FIX: Also clean up the lock
-        if submission_url in self._submission_locks:
-            del self._submission_locks[submission_url]
 
     async def handle_audio_conversion_done_webhook(self, request: Request) -> Dict[str, str]:
         """Handle audio conversion completed webhook from Pub/Sub push"""
@@ -231,67 +167,17 @@ class AnalysisWebhook:
                 # The downstream handlers will need to handle this case
                 logger.warning(f"⚠️ Cannot recover total_questions at analysis ready stage for question {question_number}")
             
-            logger.info(f"🚀 STARTING PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical, Vocabulary)")
-            logger.info(f"🔍 QUESTION {question_number} ANALYSIS_READY RECEIVED - Submission: {submission_url}")
-            
-            # Track analysis ready
-            self._track_question(submission_url, question_number, "ANALYSIS_READY", {
-                "wav_path": wav_path,
-                "transcript_length": len(transcript) if transcript else 0,
-                "total_questions": total_questions
-            })
-            
+            logger.info(f"Starting PHASE 1 analysis for question {question_number} (Grammar, Pronunciation, Lexical, Vocabulary)")
             if session_id:
                 logger.info(f"Using session {session_id} for file lifecycle management")
             
             # Initialize analysis state
             state = self._get_or_create_analysis_state(submission_url, question_number)
-            
-            # FIX: Check if question is fully completed to prevent duplicates
-            all_completed = all([
-                state.get("pronunciation_done", False),
-                state.get("grammar_done", False),
-                state.get("lexical_done", False),
-                state.get("fluency_done", False),
-                state.get("vocabulary_done", False)
-            ])
-            if all_completed:
-                logger.warning(f"⚠️ Question {question_number} already fully completed, skipping duplicate processing")
-                return {"status": "success", "message": "Question already completed"}
-            
-            # Check if this is a partial retry - log the current state
-            partial_states = {
-                "pronunciation": state.get("pronunciation_done", False),
-                "grammar": state.get("grammar_done", False), 
-                "lexical": state.get("lexical_done", False),
-                "fluency": state.get("fluency_done", False),
-                "vocabulary": state.get("vocabulary_done", False)
-            }
-            logger.info(f"🔍 Question {question_number} current analysis states: {partial_states}")
-            
-            # Track processing start
-            self._track_question(submission_url, question_number, "PROCESSING_START", partial_states)
-            
             state["wav_path"] = wav_path
             state["transcript"] = transcript
             state["audio_url"] = audio_url
             state["session_id"] = session_id
             state["total_questions"] = total_questions
-            
-            # FIX: Set status to in_progress BEFORE starting analyses (not after)
-            db_service = DatabaseService()
-            analysis_types = ["pronunciation", "grammar", "lexical", "vocabulary"]
-            for analysis_type in analysis_types:
-                await db_service.update_status_logs(submission_url, question_number, analysis_type, "in_progress")
-            logger.info(f"✅ Set all analysis statuses to 'in_progress' for question {question_number}")
-            
-            # Add detailed tracking for debugging
-            logger.info(f"🔍 QUESTION {question_number} PROCESSING START - Submission: {submission_url}")
-            logger.info(f"🔍 Audio URL: {audio_url}")
-            logger.info(f"🔍 WAV Path: {wav_path}")
-            logger.info(f"🔍 Transcript length: {len(transcript) if transcript else 0} chars")
-            logger.info(f"🔍 Total questions: {total_questions}")
-            logger.info(f"🔍 Session ID: {session_id}")
             
             # Create tasks for parallel execution
             tasks = []
@@ -377,8 +263,7 @@ class AnalysisWebhook:
             # 4. Vocabulary Analysis Task
             async def vocabulary_task():
                 try:
-                    logger.info(f"🔍 VOCAB TASK: Starting vocabulary analysis for question {question_number}")
-                    vocabulary_result = await analyze_vocabulary(transcript, question_number)
+                    vocabulary_result = await analyze_vocabulary(transcript)
                     state["vocabulary_result"] = vocabulary_result
                     state["vocabulary_done"] = True
                     
@@ -392,34 +277,11 @@ class AnalysisWebhook:
                             "result": vocabulary_result
                         }
                     )
-                    logger.info(f"✅ VOCAB TASK: Vocabulary analysis completed for question {question_number}")
-                    # Track vocabulary task completion
-                    self._track_question(submission_url, question_number, "VOCAB_TASK_COMPLETED", {
-                        "grade": vocabulary_result.get("grade", "N/A")
-                    })
+                    logger.info(f"Vocabulary analysis completed for question {question_number}")
                 except Exception as e:
-                    logger.error(f"💥 VOCAB TASK: Vocabulary analysis failed for question {question_number}: {str(e)}")
-                    # Track vocabulary task failure
-                    self._track_question(submission_url, question_number, "VOCAB_TASK_FAILED", {
-                        "error": str(e)[:100]
-                    })
-                    # Still mark as done with error result to prevent hanging
-                    state["vocabulary_result"] = {"error": str(e), "grade": 25}
+                    logger.error(f"Vocabulary analysis failed for question {question_number}: {str(e)}")
+                    state["vocabulary_result"] = {"error": str(e)}
                     state["vocabulary_done"] = True
-                    
-                    # Still publish vocabulary done with error result
-                    try:
-                        self.pubsub_client.publish_message_by_name(
-                            "VOCABULARY_DONE",
-                            {
-                                "question_number": question_number,
-                                "submission_url": submission_url,
-                                "total_questions": total_questions,
-                                "result": {"error": str(e), "grade": 25}
-                            }
-                        )
-                    except Exception as pub_error:
-                        logger.error(f"💥 VOCAB TASK: Failed to publish vocabulary done message: {str(pub_error)}")
             
             # Add all tasks to parallel execution
             tasks.extend([
@@ -429,42 +291,16 @@ class AnalysisWebhook:
                 vocabulary_task()
             ])
             
-            # Run all Phase 1 tasks in parallel with proper error handling
-            try:
-                await asyncio.gather(*tasks)
-                logger.info(f"🎉 PHASE 1 analysis completed for question {question_number}")
-                logger.info(f"🔍 QUESTION {question_number} PARALLEL TASKS COMPLETED - Submission: {submission_url}")
-                
-                # Track parallel completion
-                self._track_question(submission_url, question_number, "PARALLEL_COMPLETED")
-                
-                # FIX: Check completion immediately after parallel processing to prevent hanging
-                # This ensures questions complete even if individual webhooks have issues
-                await self._check_and_publish_completion(submission_url, question_number, total_questions)
-                
-                return {"status": "success", "message": "Phase 1 analysis completed (Grammar, Pronunciation, Lexical, Vocabulary)"}
-            except Exception as parallel_error:
-                logger.error(f"💥 Error during parallel analysis for question {question_number}: {str(parallel_error)}")
-                # FIX: Mark all analyses as failed on exception to prevent hanging
-                for analysis_type in analysis_types:
-                    try:
-                        await db_service.update_status_logs(submission_url, question_number, analysis_type, "failed")
-                    except Exception as status_error:
-                        logger.error(f"Failed to update status to failed for {analysis_type}: {str(status_error)}")
-                raise parallel_error
+            # Run all Phase 1 tasks in parallel
+            await asyncio.gather(*tasks)
+            
+            logger.info(f"PHASE 1 analysis completed for question {question_number}")
+            return {"status": "success", "message": "Phase 1 analysis completed (Grammar, Pronunciation, Lexical, Vocabulary)"}
             
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error handling question analysis ready webhook: {str(e)}")
-            # FIX: Ensure cleanup on any exception
-            try:
-                db_service = DatabaseService()
-                analysis_types = ["pronunciation", "grammar", "lexical", "vocabulary"]
-                for analysis_type in analysis_types:
-                    await db_service.update_status_logs(submission_url, question_number, analysis_type, "failed")
-            except Exception as cleanup_error:
-                logger.error(f"Failed to cleanup statuses on exception: {str(cleanup_error)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
     async def handle_pronunciation_done_webhook(self, request: Request) -> Dict[str, str]:
@@ -476,8 +312,9 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             
-            # FIX: Remove redundant status update (now done in analysis_ready)
+            # Update status to in_progress
             db_service = DatabaseService()
+            await db_service.update_status_logs(submission_url, question_number, "pronunciation", "in_progress")
             
             pronunciation_result = message_data["result"]
             transcript = message_data["transcript"]
@@ -637,8 +474,9 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             
-            # FIX: Remove redundant status update (now done in analysis_ready)
+            # Update status to in_progress
             db_service = DatabaseService()
+            await db_service.update_status_logs(submission_url, question_number, "fluency", "in_progress")
             
             total_questions = message_data.get("total_questions")
             
@@ -678,8 +516,9 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             
-            # FIX: Remove redundant status update (now done in analysis_ready)
+            # Update status to in_progress
             db_service = DatabaseService()
+            await db_service.update_status_logs(submission_url, question_number, "grammar", "in_progress")
             
             total_questions = message_data.get("total_questions")
             
@@ -696,18 +535,11 @@ class AnalysisWebhook:
             
             logger.info(f"Grammar analysis acknowledged for question {question_number}")
             
-            # FIX: Update database status FIRST, then internal state
-            await db_service.update_status_logs(submission_url, question_number, "grammar", "completed")
-            
-            # FIX: Update grammar state to mark as done (this was missing!)
-            state = self._get_or_create_analysis_state(submission_url, question_number)
-            grammar_result = message_data.get("result", {})
-            state["grammar_result"] = grammar_result
-            state["grammar_done"] = True
-            logger.info(f"✅ Marked grammar as done for question {question_number}")
-            
             # Check if all analyses are complete now that grammar is done
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
+            
+            # Update status to completed
+            await db_service.update_status_logs(submission_url, question_number, "grammar", "completed")
             
             return {"status": "success", "message": "Grammar analysis completion acknowledged"}
             
@@ -740,29 +572,12 @@ class AnalysisWebhook:
             
             logger.info(f"Lexical analysis acknowledged for question {question_number}")
             
-            # FIX: Add missing database status update for lexical!
-            db_service = DatabaseService()
-            await db_service.update_status_logs(submission_url, question_number, "lexical", "completed")
-            
-            # FIX: Update lexical state to mark as done (this was missing!)
-            state = self._get_or_create_analysis_state(submission_url, question_number)
-            lexical_result = message_data.get("result", {})
-            state["lexical_result"] = lexical_result
-            state["lexical_done"] = True
-            logger.info(f"✅ Marked lexical as done for question {question_number}")
-            
             # Check if all analyses are complete now that lexical is done
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
             
             return {"status": "success", "message": "Lexical analysis completion acknowledged"}
             
         except Exception as e:
-            # Update status to failed if there's an error
-            try:
-                db_service = DatabaseService()
-                await db_service.update_status_logs(submission_url, question_number, "lexical", "failed")
-            except Exception as status_error:
-                logger.error(f"Failed to update lexical status to failed: {str(status_error)}")
             logger.error(f"Error handling lexical done webhook: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
@@ -775,8 +590,9 @@ class AnalysisWebhook:
             question_number = message_data["question_number"]
             submission_url = message_data["submission_url"]
             
-            # FIX: Remove redundant status update (now done in analysis_ready)
+            # Update status to in_progress
             db_service = DatabaseService()
+            await db_service.update_status_logs(submission_url, question_number, "vocabulary", "in_progress")
             
             total_questions = message_data.get("total_questions")
             
@@ -793,24 +609,11 @@ class AnalysisWebhook:
             
             logger.info(f"Vocabulary analysis acknowledged for question {question_number}")
             
-            # Track vocabulary webhook call
-            self._track_question(submission_url, question_number, "VOCAB_WEBHOOK_CALLED")
-            
-            # FIX: Update database status FIRST, then internal state
-            await db_service.update_status_logs(submission_url, question_number, "vocabulary", "completed")
-            
-            # FIX: Update vocabulary state to mark as done (this was missing!)
-            state = self._get_or_create_analysis_state(submission_url, question_number)
-            vocabulary_result = message_data.get("result", {})
-            state["vocabulary_result"] = vocabulary_result
-            state["vocabulary_done"] = True
-            logger.info(f"✅ Marked vocabulary as done for question {question_number}")
-            
-            # Track vocabulary state update
-            self._track_question(submission_url, question_number, "VOCAB_STATE_UPDATED")
-            
             # Check if all analyses are complete now that vocabulary is done
             await self._check_and_publish_completion(submission_url, question_number, total_questions)
+            
+            # Update status to completed
+            await db_service.update_status_logs(submission_url, question_number, "vocabulary", "completed")
             
             return {"status": "success", "message": "Vocabulary analysis completion acknowledged"}
             
@@ -848,41 +651,22 @@ class AnalysisWebhook:
             logger.info(f"🔍 DEBUG: Processing question {question_number} for submission {submission_url} with total_questions={total_questions}")
             logger.info(f"Question {question_number} analysis completed for submission {submission_url}")
             
-            # FIX: Use lock for thread-safe submission state updates
-            async with self._get_submission_lock(submission_url):
-                # Update submission-level state
-                submission_state = self._get_or_create_submission_state(submission_url, total_questions)
-                logger.info(f"🔍 DEBUG: Current submission state before update: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
-                
-                # FIX: Ensure question_number is stored as string for consistency
-                question_key = str(question_number)
-                
-                # FIX: Check for duplicate question processing
-                if question_key in submission_state["question_results"]:
-                    logger.warning(f"⚠️ Question {question_key} already processed! Skipping duplicate.")
-                    self._track_question(submission_url, question_number, "DUPLICATE_SKIPPED")
-                    return {"status": "success", "message": f"Question {question_key} already processed"}
-                
-                submission_state["question_results"][question_key] = analysis_results
-                logger.info(f"🔍 DEBUG: Stored results for question key '{question_key}' (type: {type(question_key)})")
-                submission_state["completed_questions"] += 1
-                
-                # Track completion
-                self._track_question(submission_url, question_number, "QUESTION_COMPLETED", {
-                    "completed_count": submission_state["completed_questions"],
-                    "total_questions": submission_state["total_questions"]
-                })
-                
-                logger.info(f"🔍 DEBUG: Updated submission state: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
-                logger.info(f"🔍 DEBUG: Current question keys in results: {list(submission_state['question_results'].keys())}")
-                logger.info(f"Submission {submission_url}: {submission_state['completed_questions']}/{submission_state['total_questions']} questions complete")
-                
-                # Check if submission is complete
-                if submission_state["completed_questions"] >= submission_state["total_questions"]:
-                    logger.info(f"🔍 DEBUG: Submission complete! Calling _publish_submission_complete for {submission_url}")
-                    await self._publish_submission_complete(submission_state)
-                else:
-                    logger.info(f"🔍 DEBUG: Submission not yet complete. Need {submission_state['total_questions'] - submission_state['completed_questions']} more questions for {submission_url}")
+            # Update submission-level state
+            submission_state = self._get_or_create_submission_state(submission_url, total_questions)
+            logger.info(f"🔍 DEBUG: Current submission state before update: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
+            
+            submission_state["question_results"][question_number] = analysis_results
+            submission_state["completed_questions"] += 1
+            
+            logger.info(f"🔍 DEBUG: Updated submission state: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
+            logger.info(f"Submission {submission_url}: {submission_state['completed_questions']}/{submission_state['total_questions']} questions complete")
+            
+            # Check if submission is complete
+            if submission_state["completed_questions"] >= submission_state["total_questions"]:
+                logger.info(f"🔍 DEBUG: Submission complete! Calling _publish_submission_complete for {submission_url}")
+                await self._publish_submission_complete(submission_state)
+            else:
+                logger.info(f"🔍 DEBUG: Submission not yet complete. Need {submission_state['total_questions'] - submission_state['completed_questions']} more questions for {submission_url}")
                 
             return {"status": "success", "message": "Question analysis processed"}
             
@@ -940,8 +724,6 @@ class AnalysisWebhook:
             question_results = message_data["question_results"]
             
             logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
-            logger.info(f"🔍 DEBUG: Final question_results keys: {list(question_results.keys())}")
-            logger.info(f"🔍 DEBUG: Expected questions 1-10, got: {sorted(question_results.keys())}")
            
             # Initialize lists for per-section scores
             pronunciation_scores_list = []
@@ -1303,30 +1085,16 @@ class AnalysisWebhook:
             state = self._get_or_create_analysis_state(submission_url, question_number)
             
             # Check if all analyses are complete
-            pron_done = state.get("pronunciation_done", False)
-            gram_done = state.get("grammar_done", False)
-            lex_done = state.get("lexical_done", False)
-            flu_done = state.get("fluency_done", False)
-            vocab_done = state.get("vocabulary_done", False)
-            
-            # FIX: Add detailed completion tracking
-            logger.info(f"🔍 COMPLETION CHECK Q{question_number}: pron={pron_done}, gram={gram_done}, lex={lex_done}, flu={flu_done}, vocab={vocab_done}")
-            
-            # Track completion check
-            self._track_question(submission_url, question_number, "COMPLETION_CHECK", {
-                "pronunciation": pron_done,
-                "grammar": gram_done,
-                "lexical": lex_done,
-                "fluency": flu_done,
-                "vocabulary": vocab_done
-            })
-            
-            all_done = all([pron_done, gram_done, lex_done, flu_done, vocab_done])
+            all_done = all([
+                state.get("pronunciation_done", False),
+                state.get("grammar_done", False),
+                state.get("lexical_done", False),
+                state.get("fluency_done", False),
+                state.get("vocabulary_done", False)
+            ])
             
             if all_done:
-                logger.info(f"🎉 All analyses complete for question {question_number}")
-                logger.info(f"🔍 QUESTION {question_number} READY FOR COMPLETION - Submission: {submission_url}")
-                self._track_question(submission_url, question_number, "ALL_ANALYSES_COMPLETE")
+                logger.info(f"All analyses complete for question {question_number}")
                 
                 # Compile all results INCLUDING the missing fields
                 analysis_results = {
