@@ -863,6 +863,21 @@ class PronunciationService:
         """Chunked pronunciation analysis for long transcripts (>65 words)"""
         try:
             import subprocess
+            import psutil
+            import os
+            
+            # Memory monitoring (optional)
+            try:
+                process = psutil.Process(os.getpid())
+                initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+                memory_limit = 900  # MB (under 1024 MB Cloud Run limit)
+                memory_monitoring = True
+                logger.info(f"Memory monitoring enabled. Initial usage: {initial_memory:.1f} MB")
+            except (ImportError, Exception) as e:
+                logger.debug(f"Memory monitoring disabled: {e}")
+                memory_monitoring = False
+                initial_memory = 0
+                memory_limit = float('inf')
             
             logger.info(f"Starting chunked pronunciation analysis with {len(reference_text.split())} words")
             
@@ -912,10 +927,11 @@ class PronunciationService:
                 
                 logger.info(f"   Chunk timing: start={chunk_start_time:.2f}s, duration={estimated_chunk_duration:.2f}s")
                 
-                # Create temporary audio chunk
-                temp_chunk_file = None
+                # Create temporary audio chunk using context manager
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                    temp_chunk_file = temp_file.name
+                
                 try:
-                    temp_chunk_file = tempfile.mktemp(suffix='.wav')
                     cmd = [
                         'ffmpeg', '-y', '-i', audio_file,
                         '-ss', str(chunk_start_time), '-t', str(estimated_chunk_duration + 1.0),  # Add 1s buffer
@@ -949,18 +965,52 @@ class PronunciationService:
                                 
                                 combined_words.append(word_data)
                         
-                        all_results.append(chunk_result)
+                        # Extract only essential data to reduce memory usage
+                        essential_chunk_data = {
+                            "scores": {
+                                "PronScore": chunk_result["NBest"][0].get("PronunciationAssessment", {}).get("PronScore", 0) if "NBest" in chunk_result and chunk_result["NBest"] else 0,
+                                "AccuracyScore": chunk_result["NBest"][0].get("PronunciationAssessment", {}).get("AccuracyScore", 0) if "NBest" in chunk_result and chunk_result["NBest"] else 0,
+                                "FluencyScore": chunk_result["NBest"][0].get("PronunciationAssessment", {}).get("FluencyScore", 0) if "NBest" in chunk_result and chunk_result["NBest"] else 0
+                            },
+                            "valid": True
+                        }
+                        all_results.append(essential_chunk_data)
                         logger.info(f"   Added {len(chunk_words)} words with timestamps starting at {chunk_start_time:.2f}s")
+                        
+                        # Clear chunk_result to free memory immediately
+                        del chunk_result
+                        del chunk_words
                     else:
                         logger.warning(f"Chunk {i+1} failed to process")
+                        all_results.append({"valid": False})
                 
                 finally:
-                    # Clean up temporary file
-                    if temp_chunk_file and os.path.exists(temp_chunk_file):
+                    # Clean up temporary file with proper error logging
+                    if os.path.exists(temp_chunk_file):
                         try:
                             os.unlink(temp_chunk_file)
-                        except:
-                            pass
+                            logger.debug(f"Successfully cleaned up temporary chunk file: {temp_chunk_file}")
+                        except OSError as e:
+                            logger.warning(f"Failed to cleanup temporary chunk file {temp_chunk_file}: {e}")
+                        except Exception as e:
+                            logger.error(f"Unexpected error cleaning up chunk file {temp_chunk_file}: {e}")
+                
+                # Progressive cleanup and garbage collection for large datasets
+                if (i + 1) % 5 == 0 or len(combined_words) > 1000:  # Every 5 chunks or 1000+ words
+                    import gc
+                    gc.collect()
+                    
+                    # Memory monitoring and circuit breaker
+                    if memory_monitoring:
+                        current_memory = process.memory_info().rss / 1024 / 1024  # MB
+                        logger.debug(f"Performed garbage collection after chunk {i+1}. Memory: {current_memory:.1f} MB")
+                        
+                        if current_memory > memory_limit:
+                            logger.warning(f"Memory limit exceeded ({current_memory:.1f} MB > {memory_limit} MB). Stopping chunked analysis.")
+                            # Return partial results
+                            break
+                    else:
+                        logger.debug(f"Performed garbage collection after chunk {i+1}")
                 
                 # Update cumulative count for next chunk
                 cumulative_words_processed += chunk['word_count']
@@ -975,12 +1025,12 @@ class PronunciationService:
                 total_fluency_score = 0
                 valid_chunks = 0
                 
-                for chunk_result in all_results:
-                    if "NBest" in chunk_result and chunk_result["NBest"]:
-                        assessment = chunk_result["NBest"][0].get("PronunciationAssessment", {})
-                        total_pron_score += assessment.get("PronScore", 0)
-                        total_accuracy_score += assessment.get("AccuracyScore", 0)
-                        total_fluency_score += assessment.get("FluencyScore", 0)
+                for chunk_data in all_results:
+                    if chunk_data.get("valid", False):
+                        scores = chunk_data.get("scores", {})
+                        total_pron_score += scores.get("PronScore", 0)
+                        total_accuracy_score += scores.get("AccuracyScore", 0)
+                        total_fluency_score += scores.get("FluencyScore", 0)
                         valid_chunks += 1
                 
                 if valid_chunks > 0:
@@ -1008,9 +1058,29 @@ class PronunciationService:
                 logger.info(f"Chunked analysis completed! Combined scores - Pronunciation: {avg_pron_score:.1f}, Accuracy: {avg_accuracy_score:.1f}, Fluency: {avg_fluency_score:.1f}")
                 logger.info(f"Total words processed: {len(combined_words)}")
                 
+                # Final memory check
+                if memory_monitoring:
+                    final_memory = process.memory_info().rss / 1024 / 1024  # MB
+                    memory_used = final_memory - initial_memory
+                    logger.info(f"Memory usage: {final_memory:.1f} MB (Δ{memory_used:+.1f} MB)")
+                
+                # Final cleanup for large datasets
+                del all_results
+                del text_chunks
+                import gc
+                gc.collect()
+                logger.debug("Final garbage collection completed for chunked analysis")
+                
                 return combined_result
             else:
                 logger.warning("No chunks processed successfully")
+                
+                # Cleanup even on failure
+                del all_results
+                del combined_words
+                import gc
+                gc.collect()
+                
                 return None
                 
         except Exception as e:

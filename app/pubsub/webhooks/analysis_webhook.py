@@ -724,6 +724,9 @@ class AnalysisWebhook:
             question_results = message_data["question_results"]
             
             logger.info(f"🎉 SUBMISSION COMPLETE: {submission_url} - {completed_questions} questions analyzed")
+            
+            # 🚨 MISSING QUESTION DETECTION 🚨
+            await self._detect_missing_questions(submission_url, question_results)
            
             # Initialize lists for per-section scores
             pronunciation_scores_list = []
@@ -1126,4 +1129,59 @@ class AnalysisWebhook:
                 
         except Exception as e:
             logger.error(f"Error checking completion for question {question_number}: {str(e)}")
-            raise 
+            raise
+    
+    async def _detect_missing_questions(self, submission_url: str, question_results: dict):
+        """Detect and log missing questions by comparing with expected count from database."""
+        try:
+            from app.services.database_service import DatabaseService
+            db_service = DatabaseService()
+            
+            # Get the assignment to find expected question count
+            assignment_info = await db_service.get_assignment_by_submission_url(submission_url)
+            if not assignment_info:
+                logger.warning(f"🤷 Could not fetch assignment info for {submission_url}, skipping missing question detection")
+                return
+            
+            expected_questions = len(assignment_info.get('questions', []))
+            actual_questions = len(question_results) if question_results else 0
+            
+            logger.info(f"📊 Question Count Check: Expected {expected_questions}, Got {actual_questions}")
+            
+            if actual_questions < expected_questions:
+                missing_count = expected_questions - actual_questions
+                logger.error(f"🚨 MISSING QUESTIONS DETECTED! {missing_count} questions are missing from submission {submission_url}")
+                
+                # Identify which specific questions are missing
+                expected_question_numbers = set(range(1, expected_questions + 1))
+                actual_question_numbers = set()
+                
+                if question_results:
+                    for q_key in question_results.keys():
+                        try:
+                            q_num = int(q_key)
+                            actual_question_numbers.add(q_num)
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid question key format: {q_key}")
+                
+                missing_questions = expected_question_numbers - actual_question_numbers
+                
+                if missing_questions:
+                    missing_list = sorted(list(missing_questions))
+                    logger.error(f"🔍 Specific missing questions: {missing_list}")
+                    
+                    # Log detailed analysis for debugging
+                    logger.error(f"🔍 Expected questions: {sorted(list(expected_question_numbers))}")
+                    logger.error(f"🔍 Received questions: {sorted(list(actual_question_numbers))}")
+                else:
+                    logger.warning(f"🤔 Question count mismatch but couldn't identify specific missing questions")
+                    
+            elif actual_questions > expected_questions:
+                extra_count = actual_questions - expected_questions
+                logger.warning(f"⚠️ Extra questions detected! Got {extra_count} more questions than expected")
+            else:
+                logger.info(f"✅ All {expected_questions} questions accounted for")
+                
+        except Exception as e:
+            logger.error(f"💥 Error in missing question detection: {str(e)}")
+            # Don't fail the whole process if detection fails 

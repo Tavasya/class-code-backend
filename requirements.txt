@@ -12,3 +12,4 @@ cmudict
 python-dotenv
 sentry-sdk[fastapi]
 openai
+psutil
