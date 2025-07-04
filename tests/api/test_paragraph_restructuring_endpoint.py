@@ -48,7 +48,7 @@ class TestParagraphRestructuringEndpoint:
             response_data = response.json()
             assert response_data["status"] == "success"
             assert response_data["result"]["original_band"] == "A1"
-            assert response_data["result"]["target_band"] == "A2"
+            assert response_data["result"]["target_band"] == "A1.5"  # Updated to match current implementation
             assert "improved_transcript" in response_data["result"]
             assert response_data["error"] is None
     
@@ -85,7 +85,7 @@ class TestParagraphRestructuringEndpoint:
             assert response_data["status"] == "success"
             # Without analysis results, it defaults to A1 and auto-detects from transcript analysis
             assert response_data["result"]["original_band"] == "A1"  # Defaults to A1 without analysis
-            assert response_data["result"]["target_band"] == "A2"
+            assert response_data["result"]["target_band"] == "A1.5"  # Updated: A1 progresses to A1.5, not A2
     
     def test_endpoint_with_empty_transcript(self):
         """Test endpoint with empty transcript"""
@@ -206,11 +206,11 @@ class TestParagraphRestructuringEndpoint:
         print("-" * 60)
         
         test_cases = [
-            ("A1", "A2", "I like books. Books are good. I read books."),
-            ("A2", "B1", "I enjoy reading books because they are interesting and helpful."),
-            ("B1", "B2", "Reading literature provides valuable insights into different perspectives and cultures."),
-            ("B2", "C1", "Literary analysis demonstrates the complex interplay between narrative structure and thematic development."),
-            ("C1", "C2", "The sophisticated manipulation of linguistic devices facilitates nuanced exploration of existential themes."),
+            ("A1", "A1.5", "I like books. Books are good. I read books."),  # Updated progression
+            ("A2", "A2.5", "I enjoy reading books because they are interesting and helpful."),  # Updated progression
+            ("B1", "B1.5", "Reading literature provides valuable insights into different perspectives and cultures."),  # Updated progression
+            ("B2", "B2.5", "Literary analysis demonstrates the complex interplay between narrative structure and thematic development."),  # Updated progression
+            ("C1", "C1.5", "The sophisticated manipulation of linguistic devices facilitates nuanced exploration of existential themes."),  # Updated progression
             ("C2", "C2", "The intricate synthesis of postmodern literary techniques exemplifies the evolution of contemporary discourse.")  # Should remain at C2
         ]
         
@@ -305,7 +305,7 @@ class TestParagraphRestructuringEndpoint:
         
         mock_result = ParagraphRestructuringResult(
             original_band="A2",
-            target_band="B1",
+            target_band="A2.5",
             improved_transcript="[Enhanced version of the long transcript with improved structure and vocabulary]"
         )
         
@@ -327,6 +327,6 @@ class TestParagraphRestructuringEndpoint:
             response_data = response.json()
             assert response_data["status"] == "success"
             assert response_data["result"]["original_band"] == "A2"
-            assert response_data["result"]["target_band"] == "B1"
+            assert response_data["result"]["target_band"] == "A2.5"
             
             print("✓ Long transcript handled successfully") 

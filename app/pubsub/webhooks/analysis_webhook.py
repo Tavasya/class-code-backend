@@ -278,6 +278,12 @@ class AnalysisWebhook:
             state["session_id"] = session_id
             state["total_questions"] = total_questions
             
+            # Generate clean transcript for grammar and vocabulary analysis
+            from app.services.transcript_cleaning_service import clean_transcript
+            clean_text = clean_transcript(transcript) if transcript else ""
+            state["clean_transcript"] = clean_text
+            logger.info(f"🧹 Generated clean transcript for question {question_number}: {len(transcript or '')} -> {len(clean_text)} chars")
+            
             # FIX: Set status to in_progress BEFORE starting analyses (not after)
             db_service = DatabaseService()
             analysis_types = ["pronunciation", "grammar", "lexical", "vocabulary"]
@@ -330,7 +336,8 @@ class AnalysisWebhook:
             # 2. Grammar Analysis Task
             async def grammar_task():
                 try:
-                    grammar_result = await analyze_grammar(transcript, submission_url, question_number)
+                    # Use clean transcript for more accurate grammar analysis
+                    grammar_result = await analyze_grammar(clean_text, submission_url, question_number)
                     state["grammar_result"] = grammar_result
                     state["grammar_done"] = True
                     
@@ -378,7 +385,8 @@ class AnalysisWebhook:
             async def vocabulary_task():
                 try:
                     logger.info(f"🔍 VOCAB TASK: Starting vocabulary analysis for question {question_number}")
-                    vocabulary_result = await analyze_vocabulary(transcript, question_number)
+                    # Use clean transcript for more accurate vocabulary analysis
+                    vocabulary_result = await analyze_vocabulary(clean_text, question_number)
                     state["vocabulary_result"] = vocabulary_result
                     state["vocabulary_done"] = True
                     
@@ -1336,7 +1344,8 @@ class AnalysisWebhook:
                     "fluency": state.get("fluency_result"),
                     "vocabulary": state.get("vocabulary_result"),
                     "original_audio_url": state.get("audio_url"),
-                    "transcript": state.get("transcript")
+                    "transcript": state.get("transcript"),
+                    "clean_transcript": state.get("clean_transcript")
                 }
                 
                 # Process paragraph improvement synchronously to ensure it's included in results

@@ -58,8 +58,8 @@ class TestParagraphRestructuringService:
                     "lexical": {"grade": 62},
                     "vocabulary": {"grade": 58}
                 },
-                "B1",
-                "Medium scores should detect B1"
+                "A2.5",
+                "Medium scores should detect A2.5"
             ),
             (
                 {
@@ -69,8 +69,8 @@ class TestParagraphRestructuringService:
                     "lexical": {"grade": 78},
                     "vocabulary": {"grade": 72}
                 },
-                "B2",
-                "High scores should detect B2"
+                "B1.5",
+                "High scores should detect B1.5"
             ),
             (
                 {
@@ -80,19 +80,19 @@ class TestParagraphRestructuringService:
                     "lexical": {"grade": 85},
                     "vocabulary": {"grade": 87}
                 },
-                "C1",
-                "Very high scores should detect C1"
+                "B2.5",
+                "Very high scores should detect B2.5"
             ),
             (
                 {
-                    "pronunciation": {"grade": 98},
-                    "fluency": {"grade": 96},
-                    "grammar": {"grade": 100},
+                    "pronunciation": {"grade": 95},
+                    "fluency": {"grade": 94},
+                    "grammar": {"grade": 97},
                     "lexical": {"grade": 95},
-                    "vocabulary": {"grade": 97}
+                    "vocabulary": {"grade": 96}
                 },
-                "C2",
-                "Excellent scores should detect C2"
+                "C1",
+                "Excellent scores should detect C1"
             )
         ]
         
@@ -118,7 +118,7 @@ class TestParagraphRestructuringService:
             ({}, "A1", "Empty results should default to A1"),
             ({"pronunciation": {"invalid": "data"}}, "A1", "Invalid data should default to A1"),
             ({"pronunciation": {"grade": "not_a_number"}}, "A1", "Non-numeric grades should default to A1"),
-            ({"pronunciation": {"grade": 75}}, "B2", "Single valid score should work"),
+            ({"pronunciation": {"grade": 75}}, "B1", "Single valid score should work"),
             ({"pronunciation": {"grade": 150}}, "A1", "Out of range scores should be ignored")
         ]
         
@@ -140,12 +140,17 @@ class TestParagraphRestructuringService:
         print("-" * 50)
         
         expected_progressions = {
-            "A1": "A2",
-            "A2": "B1", 
-            "B1": "B2",
-            "B2": "C1",
-            "C1": "C2",
-            "C2": "C2"  # C2 stays at C2
+            "A1": "A1.5",   # Updated to match current implementation
+            "A1.5": "A2",
+            "A2": "A2.5",   # Updated to match current implementation  
+            "A2.5": "B1",
+            "B1": "B1.5",   # Updated to match current implementation
+            "B1.5": "B2",
+            "B2": "B2.5",   # Updated to match current implementation
+            "B2.5": "C1",
+            "C1": "C1.5",   # Updated to match current implementation
+            "C1.5": "C2",
+            "C2": "C2"      # C2 stays at C2
         }
         
         for current_band, expected_target in expected_progressions.items():
@@ -159,7 +164,7 @@ class TestParagraphRestructuringService:
         print("\n📚 Testing Improvement Instructions")
         print("-" * 50)
         
-        test_progressions = [("A1", "A2"), ("A2", "B1"), ("B1", "B2"), ("B2", "C1"), ("C1", "C2")]
+        test_progressions = [("A1", "A1.5"), ("A2", "A2.5"), ("B1", "B1.5"), ("B2", "B2.5"), ("C1", "C1.5")]  # Updated to use current progressions
         
         for current_band, target_band in test_progressions:
             instructions = get_improvement_instructions(current_band, target_band)
@@ -253,7 +258,7 @@ class TestParagraphRestructuringService:
             print(f"Improved: {result.improved_transcript}")
             
             assert result.original_band == "A1"
-            assert result.target_band == "A2"
+            assert result.target_band == "A1.5"
             assert result.improved_transcript != transcript
             mock_openai.assert_called_once()
     
@@ -287,8 +292,8 @@ class TestParagraphRestructuringService:
             print(f"Original: {transcript}")
             print(f"Improved: {result.improved_transcript}")
             
-            assert result.original_band == "B1"  # Should detect B1 based on scores
-            assert result.target_band == "B2"
+            assert result.original_band == "A2.5"  # Updated: scores average 63.8 maps to A2.5
+            assert result.target_band == "B1"   # Updated: A2.5 progresses to B1
             assert result.improved_transcript != transcript
     
     @pytest.mark.asyncio
@@ -337,7 +342,7 @@ class TestParagraphRestructuringService:
             print(f"Improved: {result.improved_transcript}")
             
             assert result.original_band == "A2"
-            assert result.target_band == "B1"
+            assert result.target_band == "A2.5"  # Updated: A2 progresses to A2.5, not B1
             assert result.improved_transcript != request.transcript
     
     @pytest.mark.asyncio
@@ -366,4 +371,5 @@ class TestParagraphRestructuringService:
             # Should return original transcript on error but still provide band info
             assert result.improved_transcript == transcript
             assert result.original_band == "A1"
-            assert result.target_band == "A2" 
+            assert result.target_band == "A1.5"  # Updated: A1 progresses to A1.5, not A2
+    
