@@ -276,6 +276,16 @@ class DatabaseService:
                 transcript = analysis_results["pronunciation"].get("transcript", "")
                 logger.info(f"📝 Using transcript from pronunciation results for question {question_id}")
             
+            # Extract clean transcript (added for filler word removal)
+            clean_transcript = ""
+            if isinstance(analysis_results, dict) and "clean_transcript" in analysis_results:
+                clean_transcript = analysis_results["clean_transcript"] or ""
+                logger.info(f"🧹 Using clean transcript from analysis results for question {question_id}")
+            else:
+                # Fallback: if no clean transcript available, use original transcript
+                clean_transcript = transcript
+                logger.info(f"🧹 No clean transcript found, using original transcript for question {question_id}")
+            
             # Build section_feedback from analysis results
             section_feedback = {}
             #w
@@ -317,6 +327,7 @@ class DatabaseService:
             transformed_result = {
                 "audio_url": audio_url,
                 "transcript": transcript,
+                "clean_transcript": clean_transcript,
                 "question_id": int(question_id),
                 "section_feedback": section_feedback
             }
