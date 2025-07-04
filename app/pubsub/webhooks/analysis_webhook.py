@@ -33,6 +33,8 @@ class AnalysisWebhook:
         self._submission_state: Dict[str, Dict] = {}
         # NEW: Improvement tracking state
         self._improvement_state: Dict[str, Dict] = {}
+        # Thread safety lock for submission state updates
+        self._submission_lock = asyncio.Lock()
         
     def _get_analysis_state_key(self, submission_url: str, question_number: int) -> str:
         """Generate a unique key for analysis state tracking"""
@@ -651,22 +653,23 @@ class AnalysisWebhook:
             logger.info(f"🔍 DEBUG: Processing question {question_number} for submission {submission_url} with total_questions={total_questions}")
             logger.info(f"Question {question_number} analysis completed for submission {submission_url}")
             
-            # Update submission-level state
-            submission_state = self._get_or_create_submission_state(submission_url, total_questions)
-            logger.info(f"🔍 DEBUG: Current submission state before update: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
-            
-            submission_state["question_results"][question_number] = analysis_results
-            submission_state["completed_questions"] += 1
-            
-            logger.info(f"🔍 DEBUG: Updated submission state: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
-            logger.info(f"Submission {submission_url}: {submission_state['completed_questions']}/{submission_state['total_questions']} questions complete")
-            
-            # Check if submission is complete
-            if submission_state["completed_questions"] >= submission_state["total_questions"]:
-                logger.info(f"🔍 DEBUG: Submission complete! Calling _publish_submission_complete for {submission_url}")
-                await self._publish_submission_complete(submission_state)
-            else:
-                logger.info(f"🔍 DEBUG: Submission not yet complete. Need {submission_state['total_questions'] - submission_state['completed_questions']} more questions for {submission_url}")
+            # Update submission-level state with thread safety
+            async with self._submission_lock:
+                submission_state = self._get_or_create_submission_state(submission_url, total_questions)
+                logger.info(f"🔍 DEBUG: Current submission state before update: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
+                
+                submission_state["question_results"][question_number] = analysis_results
+                submission_state["completed_questions"] += 1
+                
+                logger.info(f"🔍 DEBUG: Updated submission state: completed={submission_state['completed_questions']}, total={submission_state['total_questions']}")
+                logger.info(f"Submission {submission_url}: {submission_state['completed_questions']}/{submission_state['total_questions']} questions complete")
+                
+                # Check if submission is complete
+                if submission_state["completed_questions"] >= submission_state["total_questions"]:
+                    logger.info(f"🔍 DEBUG: Submission complete! Calling _publish_submission_complete for {submission_url}")
+                    await self._publish_submission_complete(submission_state)
+                else:
+                    logger.info(f"🔍 DEBUG: Submission not yet complete. Need {submission_state['total_questions'] - submission_state['completed_questions']} more questions for {submission_url}")
                 
             return {"status": "success", "message": "Question analysis processed"}
             
