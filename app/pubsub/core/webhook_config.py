@@ -22,6 +22,8 @@ WEBHOOK_ENDPOINTS = {
     "PRONUNCIATION_DONE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/pronunciation-done",
     "ANALYSIS_COMPLETE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/analysis-complete",
     "SUBMISSION_ANALYSIS_COMPLETE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/submission-analysis-complete",
+    "PRACTICE_PRONUNCIATION_REQUEST": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/practice-pronunciation-request",
+    "PRACTICE_PRONUNCIATION_DONE": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/practice-pronunciation-done",
 }
 
 # Log webhook configuration
@@ -69,5 +71,13 @@ SUBSCRIPTION_CONFIGS = {
     "submission-analyis-complete-topic-sub": {
         "topic": "submission-analyis-complete-topic",
         "push_endpoint": WEBHOOK_ENDPOINTS["SUBMISSION_ANALYSIS_COMPLETE"]
+    },
+    "practice-pronunciation-request-topic-sub": {
+        "topic": "practice-pronunciation-request-topic",
+        "push_endpoint": WEBHOOK_ENDPOINTS["PRACTICE_PRONUNCIATION_REQUEST"]
+    },
+    "practice-pronunciation-done-topic-sub": {
+        "topic": "practice-pronunciation-done-topic",
+        "push_endpoint": WEBHOOK_ENDPOINTS["PRACTICE_PRONUNCIATION_DONE"]
     }
 } 

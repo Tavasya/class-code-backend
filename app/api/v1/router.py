@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from .endpoints import health, audio_endpoint, transcription_endpoint, pronunciation_endpoint, fluency_endpoint, grammar_endpoint, submission_endpoint, lexical_endpoint, webhooks_endpoint, results_endpoint, debug_endpoint, vocabulary_endpoint, paragraph_restructuring_endpoint, retry_endpoint
+from .endpoints import health, audio_endpoint, transcription_endpoint, pronunciation_endpoint, fluency_endpoint, grammar_endpoint, submission_endpoint, lexical_endpoint, webhooks_endpoint, results_endpoint, debug_endpoint, vocabulary_endpoint, paragraph_restructuring_endpoint, retry_endpoint, practice_endpoint
 
 api_router = APIRouter()
 
@@ -22,5 +22,7 @@ api_router.include_router(paragraph_restructuring_endpoint.router, prefix="/para
 api_router.include_router(vocabulary_endpoint.router, prefix="/vocabulary", tags=["analysis"])
 
 api_router.include_router(retry_endpoint.router, prefix="/retry", tags=["retry"])
+
+api_router.include_router(practice_endpoint.router, prefix="/practice", tags=["practice"])
 
 api_router.include_router(submission_endpoint.router, prefix="/submission", tags=["gateway"])

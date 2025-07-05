@@ -863,11 +863,11 @@ class PronunciationService:
         """Chunked pronunciation analysis for long transcripts (>65 words)"""
         try:
             import subprocess
-            import psutil
             import os
             
             # Memory monitoring (optional)
             try:
+                import psutil
                 process = psutil.Process(os.getpid())
                 initial_memory = process.memory_info().rss / 1024 / 1024  # MB
                 memory_limit = 900  # MB (under 1024 MB Cloud Run limit)
@@ -878,6 +878,7 @@ class PronunciationService:
                 memory_monitoring = False
                 initial_memory = 0
                 memory_limit = float('inf')
+                process = None
             
             logger.info(f"Starting chunked pronunciation analysis with {len(reference_text.split())} words")
             
@@ -1001,7 +1002,7 @@ class PronunciationService:
                     gc.collect()
                     
                     # Memory monitoring and circuit breaker
-                    if memory_monitoring:
+                    if memory_monitoring and process:
                         current_memory = process.memory_info().rss / 1024 / 1024  # MB
                         logger.debug(f"Performed garbage collection after chunk {i+1}. Memory: {current_memory:.1f} MB")
                         
@@ -1059,7 +1060,7 @@ class PronunciationService:
                 logger.info(f"Total words processed: {len(combined_words)}")
                 
                 # Final memory check
-                if memory_monitoring:
+                if memory_monitoring and process:
                     final_memory = process.memory_info().rss / 1024 / 1024  # MB
                     memory_used = final_memory - initial_memory
                     logger.info(f"Memory usage: {final_memory:.1f} MB (Δ{memory_used:+.1f} MB)")
