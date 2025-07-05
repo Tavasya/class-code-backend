@@ -17,6 +17,160 @@ import cmudict
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class TestLogsManager:
+    """Manages test logs for tracking errors and debugging"""
+    
+    def __init__(self):
+        self.logs = {
+            "memory_errors": [],
+            "assembly_errors": [],
+            "pronunciation_errors": [],
+            "file_not_found_errors": [],
+            "azure_speech_errors": [],
+            "processing_timeline": [],
+            "workflow_steps": [],
+            "cleanup_operations": [],
+            "memory_snapshots": []
+        }
+        self._start_time = datetime.now(timezone.utc)
+        
+    def _get_elapsed_time(self) -> float:
+        """Get elapsed time since start in seconds"""
+        return (datetime.now(timezone.utc) - self._start_time).total_seconds()
+    
+    def _get_memory_usage(self) -> float:
+        """Get current memory usage in MB"""
+        try:
+            import psutil
+            process = psutil.Process()
+            return process.memory_info().rss / 1024 / 1024
+        except:
+            return 0.0
+    
+    def log_memory_error(self, error_type: str, details: str, memory_usage: float = None):
+        """Log memory-related errors"""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error_type": error_type,
+            "details": details,
+            "memory_usage_mb": memory_usage
+        }
+        self.logs["memory_errors"].append(entry)
+        logger.warning(f"💾 Memory Error: {error_type} - {details}")
+    
+    def log_file_not_found_error(self, file_path: str, attempt: int, max_attempts: int, details: str = None):
+        """Log file not found errors"""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "file_path": file_path,
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+            "details": details
+        }
+        self.logs["file_not_found_errors"].append(entry)
+        logger.warning(f"📁 File Not Found: {file_path} (attempt {attempt}/{max_attempts})")
+    
+    def log_azure_speech_error(self, error_type: str, details: str, audio_file: str = None):
+        """Log Azure Speech Service errors"""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error_type": error_type,
+            "details": details,
+            "audio_file": audio_file
+        }
+        self.logs["azure_speech_errors"].append(entry)
+        logger.warning(f"🎤 Azure Speech Error: {error_type} - {details}")
+    
+    def log_pronunciation_error(self, error_type: str, details: str, audio_file: str = None):
+        """Log pronunciation analysis errors"""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error_type": error_type,
+            "details": details,
+            "audio_file": audio_file
+        }
+        self.logs["pronunciation_errors"].append(entry)
+        logger.warning(f"🔊 Pronunciation Error: {error_type} - {details}")
+    
+    def log_processing_step(self, step: str, status: str, details: str = None):
+        """Log processing timeline"""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "step": step,
+            "status": status,
+            "details": details
+        }
+        self.logs["processing_timeline"].append(entry)
+        logger.info(f"📊 Processing Step: {step} - {status}")
+    
+    def log_workflow_step(self, step_name: str, action: str, details: str = None, file_path: str = None):
+        """Log workflow step with memory snapshot"""
+        memory_mb = self._get_memory_usage()
+        elapsed_s = self._get_elapsed_time()
+        
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "elapsed_seconds": round(elapsed_s, 2),
+            "step_name": step_name,
+            "action": action,
+            "memory_mb": round(memory_mb, 1),
+            "details": details,
+            "file_path": file_path
+        }
+        self.logs["workflow_steps"].append(entry)
+        logger.info(f"🔄 Workflow: {step_name} - {action} (Memory: {memory_mb:.1f}MB, T+{elapsed_s:.1f}s)")
+    
+    def log_cleanup_operation(self, operation: str, target: str, status: str, details: str = None):
+        """Log cleanup operations"""
+        memory_mb = self._get_memory_usage()
+        elapsed_s = self._get_elapsed_time()
+        
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "elapsed_seconds": round(elapsed_s, 2),
+            "operation": operation,
+            "target": target,
+            "status": status,
+            "memory_mb": round(memory_mb, 1),
+            "details": details
+        }
+        self.logs["cleanup_operations"].append(entry)
+        logger.info(f"🧹 Cleanup: {operation} - {target} - {status} (Memory: {memory_mb:.1f}MB)")
+    
+    def take_memory_snapshot(self, checkpoint: str, context: str = None):
+        """Take a memory snapshot at a specific checkpoint"""
+        memory_mb = self._get_memory_usage()
+        elapsed_s = self._get_elapsed_time()
+        
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "elapsed_seconds": round(elapsed_s, 2),
+            "checkpoint": checkpoint,
+            "memory_mb": round(memory_mb, 1),
+            "context": context
+        }
+        self.logs["memory_snapshots"].append(entry)
+        logger.debug(f"📸 Memory Snapshot: {checkpoint} - {memory_mb:.1f}MB (T+{elapsed_s:.1f}s)")
+    
+    def get_logs(self) -> Dict[str, Any]:
+        """Get all logs as dictionary"""
+        # Add summary statistics
+        final_logs = self.logs.copy()
+        final_logs["summary"] = {
+            "total_elapsed_seconds": round(self._get_elapsed_time(), 2),
+            "final_memory_mb": round(self._get_memory_usage(), 1),
+            "workflow_steps_count": len(self.logs["workflow_steps"]),
+            "cleanup_operations_count": len(self.logs["cleanup_operations"]),
+            "memory_snapshots_count": len(self.logs["memory_snapshots"]),
+            "error_counts": {
+                "memory_errors": len(self.logs["memory_errors"]),
+                "file_not_found_errors": len(self.logs["file_not_found_errors"]),
+                "azure_speech_errors": len(self.logs["azure_speech_errors"]),
+                "pronunciation_errors": len(self.logs["pronunciation_errors"])
+            }
+        }
+        return final_logs
+
 # Initialize CMU Dictionary
 cmu = cmudict.dict()
 
@@ -329,7 +483,7 @@ class PronunciationService:
             }] if reference_text else []
 
     @staticmethod
-    async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None, test_logs: Optional[TestLogsManager] = None) -> Dict[str, Any]:
         """
         Analyze pronunciation using Azure Speech Services with a provided reference text
         
@@ -342,25 +496,38 @@ class PronunciationService:
             Pronunciation assessment results in standardized format
         """
         try:
+            # Initialize test logs if not provided
+            if test_logs is None:
+                test_logs = TestLogsManager()
+            
+            test_logs.log_workflow_step("pronunciation_analysis", "started", f"Reference text: {len(reference_text)} chars", audio_file)
+            test_logs.take_memory_snapshot("analysis_start", "Beginning pronunciation analysis")
+            
             # Validate that we have a local file path, not a URL
             if audio_file.startswith(('http://', 'https://')):
-                raise ValueError("PronunciationService now only accepts local file paths, not URLs. "
-                               "Audio URLs should be converted to local files by AudioService first.")
+                error_msg = "PronunciationService now only accepts local file paths, not URLs. Audio URLs should be converted to local files by AudioService first."
+                test_logs.log_pronunciation_error("invalid_input", error_msg, audio_file)
+                raise ValueError(error_msg)
             
             # Verify file exists with retry mechanism
             max_wait_attempts = 5
             wait_time = 1  # Start with 1 second
             
             for attempt in range(max_wait_attempts):
-                if os.path.exists(audio_file):
+                if os.path.exists(audio_file) and os.path.getsize(audio_file) > 0:
+                    file_size_mb = os.path.getsize(audio_file) / 1024 / 1024
+                    test_logs.log_workflow_step("file_verification", "found", f"File ready after {attempt + 1} attempts, size: {file_size_mb:.2f}MB", audio_file)
+                    test_logs.take_memory_snapshot("file_found", f"Audio file located and verified")
                     break
                     
                 if attempt < max_wait_attempts - 1:
+                    test_logs.log_file_not_found_error(audio_file, attempt + 1, max_wait_attempts, "File not ready, waiting...")
                     logger.info(f"Audio file not ready yet: {audio_file}. Waiting {wait_time}s (attempt {attempt + 1}/{max_wait_attempts})")
                     await asyncio.sleep(wait_time)
                     wait_time *= 1.5  # Exponential backoff
                 else:
-                    logger.warning(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}. Attempting to trigger audio pipeline retry.")
+                    test_logs.log_file_not_found_error(audio_file, attempt + 1, max_wait_attempts, "File not found after all attempts - triggering retry")
+                    logger.warning(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}. File may have been cleaned up prematurely. Attempting to trigger audio pipeline retry.")
                     
                     # Try to get original audio URL and submission info from session_id
                     if session_id:
@@ -410,13 +577,18 @@ class PronunciationService:
             logger.info(f"Reference text has {word_count} words")
             
             # Choose analysis method based on transcript length (using 65-word limit)
+            test_logs.take_memory_snapshot("method_selection", f"Selecting analysis method for {word_count} words")
+            
             if word_count > 65:  # Long transcript - use chunking
+                test_logs.log_workflow_step("analysis_method", "chunked_selected", f"Using chunked analysis for {word_count} words")
                 logger.info("Using chunked analysis for long transcript")
-                azure_result = await PronunciationService._analyze_with_chunking(audio_file, reference_text)
+                azure_result = await PronunciationService._analyze_with_chunking(audio_file, reference_text, test_logs)
             elif word_count > 15:  # Medium transcript - use extended timeout
+                test_logs.log_workflow_step("analysis_method", "streaming_selected", f"Using streaming analysis for {word_count} words")
                 logger.info("Using streaming analysis with extended timeout")
                 azure_result = await PronunciationService._analyze_with_streaming(audio_file, reference_text)
             else:
+                test_logs.log_workflow_step("analysis_method", "standard_selected", f"Using standard analysis for {word_count} words")
                 logger.info("Using standard analysis for short transcript")
                 azure_result = await PronunciationService._analyze_standard(audio_file, reference_text)
                 
@@ -470,10 +642,19 @@ class PronunciationService:
                 except Exception as e:
                     logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
             
+            # Add test logs to result
+            test_logs.take_memory_snapshot("analysis_complete", "All processing completed successfully")
+            test_logs.log_workflow_step("pronunciation_analysis", "completed", "Analysis completed successfully")
+            standardized_result["test_logs"] = test_logs.get_logs()
+            
             return standardized_result
                 
         except Exception as e:
             logger.exception("Error in analyze_pronunciation")
+            
+            # Log the error if test_logs is available
+            if 'test_logs' in locals() and test_logs:
+                test_logs.log_pronunciation_error("analysis_failed", f"Pronunciation analysis failed: {str(e)}", audio_file)
             
             # Mark service complete even on failure to prevent stuck sessions
             if session_id:
@@ -483,10 +664,16 @@ class PronunciationService:
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to mark pronunciation service complete: {str(cleanup_error)}")
             
-            return {
+            error_result = {
                 "grade": 0,
                 "issues": [{"type": "suggestion", "message": str(e)}]
             }
+            
+            # Add test logs to error result if available
+            if 'test_logs' in locals() and test_logs:
+                error_result["test_logs"] = test_logs.get_logs()
+            
+            return error_result
 
     @staticmethod
     def process_pronunciation_result(azure_result, reference_text):
@@ -859,12 +1046,18 @@ class PronunciationService:
             return None
 
     @staticmethod
-    async def _analyze_with_chunking(audio_file: str, reference_text: str):
+    async def _analyze_with_chunking(audio_file: str, reference_text: str, test_logs: Optional[TestLogsManager] = None):
         """Chunked pronunciation analysis for long transcripts (>65 words)"""
         try:
             import subprocess
             import psutil
             import os
+            
+            # Initialize test logs if not provided
+            if test_logs is None:
+                test_logs = TestLogsManager()
+            
+            test_logs.log_processing_step("chunked_analysis_start", "started", f"Text length: {len(reference_text)} chars")
             
             # Memory monitoring (optional)
             try:
@@ -872,8 +1065,10 @@ class PronunciationService:
                 initial_memory = process.memory_info().rss / 1024 / 1024  # MB
                 memory_limit = 900  # MB (under 1024 MB Cloud Run limit)
                 memory_monitoring = True
+                test_logs.log_processing_step("memory_monitoring", "enabled", f"Initial: {initial_memory:.1f} MB, Limit: {memory_limit} MB")
                 logger.info(f"Memory monitoring enabled. Initial usage: {initial_memory:.1f} MB")
             except (ImportError, Exception) as e:
+                test_logs.log_memory_error("monitoring_setup_failed", f"Could not enable memory monitoring: {str(e)}")
                 logger.debug(f"Memory monitoring disabled: {e}")
                 memory_monitoring = False
                 initial_memory = 0
@@ -996,7 +1191,7 @@ class PronunciationService:
                             logger.error(f"Unexpected error cleaning up chunk file {temp_chunk_file}: {e}")
                 
                 # Progressive cleanup and garbage collection for large datasets
-                if (i + 1) % 5 == 0 or len(combined_words) > 1000:  # Every 5 chunks or 1000+ words
+                if (i + 1) % 3 == 0 or len(combined_words) > 500:  # Every 3 chunks or 500+ words
                     import gc
                     gc.collect()
                     
@@ -1006,6 +1201,7 @@ class PronunciationService:
                         logger.debug(f"Performed garbage collection after chunk {i+1}. Memory: {current_memory:.1f} MB")
                         
                         if current_memory > memory_limit:
+                            test_logs.log_memory_error("memory_limit_exceeded", f"Memory limit exceeded: {current_memory:.1f} MB > {memory_limit} MB. Stopping chunked analysis at chunk {i+1}.", current_memory)
                             logger.warning(f"Memory limit exceeded ({current_memory:.1f} MB > {memory_limit} MB). Stopping chunked analysis.")
                             # Return partial results
                             break

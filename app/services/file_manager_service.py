@@ -69,9 +69,11 @@ class FileManagerService:
             
             return False
     
-    async def _delayed_cleanup(self, session_id: str, delay_seconds: float = 30.0) -> None:
+    async def _delayed_cleanup(self, session_id: str, delay_seconds: float = 120.0) -> None:
         """Clean up session after a delay to ensure all services complete"""
+        logger.info(f"⏰ Scheduled cleanup for session {session_id} in {delay_seconds} seconds")
         await asyncio.sleep(delay_seconds)
+        logger.info(f"⏰ Cleanup delay expired for session {session_id}, starting cleanup")
         async with self._lock:
             await self._cleanup_file_session(session_id)
     
@@ -87,18 +89,33 @@ class FileManagerService:
             return
         
         file_path = session_info["file_path"]
+        logger.info(f"🧹 Starting cleanup for session {session_id}, file: {file_path}")
         
         try:
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-                logger.info(f"Successfully cleaned up file: {file_path}")
-            else:
-                logger.warning(f"File not found during cleanup: {file_path}")
+            files_cleaned = 0
             
+            # Clean up original file
+            if os.path.exists(file_path):
+                file_size_mb = os.path.getsize(file_path) / 1024 / 1024
+                os.unlink(file_path)
+                files_cleaned += 1
+                logger.info(f"🗑️ Cleaned up original file: {file_path} ({file_size_mb:.2f}MB)")
+            else:
+                logger.warning(f"⚠️ Original file not found during cleanup: {file_path}")
+                
+            # Also clean up related WAV file if exists
+            wav_file = os.path.splitext(file_path)[0] + '.wav'
+            if os.path.exists(wav_file):
+                wav_size_mb = os.path.getsize(wav_file) / 1024 / 1024
+                os.unlink(wav_file)
+                files_cleaned += 1
+                logger.info(f"🗑️ Cleaned up WAV file: {wav_file} ({wav_size_mb:.2f}MB)")
+            
+            logger.info(f"✅ Session {session_id} cleanup completed - {files_cleaned} files removed")
             session_info["cleanup_completed"] = True
             
         except Exception as e:
-            logger.error(f"Failed to cleanup file {file_path} for session {session_id}: {str(e)}")
+            logger.error(f"❌ Failed to cleanup session {session_id}, file {file_path}: {str(e)}")
             # Don't raise - we'll retry with periodic cleanup
     
     async def force_cleanup_session(self, session_id: str) -> None:
