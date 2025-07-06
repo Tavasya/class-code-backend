@@ -1,249 +1,137 @@
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from fastapi import APIRouter, HTTPException, Path
+from app.services.practice_session_service import PracticeSessionService
+from app.services.transcription_service import TranscriptionService
+from app.services.paragraph_restructuring_service import restructure_paragraph
 import logging
-import time
-import uuid
-from app.models.practice_model import (
-    PracticePronunciationRequest, 
-    PracticePronunciationResponse, 
-    PracticeSubmissionResponse,
-    PracticeStatusResponse,
-    PracticeErrorResponse
-)
-from app.pubsub.client import PubSubClient
-from app.core.results_store import ResultsStore
-from app.services.audio_service import AudioService
-from app.services.pronunciation_service import PronunciationService
-import os
+from typing import Dict, Any
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Initialize pub/sub client and results store
-pubsub_client = PubSubClient()
-results_store = ResultsStore()
+class ImproveTranscriptResponse(BaseModel):
+    """Response model for improve transcript endpoint"""
+    success: bool
+    message: str
+    session_id: str
+    status: str
 
-@router.post("/analyze-pronunciation", response_model=PracticeSubmissionResponse)
-async def analyze_pronunciation(request: PracticePronunciationRequest):
+@router.post("/sessions/{session_id}/improve-transcript", response_model=ImproveTranscriptResponse)
+async def improve_session_transcript(
+    session_id: str = Path(..., description="Practice session ID")
+) -> ImproveTranscriptResponse:
     """
-    Submit practice pronunciation analysis request.
+    Improve transcript for an existing practice session
     
-    This endpoint accepts the audio URL and transcript, submits it to the 
-    processing queue, and returns a request ID. Results will be delivered 
-    via webhook when processing is complete.
+    This endpoint:
+    1. Reads the session from the database using session_id
+    2. Validates the session exists and has an audio_url
+    3. Transcribes the audio using existing TranscriptionService
+    4. Improves the transcript using existing ParagraphRestructuringService
+    5. Updates the session with improved transcript and status='transcript_ready'
+    6. Returns a success response
+    
+    Args:
+        session_id: The practice session ID (from URL path)
+        
+    Returns:
+        ImproveTranscriptResponse with success status and session info
     """
     try:
-        # Generate unique request ID
-        request_id = str(uuid.uuid4())
+        logger.info(f"🎯 Starting transcript improvement for session: {session_id}")
         
-        logger.info(f"🎤 Submitting practice pronunciation request: {request_id}")
-        logger.info(f"👤 User: {request.user_id}")
-        logger.info(f"🔗 Audio URL: {request.audio_url}")
-        logger.info(f"📝 Transcript length: {len(request.transcript)} characters")
+        # Initialize services
+        practice_service = PracticeSessionService()
+        transcription_service = TranscriptionService()
         
-        # Validate inputs
-        if not request.audio_url or not request.audio_url.strip():
+        # 1. Read session from database
+        session = practice_service.get_practice_session(session_id)
+        if not session:
+            logger.error(f"❌ Session not found: {session_id}")
             raise HTTPException(
-                status_code=400, 
-                detail="Audio URL cannot be empty"
-            )
-            
-        if not request.transcript or not request.transcript.strip():
-            raise HTTPException(
-                status_code=400, 
-                detail="Transcript cannot be empty"
+                status_code=404, 
+                detail=f"Practice session not found: {session_id}"
             )
         
-        # Validate URL format (basic check)
-        if not request.audio_url.startswith(('http://', 'https://')):
+        # 2. Validate session has original_audio_url
+        audio_url = session.get('original_audio_url')
+        if not audio_url:
+            logger.error(f"❌ Session {session_id} has no original_audio_url")
             raise HTTPException(
                 status_code=400, 
-                detail="Audio URL must be a valid HTTP/HTTPS URL"
+                detail=f"Session {session_id} has no audio URL"
             )
-            
-        # webhook_url is optional - if not provided, user can poll for status
         
-        # Prepare message for pub/sub
-        message_data = {
-            "request_id": request_id,
-            "audio_url": request.audio_url,
-            "transcript": request.transcript,
-            "user_id": request.user_id,
-            "webhook_url": request.webhook_url,
-            "start_time": time.time()
-        }
+        logger.info(f"📱 Found session with audio URL: {audio_url}")
         
-        # Publish to practice pronunciation queue
-        message_id = pubsub_client.publish_message_by_name(
-            topic_name="PRACTICE_PRONUNCIATION_REQUEST",
-            message=message_data
+        # 3. Transcribe audio
+        logger.info(f"🎤 Transcribing audio from URL: {audio_url}")
+        transcription_result = await transcription_service.transcribe_audio_from_url(audio_url)
+        
+        if transcription_result.get("error"):
+            logger.error(f"❌ Transcription failed: {transcription_result['error']}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Audio transcription failed: {transcription_result['error']}"
+            )
+        
+        transcript = transcription_result.get("text", "").strip()
+        if not transcript:
+            logger.error(f"❌ Empty transcript from audio")
+            raise HTTPException(
+                status_code=400,
+                detail="Transcription resulted in empty text"
+            )
+        
+        logger.info(f"📝 Transcribed text: {transcript[:100]}...")
+        
+        # 4. Improve transcript using paragraph restructuring
+        logger.info(f"🔄 Improving transcript using paragraph restructuring")
+        restructuring_result = await restructure_paragraph(
+            transcript=transcript,
+            current_band=None,  # Will auto-detect or default to A1
+            analysis_results=None  # Will use default fallback
         )
         
-        logger.info(f"📤 Published practice pronunciation request - Message ID: {message_id}")
+        improved_transcript = restructuring_result.improved_transcript
+        logger.info(f"✨ Improved transcript: {improved_transcript[:100]}...")
         
-        return PracticeSubmissionResponse(
-            request_id=request_id,
-            status="submitted",
-            message="Practice pronunciation analysis submitted successfully. Results will be delivered via webhook.",
-            estimated_processing_time_seconds="5-10"
+        # 5. Update session with improved transcript and status
+        update_success = practice_service.update_practice_session(
+            session_id=session_id,
+            original_transcript=transcript,
+            improved_transcript=improved_transcript,
+            status="transcript_ready"
+        )
+        
+        if not update_success:
+            logger.error(f"❌ Failed to update session {session_id}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update session with improved transcript"
+            )
+        
+        logger.info(f"✅ Successfully improved transcript for session: {session_id}")
+        
+        # 6. Return success response
+        return ImproveTranscriptResponse(
+            success=True,
+            message="Transcript improved successfully",
+            session_id=session_id,
+            status="transcript_ready"
         )
         
     except HTTPException:
+        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(f"❌ Error submitting practice pronunciation request: {str(e)}")
+        logger.exception(f"❌ Unexpected error improving transcript for session {session_id}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to submit pronunciation analysis: {str(e)}"
+            status_code=500,
+            detail=f"Internal error: {str(e)}"
         )
-
-
-@router.get("/status/{request_id}", response_model=PracticeStatusResponse)
-async def get_practice_status(request_id: str):
-    """
-    Check the status of a practice pronunciation analysis request.
-    
-    Use this endpoint to poll for results when you don't have a webhook URL.
-    """
-    try:
-        logger.info(f"🔍 Checking status for practice request: {request_id}")
-        
-        # Check if result is available in results store
-        result = await results_store.get_result(
-            request_id=request_id,
-            result_type="practice_pronunciation"
-        )
-        
-        if result:
-            logger.info(f"✅ Found completed result for request: {request_id}")
-            
-            # Convert result to PracticePronunciationResponse format
-            practice_result = PracticePronunciationResponse(
-                overall_pronunciation_score=result.get("overall_pronunciation_score", 0),
-                accuracy_score=result.get("accuracy_score", 0),
-                fluency_score=result.get("fluency_score", 0),
-                prosody_score=result.get("prosody_score", 0),
-                completeness_score=result.get("completeness_score", 0),
-                word_details=result.get("word_details", []),
-                critical_errors=result.get("critical_errors", []),
-                improvement_suggestions=result.get("improvement_suggestions", ""),
-                processing_time_ms=result.get("processing_time_ms", 0),
-                audio_duration_seconds=result.get("audio_duration_seconds", 0),
-                transcript_used=result.get("transcript_used", "")
-            )
-            
-            return PracticeStatusResponse(
-                request_id=request_id,
-                status="completed",
-                result=practice_result,
-                error=None,
-                created_at=result.get("created_at"),
-                completed_at=result.get("completed_at")
-            )
-        else:
-            logger.info(f"⏳ No result found for request: {request_id} - still processing")
-            
-            return PracticeStatusResponse(
-                request_id=request_id,
-                status="processing",
-                result=None,
-                error=None,
-                created_at=None,
-                completed_at=None
-            )
-            
-    except Exception as e:
-        logger.error(f"❌ Error checking practice status: {str(e)}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to check status: {str(e)}"
-        )
-
-
-@router.post("/analyze-pronunciation-sync", response_model=PracticePronunciationResponse)
-async def analyze_pronunciation_sync(request: PracticePronunciationRequest):
-    """
-    TESTING ONLY: Synchronous practice pronunciation analysis.
-    
-    This endpoint processes the audio immediately and returns results.
-    Use this for testing when you don't want to set up webhooks.
-    """
-    start_time = time.time()
-    temp_files = []
-    
-    try:
-        logger.info(f"🧪 [TEST] Starting synchronous practice pronunciation analysis")
-        logger.info(f"🔗 Audio URL: {request.audio_url}")
-        logger.info(f"📝 Transcript: {request.transcript[:100]}...")
-        
-        # Validate inputs
-        if not request.audio_url or not request.audio_url.strip():
-            raise HTTPException(status_code=400, detail="Audio URL cannot be empty")
-        if not request.transcript or not request.transcript.strip():
-            raise HTTPException(status_code=400, detail="Transcript cannot be empty")
-        if not request.audio_url.startswith(('http://', 'https://')):
-            raise HTTPException(status_code=400, detail="Audio URL must be a valid HTTP/HTTPS URL")
-        
-        # Download audio
-        session_id = str(uuid.uuid4())
-        temp_audio_path = await AudioService.download_audio(request.audio_url)
-        temp_files.append(temp_audio_path)
-        logger.info(f"📁 Downloaded audio to: {temp_audio_path}")
-        
-        # Convert to WAV if needed
-        if not temp_audio_path.endswith('.wav'):
-            wav_path = await AudioService.convert_webm_to_wav(temp_audio_path)
-            temp_files.append(wav_path)
-            logger.info(f"🎵 Converted to WAV: {wav_path}")
-        else:
-            wav_path = temp_audio_path
-        
-        # Analyze pronunciation
-        logger.info(f"🔍 Starting pronunciation analysis")
-        result = await PronunciationService.analyze_pronunciation(
-            audio_file=wav_path,
-            reference_text=request.transcript,
-            session_id=session_id
-        )
-        
-        # Process results
-        processing_time_ms = int((time.time() - start_time) * 1000)
-        
-        if result:
-            logger.info(f"✅ [TEST] Analysis completed in {processing_time_ms}ms")
-            
-            return PracticePronunciationResponse(
-                overall_pronunciation_score=result.get("grade", 0),
-                accuracy_score=result.get("accuracy_score", 0),
-                fluency_score=result.get("fluency_score", 0),
-                prosody_score=result.get("prosody_score", 0),
-                completeness_score=result.get("completeness_score", 0),
-                word_details=result.get("word_details", []),
-                critical_errors=result.get("critical_errors", []),
-                improvement_suggestions=result.get("improvement_suggestions", ""),
-                processing_time_ms=processing_time_ms,
-                audio_duration_seconds=result.get("audio_duration", 0),
-                transcript_used=request.transcript
-            )
-        else:
-            raise HTTPException(status_code=500, detail="Analysis failed")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ [TEST] Error in sync analysis: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-    finally:
-        # Clean up temp files
-        for temp_file in temp_files:
-            try:
-                if temp_file and os.path.exists(temp_file):
-                    os.unlink(temp_file)
-            except:
-                pass
-
 
 @router.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """Health check endpoint for practice service"""
-    return {"status": "healthy", "service": "practice"} 
+    return {"status": "healthy", "service": "practice"}

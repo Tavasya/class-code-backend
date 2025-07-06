@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/analysis", response_model=ParagraphRestructuringResponse)
-async def restructure_paragraph(request: ParagraphRestructuringRequest) -> ParagraphRestructuringResponse:
+async def restructure_paragraph_endpoint(request: ParagraphRestructuringRequest) -> ParagraphRestructuringResponse:
     """
     Restructure a paragraph to the next CEFR level
     
