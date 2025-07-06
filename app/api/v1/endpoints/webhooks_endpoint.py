@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from typing import Dict
 from app.pubsub.webhooks.submission_webhook import SubmissionWebhook
 from app.pubsub.webhooks.analysis_webhook import AnalysisWebhook
+from app.pubsub.webhooks.practice_webhook import PracticeWebhook
 from app.pubsub.utils import safe_webhook_handler
 import logging
 
@@ -11,6 +12,7 @@ router = APIRouter()
 # Initialize webhook handlers
 submission_webhook = SubmissionWebhook()
 analysis_webhook = AnalysisWebhook()
+practice_webhook = PracticeWebhook()
 
 @router.post("/student-submission")
 @safe_webhook_handler
@@ -124,3 +126,14 @@ async def handle_vocabulary_done_webhook(request: Request) -> Dict[str, str]:
     """
     logger.info("Received vocabulary done webhook")
     return await analysis_webhook.handle_vocabulary_done_webhook(request)
+
+@router.post("/practice-pronunciation-done")
+@safe_webhook_handler
+async def handle_practice_pronunciation_done_webhook(request: Request) -> Dict[str, str]:
+    """
+    Webhook endpoint for practice pronunciation analysis completion.
+    Triggered by practice-pronunciation-done-topic-sub.
+    Handles real-time pronunciation analysis results for practice sessions.
+    """
+    logger.info("Received practice pronunciation done webhook")
+    return await practice_webhook.handle_practice_pronunciation_done_webhook(request)
