@@ -66,6 +66,13 @@ class PracticeProgressResponse(BaseModel):
     progress: Dict[str, Any]
     webhook_session_id: str
 
+class PracticeStatusResponse(BaseModel):
+    """Response model for practice status endpoint"""
+    success: bool
+    session_id: str
+    status: str
+    webhook_session_id: str
+
 @router.post("/sessions/{session_id}/improve-transcript", response_model=ImproveTranscriptResponse)
 async def improve_session_transcript(
     session_id: str = Path(..., description="Practice session ID")
@@ -618,6 +625,59 @@ async def submit_word_practice(
         raise
     except Exception as e:
         logger.exception(f"❌ Unexpected error submitting word practice for session {session_id}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error: {str(e)}"
+        )
+
+@router.get("/sessions/{session_id}/status", response_model=PracticeStatusResponse)
+async def get_practice_status(
+    session_id: str = Path(..., description="Practice session ID")
+) -> PracticeStatusResponse:
+    """
+    Get practice session status
+    
+    This endpoint returns the current status of a practice session
+    without the detailed progress information.
+    
+    Args:
+        session_id: The practice session ID (from URL path)
+        
+    Returns:
+        PracticeStatusResponse with session status
+    """
+    try:
+        logger.info(f"📊 Getting practice status for session: {session_id}")
+        
+        # Initialize service
+        practice_service = PracticeSessionService()
+        
+        # Get session from database
+        session = practice_service.get_practice_session(session_id)
+        if not session:
+            logger.error(f"❌ Session not found: {session_id}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Practice session not found: {session_id}"
+            )
+        
+        # Extract status and webhook session
+        current_status = session.get('status', 'unknown')
+        webhook_session_id = session.get('webhook_session_id', '')
+        
+        logger.info(f"✅ Retrieved practice status for session: {session_id}")
+        
+        return PracticeStatusResponse(
+            success=True,
+            session_id=session_id,
+            status=current_status,
+            webhook_session_id=webhook_session_id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error getting practice status for session {session_id}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal error: {str(e)}"
