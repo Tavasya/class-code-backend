@@ -1,5 +1,5 @@
--- Practice Session Database Triggers
--- These triggers automatically call backend endpoints when database changes occur
+-- Practice Session Database Triggers (Updated for Edge Functions)
+-- These triggers automatically call Supabase Edge Functions when database changes occur
 -- Run these in your Supabase SQL Editor
 
 -- ====================================================================================
@@ -12,14 +12,13 @@ RETURNS TRIGGER AS $$
 BEGIN
   -- Only trigger if we have an audio URL and no status is set (new session)
   IF NEW.original_audio_url IS NOT NULL AND (NEW.status IS NULL OR NEW.status = '') THEN
-    -- Call the improve-transcript endpoint asynchronously
-    PERFORM net.http_post(
-      url := 'https://your-backend-domain.com/api/v1/practice/sessions/' || NEW.id || '/improve-transcript',
-      headers := '{"Content-Type": "application/json"}'::jsonb,
-      timeout_milliseconds := 30000
+    -- Call the practice-improve-transcript edge function
+    PERFORM supabase_url.functions.invoke(
+      'practice-improve-transcript',
+      json_build_object('session_id', NEW.id::text)::jsonb
     );
     
-    -- Update status to indicate processing started (optional - endpoint will do this too)
+    -- Update status to indicate processing started (optional - edge function will do this too)
     UPDATE practice_sessions 
     SET status = 'transcript_processing' 
     WHERE id = NEW.id;
@@ -44,11 +43,10 @@ RETURNS TRIGGER AS $$
 BEGIN
   -- Only trigger when status changes to 'start_practice'
   IF NEW.status = 'start_practice' AND (OLD.status IS NULL OR OLD.status != 'start_practice') THEN
-    -- Call the start-practice endpoint asynchronously
-    PERFORM net.http_post(
-      url := 'https://your-backend-domain.com/api/v1/practice/sessions/' || NEW.id || '/start-practice',
-      headers := '{"Content-Type": "application/json"}'::jsonb,
-      timeout_milliseconds := 30000
+    -- Call the practice-start-practice edge function
+    PERFORM supabase_url.functions.invoke(
+      'practice-start-practice',
+      json_build_object('session_id', NEW.id::text)::jsonb
     );
   END IF;
   
@@ -69,50 +67,41 @@ CREATE OR REPLACE TRIGGER practice_session_auto_start_trigger
 CREATE OR REPLACE FUNCTION trigger_submit_recording()
 RETURNS TRIGGER AS $$
 DECLARE
-  request_body jsonb;
+  payload jsonb;
 BEGIN
-  -- Build request body based on attempt type
+  -- Build payload for edge function based on attempt type
   IF NEW.attempt_type = 'sentence' THEN
-    request_body := jsonb_build_object(
+    payload := json_build_object(
+      'session_id', NEW.session_id::text,
+      'attempt_type', 'sentence',
       'sentence_index', COALESCE(NEW.sentence_index, 0),
       'audio_url', NEW.audio_url
-    );
-    
-    -- Call the sentences endpoint
-    PERFORM net.http_post(
-      url := 'https://your-backend-domain.com/api/v1/practice/sessions/' || NEW.session_id || '/sentences',
-      headers := '{"Content-Type": "application/json"}'::jsonb,
-      body := request_body,
-      timeout_milliseconds := 30000
-    );
+    )::jsonb;
     
   ELSIF NEW.attempt_type = 'word' THEN
-    request_body := jsonb_build_object(
+    payload := json_build_object(
+      'session_id', NEW.session_id::text,
+      'attempt_type', 'word',
       'word', NEW.content,
       'audio_url', NEW.audio_url
-    );
-    
-    -- Call the words endpoint
-    PERFORM net.http_post(
-      url := 'https://your-backend-domain.com/api/v1/practice/sessions/' || NEW.session_id || '/words',
-      headers := '{"Content-Type": "application/json"}'::jsonb,
-      body := request_body,
-      timeout_milliseconds := 30000
-    );
+    )::jsonb;
     
   ELSIF NEW.attempt_type = 'full_transcript' THEN
-    request_body := jsonb_build_object(
+    payload := json_build_object(
+      'session_id', NEW.session_id::text,
+      'attempt_type', 'full_transcript',
       'audio_url', NEW.audio_url
-    );
-    
-    -- Call the full-transcript endpoint (if you implement it)
-    PERFORM net.http_post(
-      url := 'https://your-backend-domain.com/api/v1/practice/sessions/' || NEW.session_id || '/full-transcript',
-      headers := '{"Content-Type": "application/json"}'::jsonb,
-      body := request_body,
-      timeout_milliseconds := 30000
-    );
+    )::jsonb;
+  ELSE
+    -- Unknown attempt type, skip
+    RETURN NEW;
   END IF;
+  
+  -- Call the practice-submit-recording edge function
+  PERFORM supabase_url.functions.invoke(
+    'practice-submit-recording',
+    payload
+  );
   
   RETURN NEW;
 END;
@@ -152,17 +141,16 @@ $$ LANGUAGE plpgsql;
 -- ====================================================================================
 
 /*
-SETUP INSTRUCTIONS:
+SETUP INSTRUCTIONS (UPDATED FOR EDGE FUNCTIONS):
 
-1. Replace 'https://your-backend-domain.com' with your actual backend URL
-   
-2. Make sure you have the http extension enabled in Supabase:
-   - Go to Supabase Dashboard > Database > Extensions
-   - Enable "http" extension
+1. Deploy the edge functions first:
+   - Deploy practice-improve-transcript
+   - Deploy practice-start-practice  
+   - Deploy practice-submit-recording
 
-3. Run this SQL in your Supabase SQL Editor
+2. Run this SQL in your Supabase SQL Editor
 
-4. Test the triggers:
+3. Test the triggers:
    
    -- Test auto-improve trigger
    INSERT INTO practice_sessions (original_audio_url) 
@@ -177,11 +165,18 @@ SETUP INSTRUCTIONS:
    INSERT INTO practice_attempts (session_id, attempt_type, content, audio_url, sentence_index)
    VALUES ('[session-id]', 'sentence', 'test sentence', 'https://example.com/recording.webm', 0);
 
-5. Monitor your backend logs to see if the endpoints are being called
+4. Monitor edge function logs in Supabase Dashboard > Edge Functions
+
+5. Check backend logs to see if endpoints are being called
 
 6. If you need to disable triggers temporarily:
    SELECT disable_practice_triggers();
    
 7. To re-enable:
    SELECT enable_practice_triggers();
+
+EDGE FUNCTION DEPLOYMENT:
+- supabase functions deploy practice-improve-transcript
+- supabase functions deploy practice-start-practice
+- supabase functions deploy practice-submit-recording
 */
