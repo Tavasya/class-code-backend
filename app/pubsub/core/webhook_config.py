@@ -9,7 +9,7 @@ WEBHOOK_AUTH_TOKEN = os.getenv("PUBSUB_WEBHOOK_AUTH_TOKEN", None)
 
 # Webhook endpoint URLs for Google Cloud Pub/Sub configuration
 # These should match your deployment URL + the webhook paths
-BASE_WEBHOOK_URL = os.getenv("BASE_WEBHOOK_URL", "https://your-app-domain.com")
+BASE_WEBHOOK_URL = os.getenv("BASE_WEBHOOK_URL", "https://classconnect-staging-107872842385.us-west2.run.app")
 
 WEBHOOK_ENDPOINTS = {
     "STUDENT_SUBMISSION": f"{BASE_WEBHOOK_URL}/api/v1/webhooks/student-submission",

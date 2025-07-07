@@ -13,6 +13,142 @@ class PracticeWebhook:
         self.practice_service = PracticeSessionService()
         logger.info("PracticeWebhook initialized")
     
+    async def handle_practice_pronunciation_request_webhook(self, request: Request) -> Dict[str, str]:
+        """
+        Handle practice pronunciation analysis request webhook
+        
+        This webhook receives requests to:
+        - Start practice sessions
+        - Stop practice sessions  
+        - Analyze sentence pronunciation
+        - Analyze word pronunciation
+        
+        Args:
+            request: FastAPI Request object containing Pub/Sub push message
+            
+        Returns:
+            Success response
+        """
+        try:
+            logger.info("🎯 Received practice pronunciation request webhook")
+            
+            # Parse the Pub/Sub message
+            parsed_message = await parse_pubsub_message(request)
+            message_data = parsed_message["data"]
+            
+            # Extract key information
+            action = message_data.get("action")
+            practice_session_id = message_data.get("practice_session_id")
+            webhook_session_id = message_data.get("webhook_session_id")
+            
+            logger.info(f"📝 Action: {action}")
+            logger.info(f"📝 Practice session: {practice_session_id}")
+            logger.info(f"📊 Webhook session: {webhook_session_id}")
+            
+            if not action:
+                logger.error("❌ Missing action in webhook")
+                raise HTTPException(status_code=400, detail="Missing action")
+            
+            if not practice_session_id:
+                logger.error("❌ Missing practice_session_id in webhook")
+                raise HTTPException(status_code=400, detail="Missing practice_session_id")
+            
+            # Route to appropriate handler based on action
+            if action == "start_practice_session":
+                await self._handle_start_practice_session(message_data)
+            elif action == "stop_practice_session":
+                await self._handle_stop_practice_session(message_data)
+            elif action == "analyze_sentence":
+                await self._handle_analyze_sentence(message_data)
+            elif action == "analyze_word":
+                await self._handle_analyze_word(message_data)
+            else:
+                logger.warning(f"⚠️ Unknown action: {action}")
+                # Still return success to acknowledge webhook
+            
+            logger.info(f"✅ Practice pronunciation request webhook processed successfully")
+            return {"status": "success", "message": "Practice request processed"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception(f"❌ Error processing practice pronunciation request webhook")
+            raise HTTPException(status_code=500, detail=f"Webhook processing error: {str(e)}")
+    
+    async def _handle_start_practice_session(self, message_data: Dict[str, Any]) -> None:
+        """Handle start practice session request"""
+        try:
+            practice_session_id = message_data.get("practice_session_id")
+            webhook_session_id = message_data.get("webhook_session_id")
+            improved_transcript = message_data.get("improved_transcript", "")
+            
+            logger.info(f"🎯 Starting practice session: {practice_session_id}")
+            logger.info(f"📝 Webhook session: {webhook_session_id}")
+            
+            # For now, just log the request - the actual session management
+            # is handled by the practice service when the frontend calls start-practice
+            logger.info(f"✅ Practice session start request acknowledged for: {practice_session_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error handling start practice session: {str(e)}")
+    
+    async def _handle_stop_practice_session(self, message_data: Dict[str, Any]) -> None:
+        """Handle stop practice session request"""
+        try:
+            practice_session_id = message_data.get("practice_session_id")
+            webhook_session_id = message_data.get("webhook_session_id")
+            
+            logger.info(f"🛑 Stopping practice session: {practice_session_id}")
+            logger.info(f"📝 Webhook session: {webhook_session_id}")
+            
+            # For now, just log the request - the actual session cleanup
+            # is handled by the practice service
+            logger.info(f"✅ Practice session stop request acknowledged for: {practice_session_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error handling stop practice session: {str(e)}")
+    
+    async def _handle_analyze_sentence(self, message_data: Dict[str, Any]) -> None:
+        """Handle sentence analysis request"""
+        try:
+            practice_session_id = message_data.get("practice_session_id")
+            webhook_session_id = message_data.get("webhook_session_id")
+            sentence_index = message_data.get("sentence_index", 0)
+            expected_text = message_data.get("expected_text", "")
+            audio_url = message_data.get("audio_url", "")
+            
+            logger.info(f"🎤 Sentence analysis request for session: {practice_session_id}")
+            logger.info(f"📝 Sentence {sentence_index}: {expected_text}")
+            logger.info(f"🔊 Audio URL: {audio_url}")
+            
+            # For now, just log the request - the actual pronunciation analysis
+            # would be triggered here in a full implementation
+            logger.info(f"✅ Sentence analysis request acknowledged for: {practice_session_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error handling sentence analysis: {str(e)}")
+    
+    async def _handle_analyze_word(self, message_data: Dict[str, Any]) -> None:
+        """Handle word analysis request"""
+        try:
+            practice_session_id = message_data.get("practice_session_id")
+            webhook_session_id = message_data.get("webhook_session_id")
+            expected_text = message_data.get("expected_text", "")
+            word_context = message_data.get("word_context", "")
+            audio_url = message_data.get("audio_url", "")
+            
+            logger.info(f"🔤 Word analysis request for session: {practice_session_id}")
+            logger.info(f"📝 Word: {expected_text}")
+            logger.info(f"📄 Context: {word_context}")
+            logger.info(f"🔊 Audio URL: {audio_url}")
+            
+            # For now, just log the request - the actual pronunciation analysis
+            # would be triggered here in a full implementation
+            logger.info(f"✅ Word analysis request acknowledged for: {practice_session_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error handling word analysis: {str(e)}")
+
     async def handle_practice_pronunciation_done_webhook(self, request: Request) -> Dict[str, str]:
         """
         Handle practice pronunciation analysis completion webhook

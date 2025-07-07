@@ -127,6 +127,17 @@ async def handle_vocabulary_done_webhook(request: Request) -> Dict[str, str]:
     logger.info("Received vocabulary done webhook")
     return await analysis_webhook.handle_vocabulary_done_webhook(request)
 
+@router.post("/practice-pronunciation-request")
+@safe_webhook_handler
+async def handle_practice_pronunciation_request_webhook(request: Request) -> Dict[str, str]:
+    """
+    Webhook endpoint for practice pronunciation analysis requests.
+    Triggered by practice-pronunciation-request-topic-sub.
+    This endpoint receives requests to start/stop practice sessions and analyze pronunciation.
+    """
+    logger.info("Received practice pronunciation request webhook")
+    return await practice_webhook.handle_practice_pronunciation_request_webhook(request)
+
 @router.post("/practice-pronunciation-done")
 @safe_webhook_handler
 async def handle_practice_pronunciation_done_webhook(request: Request) -> Dict[str, str]:
