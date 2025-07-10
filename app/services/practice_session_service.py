@@ -13,14 +13,12 @@ class PracticeSessionService:
 
     def create_practice_session(self, 
                                transcript: Optional[str] = None,
-                               improved_transcript: Optional[str] = None,
                                audio_url: Optional[str] = None) -> Optional[str]:
         """
         Create a new practice session record
         
         Args:
-            transcript: Original transcript text
-            improved_transcript: Improved transcript text
+            transcript: Transcript text for practice
             audio_url: Audio URL if provided
             
         Returns:
@@ -36,13 +34,12 @@ class PracticeSessionService:
             session_data = {
                 "id": session_id,
                 "original_transcript": transcript,
-                "improved_transcript": improved_transcript,
                 "original_audio_url": audio_url,
                 "created_at": datetime.now().isoformat()
             }
             
             logger.info(f"🚀 Creating practice session with ID: {session_id}")
-            logger.info(f"📝 Session data: transcript={bool(transcript)}, improved_transcript={bool(improved_transcript)}, audio_url={bool(audio_url)}")
+            logger.info(f"📝 Session data: transcript={bool(transcript)}, audio_url={bool(audio_url)}")
             
             # Insert into practice_sessions table
             result = self.supabase.table('practice_sessions').insert(session_data).execute()

@@ -1,29 +1,29 @@
-# Frontend Implementation Guide - Database-Driven Practice Flow
+# Frontend Implementation Guide - Direct Practice Flow
 
-With the database triggers implemented, your frontend becomes incredibly simple. You just need to perform database operations and let the triggers handle all the backend API calls automatically.
+The practice feature now works directly with user-provided transcripts, eliminating the transcript improvement step for faster and simpler practice sessions.
 
 ## 🎯 **Complete Frontend Flow**
 
-### **Step 1: Create Practice Session and Auto-Start Transcript Improvement**
+### **Step 1: Create Practice Session with User Transcript**
 
 ```javascript
-// When user uploads audio and wants to start practice
-async function createPracticeSession(audioUrl, transcript = null) {
-  // Insert record - trigger automatically calls improve-transcript endpoint
+// When user provides a transcript and wants to start practice
+async function createPracticeSession(transcript, audioUrl = null) {
+  // Insert record with user-provided transcript
   const { data, error } = await supabase
     .from('practice_sessions')
     .insert([{
-      original_audio_url: audioUrl,
-      original_transcript: transcript, // optional
-      // status defaults to NULL, trigger will start improvement automatically
+      original_transcript: transcript,
+      original_audio_url: audioUrl, // optional
+      status: 'ready_for_practice' // ready immediately
     }])
     .select()
     .single();
   
   if (error) throw error;
   
-  // Show "Processing transcript..." UI
-  showTranscriptProcessing();
+  // Show "Ready to practice" UI immediately
+  showReadyToPractice(transcript);
   
   return data.id; // This is your session_id
 }
@@ -52,13 +52,9 @@ function handleSessionUpdate(session) {
   const status = session.status;
   
   switch(status) {
-    case 'transcript_processing':
-      showTranscriptProcessing();
-      break;
-      
-    case 'transcript_ready':
-      // Show improved transcript and "Start Practice" button
-      showTranscriptReady(session.improved_transcript);
+    case 'ready_for_practice':
+      // Show transcript and "Start Practice" button
+      showReadyToPractice(session.original_transcript);
       break;
       
     case 'practicing_sentences':
@@ -88,7 +84,7 @@ function handleSessionUpdate(session) {
 ### **Step 3: Start Practice Flow (Button Click)**
 
 ```javascript
-// When user clicks "Start Practice" button after seeing improved transcript
+// When user clicks "Start Practice" button
 async function startPractice(sessionId) {
   // Update status - trigger automatically calls start-practice endpoint
   const { error } = await supabase
@@ -207,14 +203,17 @@ class PracticeFlow {
     this.realtimeChannel = null;
   }
   
-  // Start the entire flow
-  async start(audioFile) {
+  // Start the entire flow with user-provided transcript
+  async start(transcript, audioFile = null) {
     try {
-      // 1. Upload audio
-      const audioUrl = await this.uploadAudio(audioFile);
+      // 1. Upload audio if provided
+      let audioUrl = null;
+      if (audioFile) {
+        audioUrl = await this.uploadAudio(audioFile);
+      }
       
-      // 2. Create session (triggers auto-improve)
-      this.sessionId = await this.createSession(audioUrl);
+      // 2. Create session with transcript (no improvement needed)
+      this.sessionId = await this.createSession(transcript, audioUrl);
       
       // 3. Set up real-time updates
       this.setupRealtime();
@@ -224,10 +223,14 @@ class PracticeFlow {
     }
   }
   
-  async createSession(audioUrl) {
+  async createSession(transcript, audioUrl = null) {
     const { data, error } = await supabase
       .from('practice_sessions')
-      .insert([{ original_audio_url: audioUrl }])
+      .insert([{ 
+        original_transcript: transcript,
+        original_audio_url: audioUrl,
+        status: 'ready_for_practice'
+      }])
       .select()
       .single();
     
@@ -251,8 +254,8 @@ class PracticeFlow {
   
   handleUpdate(session) {
     switch(session.status) {
-      case 'transcript_ready':
-        this.showStartPracticeButton(session.improved_transcript);
+      case 'ready_for_practice':
+        this.showStartPracticeButton(session.original_transcript);
         break;
       case 'practicing_sentences':
         this.showSentencePractice(session);
@@ -298,7 +301,6 @@ class PracticeFlow {
 ## 🚫 **What Frontend Should NOT Do**
 
 ❌ **Never call these endpoints directly:**
-- `/improve-transcript`
 - `/start-practice`  
 - `/sentences`
 - `/words`
@@ -313,7 +315,7 @@ class PracticeFlow {
 ## ✅ **What Frontend SHOULD Do**
 
 ✅ **Database operations only:**
-- Insert `practice_sessions` record
+- Insert `practice_sessions` record with transcript
 - Update `status` to 'start_practice'
 - Insert `practice_attempts` records
 - Listen to real-time updates
@@ -329,6 +331,12 @@ class PracticeFlow {
 1. **Install the database triggers** from `practice_triggers.sql`
 2. **Replace the backend URL** in the triggers with your actual domain
 3. **Implement the frontend flow** using the examples above
-4. **Test the complete flow** by creating a practice session
 
-The triggers handle all the complex backend orchestration, making your frontend implementation much simpler and more reliable!
+## 🔄 **Migration from Old System**
+
+If you were previously using the improve-transcript functionality:
+
+1. **Update session creation** - Pass transcript directly instead of waiting for improvement
+2. **Remove transcript processing UI** - No more "Processing transcript..." states
+3. **Update status handling** - Start with 'ready_for_practice' instead of 'transcript_ready'
+4. **Simplify real-time handling** - Remove transcript processing status checks

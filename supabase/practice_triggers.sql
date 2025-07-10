@@ -1,40 +1,9 @@
--- Practice Session Database Triggers (Updated for Edge Functions)
--- These triggers automatically call Supabase Edge Functions when database changes occur
+-- Practice Session Database Triggers (Updated for Direct Practice Flow)
+-- These triggers automatically call backend endpoints when database changes occur
 -- Run these in your Supabase SQL Editor
 
 -- ====================================================================================
--- TRIGGER 1: Auto-Improve Transcript
--- When a practice session is inserted with audio_url, automatically start transcript improvement
--- ====================================================================================
-
-CREATE OR REPLACE FUNCTION trigger_improve_transcript()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Only trigger if we have an audio URL and no status is set (new session)
-  IF NEW.original_audio_url IS NOT NULL AND (NEW.status IS NULL OR NEW.status = '') THEN
-    -- Call the practice-improve-transcript edge function
-    PERFORM supabase_url.functions.invoke(
-      'practice-improve-transcript',
-      json_build_object('session_id', NEW.id::text)::jsonb
-    );
-    
-    -- Update status to indicate processing started (optional - edge function will do this too)
-    UPDATE practice_sessions 
-    SET status = 'transcript_processing' 
-    WHERE id = NEW.id;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE TRIGGER practice_session_auto_improve_trigger
-  AFTER INSERT ON practice_sessions
-  FOR EACH ROW
-  EXECUTE FUNCTION trigger_improve_transcript();
-
--- ====================================================================================
--- TRIGGER 2: Auto-Start Practice Flow
+-- TRIGGER 1: Auto-Start Practice Flow
 -- When status is updated to 'start_practice', automatically call start-practice endpoint
 -- ====================================================================================
 
@@ -60,7 +29,7 @@ CREATE OR REPLACE TRIGGER practice_session_auto_start_trigger
   EXECUTE FUNCTION trigger_start_practice();
 
 -- ====================================================================================
--- TRIGGER 3: Auto-Submit Recordings for Analysis
+-- TRIGGER 2: Auto-Submit Recordings for Analysis
 -- When practice_attempts are inserted, automatically submit for pronunciation analysis
 -- ====================================================================================
 
@@ -107,32 +76,41 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER practice_attempts_auto_submit_trigger
+CREATE OR REPLACE TRIGGER practice_attempt_auto_submit_trigger
   AFTER INSERT ON practice_attempts
   FOR EACH ROW
   EXECUTE FUNCTION trigger_submit_recording();
 
 -- ====================================================================================
--- UTILITY FUNCTIONS
+-- Utility Functions
 -- ====================================================================================
 
--- Function to disable triggers temporarily (useful for bulk operations)
+-- Function to disable practice triggers for testing
 CREATE OR REPLACE FUNCTION disable_practice_triggers()
 RETURNS void AS $$
 BEGIN
-  ALTER TABLE practice_sessions DISABLE TRIGGER practice_session_auto_improve_trigger;
-  ALTER TABLE practice_sessions DISABLE TRIGGER practice_session_auto_start_trigger;
-  ALTER TABLE practice_attempts DISABLE TRIGGER practice_attempts_auto_submit_trigger;
+  DROP TRIGGER IF EXISTS practice_session_auto_start_trigger ON practice_sessions;
+  DROP TRIGGER IF EXISTS practice_attempt_auto_submit_trigger ON practice_attempts;
+  RAISE NOTICE 'Practice triggers disabled';
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to re-enable triggers
+-- Function to enable practice triggers
 CREATE OR REPLACE FUNCTION enable_practice_triggers()
 RETURNS void AS $$
 BEGIN
-  ALTER TABLE practice_sessions ENABLE TRIGGER practice_session_auto_improve_trigger;
-  ALTER TABLE practice_sessions ENABLE TRIGGER practice_session_auto_start_trigger;
-  ALTER TABLE practice_attempts ENABLE TRIGGER practice_attempts_auto_submit_trigger;
+  -- Recreate triggers
+  CREATE TRIGGER practice_session_auto_start_trigger
+    AFTER UPDATE ON practice_sessions
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_start_practice();
+    
+  CREATE TRIGGER practice_attempt_auto_submit_trigger
+    AFTER INSERT ON practice_attempts
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_submit_recording();
+    
+  RAISE NOTICE 'Practice triggers enabled';
 END;
 $$ LANGUAGE plpgsql;
 

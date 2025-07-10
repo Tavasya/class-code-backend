@@ -13,16 +13,16 @@ class PracticeWebhookService:
         self.pubsub_client = PubSubClient()
         logger.info("PracticeWebhookService initialized")
     
-    def start_practice_webhook_session(self, session_id: str, improved_transcript: str) -> Optional[str]:
+    def start_practice_webhook_session(self, session_id: str, transcript: str) -> Optional[str]:
         """
-        Start a webhook session for practice pronunciation analysis
+        Start a practice webhook session for pronunciation analysis
         
         Args:
-            session_id: Practice session ID
-            improved_transcript: The improved transcript for context
+            session_id: Practice session ID  
+            transcript: The transcript text for context
             
         Returns:
-            Webhook session ID if successful, None otherwise
+            Webhook session ID if successful, None if failed
         """
         try:
             # Generate unique webhook session ID
@@ -36,7 +36,7 @@ class PracticeWebhookService:
                 "action": "start_practice_session",
                 "practice_session_id": session_id,
                 "webhook_session_id": webhook_session_id,
-                "improved_transcript": improved_transcript,
+                "transcript": transcript,
                 "callback_url": f"/api/v1/webhooks/practice-pronunciation-done",
                 "analysis_type": "practice_session",
                 "timestamp": self._get_current_timestamp()

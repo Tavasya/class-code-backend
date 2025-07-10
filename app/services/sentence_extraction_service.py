@@ -5,26 +5,26 @@ from typing import List, Dict, Any
 logger = logging.getLogger(__name__)
 
 class SentenceExtractionService:
-    """Service for extracting sentences from improved transcript for practice"""
+    """Service for extracting sentences from transcript for practice"""
     
     def __init__(self):
         logger.info("SentenceExtractionService initialized")
     
-    def extract_sentences(self, improved_transcript: str) -> List[Dict[str, Any]]:
+    def extract_sentences(self, transcript: str) -> List[Dict[str, Any]]:
         """
-        Extract sentences from improved transcript for practice
+        Extract sentences from transcript for practice
         
         Args:
-            improved_transcript: The AI-improved transcript text
+            transcript: The transcript text
             
         Returns:
             List of sentence dictionaries with practice metadata
         """
         try:
-            logger.info(f"🔍 Extracting sentences from transcript: {improved_transcript[:100]}...")
+            logger.info(f"🔍 Extracting sentences from transcript: {transcript[:100]}...")
             
             # Clean the transcript
-            cleaned_transcript = self._clean_transcript(improved_transcript)
+            cleaned_transcript = self._clean_transcript(transcript)
             
             # Split into sentences
             raw_sentences = self._split_into_sentences(cleaned_transcript)

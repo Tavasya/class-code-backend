@@ -1,7 +1,5 @@
 from fastapi import APIRouter, HTTPException, Path
 from app.services.practice_session_service import PracticeSessionService
-from app.services.transcription_service import TranscriptionService
-from app.services.paragraph_restructuring_service import restructure_paragraph
 from app.services.sentence_extraction_service import SentenceExtractionService
 from app.services.practice_webhook_service import PracticeWebhookService
 import logging
@@ -11,13 +9,6 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-class ImproveTranscriptResponse(BaseModel):
-    """Response model for improve transcript endpoint"""
-    success: bool
-    message: str
-    session_id: str
-    status: str
-
 class StartPracticeResponse(BaseModel):
     """Response model for start practice endpoint"""
     success: bool
@@ -25,8 +16,6 @@ class StartPracticeResponse(BaseModel):
     session_id: str
     status: str
     current_sentence: Dict[str, Any]
-    total_sentences: int
-    progress: Dict[str, Any]
     webhook_session_id: str
 
 class SentencePracticeRequest(BaseModel):
@@ -73,131 +62,16 @@ class PracticeStatusResponse(BaseModel):
     status: str
     webhook_session_id: str
 
-@router.post("/sessions/{session_id}/improve-transcript", response_model=ImproveTranscriptResponse)
-async def improve_session_transcript(
-    session_id: str = Path(..., description="Practice session ID")
-) -> ImproveTranscriptResponse:
-    """
-    Improve transcript for an existing practice session
-    
-    This endpoint:
-    1. Reads the session from the database using session_id
-    2. Validates the session exists and has an audio_url
-    3. Transcribes the audio using existing TranscriptionService
-    4. Improves the transcript using existing ParagraphRestructuringService
-    5. Updates the session with improved transcript and status='transcript_ready'
-    6. Returns a success response
-    
-    Args:
-        session_id: The practice session ID (from URL path)
-        
-    Returns:
-        ImproveTranscriptResponse with success status and session info
-    """
-    try:
-        logger.info(f"🎯 Starting transcript improvement for session: {session_id}")
-        
-        # Initialize services
-        practice_service = PracticeSessionService()
-        transcription_service = TranscriptionService()
-        
-        # 1. Read session from database
-        session = practice_service.get_practice_session(session_id)
-        if not session:
-            logger.error(f"❌ Session not found: {session_id}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Practice session not found: {session_id}"
-            )
-        
-        # 2. Validate session has original_audio_url
-        audio_url = session.get('original_audio_url')
-        if not audio_url:
-            logger.error(f"❌ Session {session_id} has no original_audio_url")
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Session {session_id} has no audio URL"
-            )
-        
-        logger.info(f"📱 Found session with audio URL: {audio_url}")
-        
-        # 3. Transcribe audio
-        logger.info(f"🎤 Transcribing audio from URL: {audio_url}")
-        transcription_result = await transcription_service.transcribe_audio_from_url(audio_url)
-        
-        if transcription_result.get("error"):
-            logger.error(f"❌ Transcription failed: {transcription_result['error']}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Audio transcription failed: {transcription_result['error']}"
-            )
-        
-        transcript = transcription_result.get("text", "").strip()
-        if not transcript:
-            logger.error(f"❌ Empty transcript from audio")
-            raise HTTPException(
-                status_code=400,
-                detail="Transcription resulted in empty text"
-            )
-        
-        logger.info(f"📝 Transcribed text: {transcript[:100]}...")
-        
-        # 4. Improve transcript using paragraph restructuring
-        logger.info(f"🔄 Improving transcript using paragraph restructuring")
-        restructuring_result = await restructure_paragraph(
-            transcript=transcript,
-            current_band=None,  # Will auto-detect or default to A1
-            analysis_results=None  # Will use default fallback
-        )
-        
-        improved_transcript = restructuring_result.improved_transcript
-        logger.info(f"✨ Improved transcript: {improved_transcript[:100]}...")
-        
-        # 5. Update session with improved transcript and status
-        update_success = practice_service.update_practice_session(
-            session_id=session_id,
-            original_transcript=transcript,
-            improved_transcript=improved_transcript,
-            status="transcript_ready"
-        )
-        
-        if not update_success:
-            logger.error(f"❌ Failed to update session {session_id}")
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to update session with improved transcript"
-            )
-        
-        logger.info(f"✅ Successfully improved transcript for session: {session_id}")
-        
-        # 6. Return success response
-        return ImproveTranscriptResponse(
-            success=True,
-            message="Transcript improved successfully",
-            session_id=session_id,
-            status="transcript_ready"
-        )
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except Exception as e:
-        logger.exception(f"❌ Unexpected error improving transcript for session {session_id}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal error: {str(e)}"
-        )
-
 @router.post("/sessions/{session_id}/start-practice", response_model=StartPracticeResponse)
 async def start_practice_session(
     session_id: str = Path(..., description="Practice session ID")
 ) -> StartPracticeResponse:
     """
-    Start pronunciation practice for a session with transcript_ready status
+    Start pronunciation practice for a session with a user-provided transcript
     
     This endpoint:
-    1. Validates the session exists and has status='transcript_ready'
-    2. Extracts sentences from the improved transcript
+    1. Validates the session exists and has a transcript
+    2. Extracts sentences from the transcript
     3. Updates session with sentences and status='practicing_sentences'
     4. Sets current_sentence_index to 0
     5. Returns first sentence for practice
@@ -225,34 +99,26 @@ async def start_practice_session(
                 detail=f"Practice session not found: {session_id}"
             )
         
-        # 2. Validate session has improved transcript and correct status
-        improved_transcript = session.get('improved_transcript')
-        if not improved_transcript:
-            logger.error(f"❌ Session {session_id} has no improved transcript")
+        # 2. Validate session has a transcript (either original or user-provided)
+        transcript = session.get('original_transcript') or session.get('transcript')
+        if not transcript:
+            logger.error(f"❌ Session {session_id} has no transcript")
             raise HTTPException(
                 status_code=400, 
-                detail=f"Session {session_id} has no improved transcript"
+                detail=f"Session {session_id} has no transcript for practice"
             )
         
-        current_status = session.get('status')
-        if current_status != 'transcript_ready':
-            logger.error(f"❌ Session {session_id} has incorrect status: {current_status}")
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Session {session_id} must have status 'transcript_ready', got '{current_status}'"
-            )
+        logger.info(f"📝 Found session with transcript: {transcript[:100]}...")
         
-        logger.info(f"📝 Found session with improved transcript: {improved_transcript[:100]}...")
-        
-        # 3. Extract sentences from improved transcript
-        logger.info(f"🔍 Extracting sentences from improved transcript")
-        sentences = sentence_service.extract_sentences(improved_transcript)
+        # 3. Extract sentences from transcript
+        logger.info(f"🔍 Extracting sentences from transcript")
+        sentences = sentence_service.extract_sentences(transcript)
         
         if not sentences:
             logger.error(f"❌ No sentences extracted from transcript")
             raise HTTPException(
                 status_code=400,
-                detail="No sentences could be extracted from the improved transcript"
+                detail="No sentences could be extracted from the transcript"
             )
         
         logger.info(f"📚 Extracted {len(sentences)} sentences for practice")
@@ -261,7 +127,7 @@ async def start_practice_session(
         logger.info(f"🎯 Starting webhook session for practice")
         webhook_session_id = webhook_service.start_practice_webhook_session(
             session_id=session_id,
-            improved_transcript=improved_transcript
+            transcript=transcript
         )
         
         if not webhook_session_id:
@@ -287,31 +153,21 @@ async def start_practice_session(
             logger.error(f"❌ Failed to update session {session_id}")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to update session with practice sentences"
+                detail="Failed to update session for practice"
             )
         
-        # 6. Get first sentence for practice
-        first_sentence = sentences[0]
-        
-        # 7. Build progress information
-        progress = {
-            "current_sentence": 0,
-            "total_sentences": len(sentences),
-            "sentences_completed": 0,
-            "sentences_passed": 0
-        }
+        # 6. Get first sentence for response
+        first_sentence = sentences[0] if sentences else {"text": "", "index": 0}
         
         logger.info(f"✅ Successfully started practice for session: {session_id}")
         
-        # 8. Return success response
+        # 7. Return success response
         return StartPracticeResponse(
             success=True,
-            message="Practice started successfully",
+            message="Practice session started successfully",
             session_id=session_id,
             status="practicing_sentences",
             current_sentence=first_sentence,
-            total_sentences=len(sentences),
-            progress=progress,
             webhook_session_id=webhook_session_id
         )
         

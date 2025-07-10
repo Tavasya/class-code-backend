@@ -80,7 +80,7 @@ class PracticeWebhook:
         try:
             practice_session_id = message_data.get("practice_session_id")
             webhook_session_id = message_data.get("webhook_session_id")
-            improved_transcript = message_data.get("improved_transcript", "")
+            transcript = message_data.get("transcript", "")
             
             logger.info(f"🎯 Starting practice session: {practice_session_id}")
             logger.info(f"📝 Webhook session: {webhook_session_id}")
