@@ -99,13 +99,13 @@ async def start_practice_session(
                 detail=f"Practice session not found: {session_id}"
             )
         
-        # 2. Validate session has a transcript (either original or user-provided)
-        transcript = session.get('original_transcript') or session.get('transcript')
+        # 2. Validate session has improved transcript
+        transcript = session.get('improved_transcript')
         if not transcript:
-            logger.error(f"❌ Session {session_id} has no transcript")
+            logger.error(f"❌ Session {session_id} has no improved transcript")
             raise HTTPException(
                 status_code=400, 
-                detail=f"Session {session_id} has no transcript for practice"
+                detail=f"Session {session_id} has no improved transcript for practice"
             )
         
         logger.info(f"📝 Found session with transcript: {transcript[:100]}...")
