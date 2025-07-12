@@ -336,8 +336,9 @@ class AnalysisWebhook:
             # 2. Grammar Analysis Task
             async def grammar_task():
                 try:
-                    # Use clean transcript for more accurate grammar analysis
-                    grammar_result = await analyze_grammar(clean_text, submission_url, question_number)
+                    # Use clean transcript for more accurate grammar analysis (capture clean_text locally)
+                    local_clean_text = clean_text  # Capture the clean text to avoid race conditions
+                    grammar_result = await analyze_grammar(local_clean_text, submission_url, question_number)
                     state["grammar_result"] = grammar_result
                     state["grammar_done"] = True
                     
@@ -385,8 +386,9 @@ class AnalysisWebhook:
             async def vocabulary_task():
                 try:
                     logger.info(f"🔍 VOCAB TASK: Starting vocabulary analysis for question {question_number}")
-                    # Use clean transcript for more accurate vocabulary analysis
-                    vocabulary_result = await analyze_vocabulary(clean_text, question_number)
+                    # Use clean transcript for more accurate vocabulary analysis (capture clean_text locally)
+                    local_clean_text = clean_text  # Capture the clean text to avoid race conditions
+                    vocabulary_result = await analyze_vocabulary(local_clean_text, question_number)
                     state["vocabulary_result"] = vocabulary_result
                     state["vocabulary_done"] = True
                     

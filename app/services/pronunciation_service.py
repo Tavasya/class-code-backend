@@ -7,6 +7,7 @@ import tempfile
 import asyncio
 import subprocess
 import azure.cognitiveservices.speech as speechsdk
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
 from app.services.file_manager_service import FileManagerService
