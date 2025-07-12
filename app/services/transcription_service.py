@@ -129,6 +129,10 @@ class TranscriptionService:
     async def transcribe_audio_from_url(audio_url: str) -> Dict[str, Any]:
         """Main transcription function for URL"""
         try:
+            # Validate URL format for AssemblyAI
+            if not audio_url.startswith(('http://', 'https://')):
+                raise ValueError(f"Invalid audio URL format: {audio_url}. URL must start with http:// or https://")
+            
             # Transcribe directly from URL (no need to upload since we already have a URL)
             transcript_result = await TranscriptionService.get_assemblyai_transcript(audio_url)
             

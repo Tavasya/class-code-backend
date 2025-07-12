@@ -76,7 +76,8 @@ class DatabaseService:
                                   question_results: Dict[str, Any], 
                                   recordings: Optional[List[str]] = None, 
                                   overall_assignment_score: Optional[Dict[str, Any]] = None, # Expects a Dict for JSON
-                                  duration_feedback: Optional[list] = None # <-- add this
+                                  duration_feedback: Optional[list] = None, # <-- add this
+                                  test_logs: Optional[Dict[str, Any]] = None # <-- add test_logs
                                   ) -> Optional[str]:
         """Update an existing submission with analysis results, recordings, and overall assignment score (as JSON)."""
         operation = "UPDATE_SUBMISSION_RESULTS"
@@ -155,6 +156,11 @@ class DatabaseService:
                     logger.info(f"🎯 Setting grade column to IELTS overall band: {ielts_overall_band}")
                 else:
                     logger.warning("⚠️ No IELTS overall band score found in overall_assignment_score")
+            
+            # Add test_logs if provided
+            if test_logs is not None:
+                update_data["test_logs"] = test_logs
+                logger.info(f"📝 Adding test_logs with {len(test_logs)} entries")
             
             # Log the data being updated
             log_message_parts = [
