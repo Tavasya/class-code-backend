@@ -1194,6 +1194,51 @@ class AnalysisWebhook:
                 if submission_db_id:
                     logger.info(f"✅ SUCCESS: Updated submission {submission_url} in Supabase database with ID: {submission_db_id}")
                     logger.info(f"📋 Database record updated: table=submissions, id={submission_db_id}, status=graded, recordings_count={len(recording_urls or [])}")
+                    
+                    # Send email notification to student (with deduplication)
+                    try:
+                        from app.services.email_service import EmailService
+                        
+                        # Check if we've already processed this submission to prevent duplicate emails
+                        submission_state_key = f"email_sent:{submission_url}"
+                        if hasattr(self, '_email_sent_tracking'):
+                            if submission_state_key in self._email_sent_tracking:
+                                logger.info(f"📧 Email already sent for submission {submission_url}, skipping duplicate")
+                                return {"status": "success", "message": "Submission analysis complete (duplicate avoided)"}
+                        else:
+                            self._email_sent_tracking = set()
+                        
+                        # Get submission details to find student_id
+                        submission = db_service.get_submission_by_url(submission_url)
+                        if submission and submission.get('student_id'):
+                            student_id = submission['student_id']
+                            
+                            # Get user email from student_id
+                            user_email = db_service.get_user_email_by_student_id(student_id)
+                            
+                            if user_email:
+                                # Send email notification
+                                email_service = EmailService()
+                                email_sent = email_service.send_feedback_ready_email(
+                                    to_email=user_email,
+                                    submission_uid=submission_url
+                                )
+                                
+                                if email_sent:
+                                    # Mark as sent to prevent duplicates
+                                    self._email_sent_tracking.add(submission_state_key)
+                                    logger.info(f"📧 Email notification sent successfully to {user_email} for submission {submission_url}")
+                                else:
+                                    logger.error(f"❌ Failed to send email notification to {user_email} for submission {submission_url}")
+                            else:
+                                logger.warning(f"⚠️ No email found for student_id {student_id} in submission {submission_url}")
+                        else:
+                            logger.warning(f"⚠️ No student_id found in submission {submission_url}")
+                            
+                    except Exception as email_error:
+                        logger.error(f"❌ Error sending email notification for submission {submission_url}: {str(email_error)}")
+                        # Don't fail the whole process if email fails
+                        
                 else:
                     error_msg = f"Failed to update submission {submission_url} in Supabase database"
                     logger.error(f"❌ {error_msg} - update_submission_results returned None")
