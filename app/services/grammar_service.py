@@ -441,7 +441,7 @@ def aggregate_grammar_results(results: List[Dict], sentences: List[str]) -> Dict
     elif total_corrections <= 6:
         grade = 70
     else:
-        grade = max(60 - (total_corrections - 6) * 5, 0)
+        grade = max(60 - (total_corrections - 6) * 5, 50)
     
     logger.info(f"Grammar analysis completed: {successful_sentences}/{len(sentences)} sentences successful, {total_corrections} corrections found")
     

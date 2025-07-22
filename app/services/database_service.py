@@ -371,6 +371,28 @@ class DatabaseService:
             logger.error(f"Error fetching assignment by id {assignment_id}: {str(e)}")
             return None
 
+    def get_user_email_by_student_id(self, student_id: str) -> Optional[str]:
+        """Fetch user email by student_id from users table."""
+        try:
+            result = self.supabase.table('users').select('email').eq('id', student_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0].get('email')
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching user email by student_id {student_id}: {str(e)}")
+            return None
+
+    def get_user_name_by_student_id(self, student_id: str) -> Optional[str]:
+        """Fetch user name by student_id from users table."""
+        try:
+            result = self.supabase.table('users').select('name').eq('id', student_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0].get('name')
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching user name by student_id {student_id}: {str(e)}")
+            return None
+
     async def update_status_logs(self, submission_url: str, question_number: int, analysis_type: str, status: str) -> bool:
         """Update the status logs for a specific analysis type in a question."""
         operation = "UPDATE_STATUS_LOGS"
