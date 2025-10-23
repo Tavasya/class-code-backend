@@ -1023,13 +1023,35 @@ class AnalysisWebhook:
                     logger.warning(f"No valid lexical scores to average for {submission_url}.")
             else:
                 logger.warning(f"No question_results found for {submission_url}, all average scores will be 0.")
-            
+
+            # Calculate total audio duration from all questions
+            total_audio_duration = 0.0
+            if question_results:
+                for q_num, q_data in question_results.items():
+                    if q_data and isinstance(q_data, dict):
+                        pron = q_data.get('pronunciation')
+                        if pron and isinstance(pron, dict):
+                            audio_duration = pron.get('audio_duration', 0)
+                            if isinstance(audio_duration, (int, float)) and audio_duration > 0:
+                                total_audio_duration += audio_duration
+                                logger.info(f"📊 Question {q_num}: audio_duration={audio_duration}s")
+                            else:
+                                logger.warning(f"⚠️ Question {q_num}: Invalid or missing audio_duration")
+                        else:
+                            logger.warning(f"⚠️ Question {q_num}: No pronunciation data found for duration")
+                    else:
+                        logger.warning(f"⚠️ Question {q_num}: No question data found for duration")
+                logger.info(f"🎵 Total audio duration for {submission_url}: {total_audio_duration:.2f} seconds")
+            else:
+                logger.warning(f"⚠️ No question_results found for {submission_url}, total audio duration will be 0.")
+
             # Create a dictionary for the overall_assignment_score JSON field
             overall_assignment_score_json = {
                 "avg_pronunciation_score": avg_pronunciation_score,
                 "avg_fluency_score": avg_fluency_score,
                 "avg_grammar_score": avg_grammar_score,
-                "avg_lexical_score": avg_lexical_score
+                "avg_lexical_score": avg_lexical_score,
+                "total_audio_duration_seconds": round(total_audio_duration, 2)
             }
             logger.info(f"Compiled section averages for {submission_url}: {overall_assignment_score_json}")
 
