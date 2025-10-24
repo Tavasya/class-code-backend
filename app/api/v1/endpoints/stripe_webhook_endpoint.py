@@ -256,17 +256,32 @@ async def handle_subscription_updated(subscription_data: dict):
         db_service = DatabaseService()
 
         # Update subscription record
-        current_period_start = datetime.fromtimestamp(subscription_data.get('current_period_start'))
-        current_period_end = datetime.fromtimestamp(subscription_data.get('current_period_end'))
+        # Check if subscription is set to cancel (either via cancel_at_period_end OR cancel_at)
+        cancel_at_period_end = subscription_data.get('cancel_at_period_end', False) or subscription_data.get('cancel_at') is not None
+
+        updates = {
+            'student_count': new_quantity,
+            'status': status,
+            'cancel_at_period_end': cancel_at_period_end
+        }
+
+        # Period dates are in the subscription items, not at the top level
+        if items and len(items) > 0:
+            subscription_item = items[0]
+            period_start = subscription_item.get('current_period_start')
+            period_end = subscription_item.get('current_period_end')
+
+            if period_start is not None:
+                current_period_start = datetime.fromtimestamp(period_start)
+                updates['current_period_start'] = current_period_start.isoformat()
+
+            if period_end is not None:
+                current_period_end = datetime.fromtimestamp(period_end)
+                updates['current_period_end'] = current_period_end.isoformat()
 
         db_service.update_subscription(
             teacher_id=teacher_id,
-            updates={
-                'student_count': new_quantity,
-                'status': status,
-                'current_period_start': current_period_start.isoformat(),
-                'current_period_end': current_period_end.isoformat()
-            }
+            updates=updates
         )
 
         # Update credits

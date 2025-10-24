@@ -576,7 +576,8 @@ class DatabaseService:
                 'student_count': student_count,
                 'status': 'active',
                 'current_period_start': current_period_start.isoformat(),
-                'current_period_end': current_period_end.isoformat()
+                'current_period_end': current_period_end.isoformat(),
+                'cancel_at_period_end': False
             }).execute()
 
             if result.data and len(result.data) > 0:

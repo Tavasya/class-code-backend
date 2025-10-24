@@ -99,6 +99,7 @@ async def get_subscription(
             status=subscription.get('status'),
             current_period_start=subscription.get('current_period_start'),
             current_period_end=subscription.get('current_period_end'),
+            cancel_at_period_end=subscription.get('cancel_at_period_end'),
             stripe_customer_id=subscription.get('stripe_customer_id'),
             stripe_subscription_id=subscription.get('stripe_subscription_id'),
             created_at=subscription.get('created_at')
@@ -202,7 +203,10 @@ async def cancel_subscription(
         if cancel_request.cancel_at_period_end:
             db_service.update_subscription(
                 teacher_id=cancel_request.teacher_id,
-                updates={'status': 'canceling'}
+                updates={
+                    'status': 'canceling',
+                    'cancel_at_period_end': True
+                }
             )
         else:
             # Delete subscription record for immediate cancellation
