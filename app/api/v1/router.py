@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from .endpoints import health, audio_endpoint, transcription_endpoint, pronunciation_endpoint, fluency_endpoint, grammar_endpoint, submission_endpoint, lexical_endpoint, webhooks_endpoint, results_endpoint, debug_endpoint, vocabulary_endpoint, paragraph_restructuring_endpoint, retry_endpoint, practice_endpoint
+from .endpoints import health, audio_endpoint, transcription_endpoint, pronunciation_endpoint, fluency_endpoint, grammar_endpoint, submission_endpoint, lexical_endpoint, webhooks_endpoint, results_endpoint, debug_endpoint, vocabulary_endpoint, paragraph_restructuring_endpoint, retry_endpoint, practice_endpoint, stripe_endpoint, stripe_webhook_endpoint
 
 api_router = APIRouter()
 
@@ -24,5 +24,9 @@ api_router.include_router(vocabulary_endpoint.router, prefix="/vocabulary", tags
 api_router.include_router(retry_endpoint.router, prefix="/retry", tags=["retry"])
 
 api_router.include_router(practice_endpoint.router, prefix="/practice", tags=["practice"])
+
+# Stripe subscription endpoints
+api_router.include_router(stripe_endpoint.router, prefix="/stripe", tags=["stripe"])
+api_router.include_router(stripe_webhook_endpoint.router, prefix="/stripe", tags=["stripe-webhooks"])
 
 api_router.include_router(submission_endpoint.router, prefix="/submission", tags=["gateway"])

@@ -513,7 +513,7 @@ class DatabaseService:
     def get_transformed_results(self, submission_url: str) -> Optional[List[Dict[str, Any]]]:
         """Retrieve transformed results from database"""
         operation = f"get_transformed_results for {submission_url}"
-        
+
         try:
             submission = self.get_submission_by_url(submission_url)
             if submission and submission.get('section_feedback'):
@@ -522,3 +522,176 @@ class DatabaseService:
         except Exception as e:
             self._log_operation_error(operation, str(e))
             return None
+
+    # ============================================
+    # Stripe Subscription Methods
+    # ============================================
+
+    def create_subscription(
+        self,
+        teacher_id: str,
+        stripe_customer_id: str,
+        stripe_subscription_id: str,
+        stripe_price_id: str,
+        plan_type: str,
+        billing_cycle: str,
+        student_count: int,
+        current_period_start: datetime,
+        current_period_end: datetime
+    ) -> Optional[str]:
+        """Create a new subscription record
+
+        Args:
+            teacher_id: Teacher's user ID
+            stripe_customer_id: Stripe customer ID
+            stripe_subscription_id: Stripe subscription ID
+            stripe_price_id: Stripe price ID
+            plan_type: "30min" or "60min"
+            billing_cycle: "monthly" or "quarterly"
+            student_count: Number of students
+            current_period_start: Billing period start
+            current_period_end: Billing period end
+
+        Returns:
+            Subscription ID if successful, None otherwise
+        """
+        operation = "CREATE_SUBSCRIPTION"
+
+        self._log_operation_start(
+            operation,
+            teacher_id=teacher_id,
+            plan_type=plan_type,
+            billing_cycle=billing_cycle,
+            student_count=student_count
+        )
+
+        try:
+            result = self.supabase.table('teacher_subscriptions').insert({
+                'teacher_id': teacher_id,
+                'stripe_customer_id': stripe_customer_id,
+                'stripe_subscription_id': stripe_subscription_id,
+                'stripe_price_id': stripe_price_id,
+                'plan_type': plan_type,
+                'billing_cycle': billing_cycle,
+                'student_count': student_count,
+                'status': 'active',
+                'current_period_start': current_period_start.isoformat(),
+                'current_period_end': current_period_end.isoformat()
+            }).execute()
+
+            if result.data and len(result.data) > 0:
+                subscription_id = result.data[0]['id']
+                self._log_operation_success(operation, teacher_id=teacher_id, subscription_id=subscription_id)
+                return subscription_id
+            else:
+                self._log_operation_error(operation, "No data returned", teacher_id=teacher_id)
+                return None
+
+        except Exception as e:
+            self._log_operation_error(operation, str(e), teacher_id=teacher_id)
+            return None
+
+    def get_subscription_by_teacher_id(self, teacher_id: str) -> Optional[Dict[str, Any]]:
+        """Get subscription record for a teacher
+
+        Args:
+            teacher_id: Teacher's user ID
+
+        Returns:
+            Subscription dict if found, None otherwise
+        """
+        try:
+            result = self.supabase.table('teacher_subscriptions').select('*').eq('teacher_id', teacher_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching subscription for teacher {teacher_id}: {str(e)}")
+            return None
+
+    def update_subscription(
+        self,
+        teacher_id: str,
+        updates: Dict[str, Any]
+    ) -> bool:
+        """Update subscription record
+
+        Args:
+            teacher_id: Teacher's user ID
+            updates: Dict of fields to update
+
+        Returns:
+            True if successful, False otherwise
+        """
+        operation = "UPDATE_SUBSCRIPTION"
+
+        self._log_operation_start(operation, teacher_id=teacher_id, updates=list(updates.keys()))
+
+        try:
+            result = self.supabase.table('teacher_subscriptions').update(updates).eq('teacher_id', teacher_id).execute()
+
+            if result.data:
+                self._log_operation_success(operation, teacher_id=teacher_id)
+                return True
+            else:
+                self._log_operation_error(operation, "No data returned", teacher_id=teacher_id)
+                return False
+
+        except Exception as e:
+            self._log_operation_error(operation, str(e), teacher_id=teacher_id)
+            return False
+
+    def update_teacher_credits(self, teacher_id: str, credits: float) -> bool:
+        """Update teacher's credit balance
+
+        Args:
+            teacher_id: Teacher's user ID
+            credits: New credit amount (in hours)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        operation = "UPDATE_TEACHER_CREDITS"
+
+        self._log_operation_start(operation, teacher_id=teacher_id, credits=credits)
+
+        try:
+            result = self.supabase.table('users').update({'credits': credits}).eq('id', teacher_id).execute()
+
+            if result.data:
+                self._log_operation_success(operation, teacher_id=teacher_id, credits=credits)
+                return True
+            else:
+                self._log_operation_error(operation, "No data returned", teacher_id=teacher_id)
+                return False
+
+        except Exception as e:
+            self._log_operation_error(operation, str(e), teacher_id=teacher_id)
+            return False
+
+    def delete_subscription(self, teacher_id: str) -> bool:
+        """Delete subscription record (used when subscription is canceled)
+
+        Args:
+            teacher_id: Teacher's user ID
+
+        Returns:
+            True if successful, False otherwise
+        """
+        operation = "DELETE_SUBSCRIPTION"
+
+        self._log_operation_start(operation, teacher_id=teacher_id)
+
+        try:
+            result = self.supabase.table('teacher_subscriptions').delete().eq('teacher_id', teacher_id).execute()
+
+            if result.data is not None:
+                self._log_operation_success(operation, teacher_id=teacher_id)
+                return True
+            else:
+                self._log_operation_error(operation, "No data returned", teacher_id=teacher_id)
+                return False
+
+        except Exception as e:
+            self._log_operation_error(operation, str(e), teacher_id=teacher_id)
+            return False
