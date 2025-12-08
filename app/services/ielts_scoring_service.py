@@ -352,7 +352,7 @@ Be precise and use the full 1-9 range. Respond with ONLY a number.
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-5-nano",
                 messages=[
                     {"role": "system", "content": "You are an IELTS examiner. Be generous for natural, fluent speech. Respond with only a number."},
                     {"role": "user", "content": prompt}

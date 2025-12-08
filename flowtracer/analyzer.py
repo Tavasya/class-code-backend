@@ -139,7 +139,7 @@ Format as JSON:
 {{"function_name": {{"purpose": "...", "category": "...", "complexity": 3}}}}"""
 
             response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-5-nano",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=1000,
                 temperature=0.1

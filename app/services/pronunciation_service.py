@@ -850,7 +850,7 @@ class PronunciationService:
             }
             
             payload = {
-                "model": "gpt-4o-mini",
+                "model": "gpt-5-nano",
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 100,
                 "temperature": 0.5

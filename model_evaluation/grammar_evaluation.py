@@ -115,7 +115,7 @@ Provide ONLY a JSON response with this format:
             }
             
             payload = {
-                "model": "gpt-4o-mini",
+                "model": "gpt-5-nano",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1
             }

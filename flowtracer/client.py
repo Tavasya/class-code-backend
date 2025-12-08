@@ -96,7 +96,7 @@ Rules:
 Format as: function_name → Description"""
 
             response = self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-5-nano",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200,
                 temperature=0.1
