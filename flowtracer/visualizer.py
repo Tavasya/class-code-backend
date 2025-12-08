@@ -172,7 +172,7 @@ Format as JSON: {{"purpose": "...", "description": "...", "suggestions": ["..."]
                 response = self.openai_client.chat.completions.create(
                     model="gpt-5-nano",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=200,
+                    max_completion_tokens=200,
                     temperature=0.3
                 )
                 

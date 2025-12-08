@@ -358,7 +358,7 @@ Be precise and use the full 1-9 range. Respond with ONLY a number.
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2,
-                max_tokens=10
+                max_completion_tokens=10
             )
             
             score_text = response.choices[0].message.content.strip()
