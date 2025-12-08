@@ -40,8 +40,7 @@ async def call_api_with_retry(prompt: str, expected_format: str = "dict", max_re
             
             payload = {
                 "model": MODEL,
-                "messages": [{"role": "user", "content": current_prompt}],
-                "temperature": 0.1
+                "messages": [{"role": "user", "content": current_prompt}]
             }
             
             async with aiohttp.ClientSession() as session:

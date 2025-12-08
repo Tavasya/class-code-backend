@@ -141,8 +141,7 @@ Format as JSON:
             response = self.openai_client.chat.completions.create(
                 model="gpt-5-nano",
                 messages=[{"role": "user", "content": prompt}],
-                max_completion_tokens=1000,
-                temperature=0.1
+                max_completion_tokens=1000
             )
             
             # Parse AI response and update function info

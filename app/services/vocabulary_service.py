@@ -67,8 +67,7 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
 
             payload = {
                 "model": MODEL,
-                "messages": [{"role": "user", "content": current_prompt}],
-                "temperature": 0.1
+                "messages": [{"role": "user", "content": current_prompt}]
             }
 
             timeout = aiohttp.ClientTimeout(total=30, connect=5)  # Reduced timeout

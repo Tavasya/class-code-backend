@@ -852,8 +852,7 @@ class PronunciationService:
             payload = {
                 "model": "gpt-5-nano",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_completion_tokens": 100,
-                "temperature": 0.5
+                "max_completion_tokens": 100
             }
             
             async with aiohttp.ClientSession() as session:

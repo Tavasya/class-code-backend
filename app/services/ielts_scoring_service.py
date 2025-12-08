@@ -357,7 +357,6 @@ Be precise and use the full 1-9 range. Respond with ONLY a number.
                     {"role": "system", "content": "You are an IELTS examiner. Be generous for natural, fluent speech. Respond with only a number."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
                 max_completion_tokens=10
             )
             

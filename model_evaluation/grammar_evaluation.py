@@ -116,8 +116,7 @@ Provide ONLY a JSON response with this format:
             
             payload = {
                 "model": "gpt-5-nano",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1
+                "messages": [{"role": "user", "content": prompt}]
             }
             
             async with aiohttp.ClientSession() as session:

@@ -167,8 +167,7 @@ Improved transcript:"""
                         "role": "user",
                         "content": prompt
                     }
-                ],
-                "temperature": 0.2
+                ]
             }
             
             async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
