@@ -1,11 +1,11 @@
 import logging
-import aiohttp
 import json
 import os
 import re
 from typing import Dict, List, Any, Tuple
 from app.models.fluency_model import FluencyRequest, FluencyResponse, WordDetail
-from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
+from app.core.config import OPENAI_API_KEY
+from app.services.openai_client import get_openai_client
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -17,18 +17,14 @@ MODEL = "gpt-5-nano"
 async def call_api_with_retry(prompt: str, expected_format: str = "dict", max_retries: int = 2) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
     logger.info(f"Calling API for fluency analysis, expecting: {expected_format}")
-    
+
     if not OPENAI_API_KEY:
         logger.warning("No API key available, cannot make API call")
         return None
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
-    
+
     current_prompt = prompt
-    
+    client = get_openai_client()
+
     for attempt in range(max_retries + 1):
         try:
             if attempt > 0:
@@ -37,43 +33,31 @@ async def call_api_with_retry(prompt: str, expected_format: str = "dict", max_re
                 You MUST ONLY return a valid JSON {expected_format} without any explanation text or code blocks.
                 """
                 current_prompt = format_emphasis + "\n\n" + prompt
-            
-            payload = {
-                "model": MODEL,
-                "messages": [{"role": "user", "content": current_prompt}]
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        
-                        if "```json" in content or "```" in content:
-                            json_pattern = r"```(?:json)?\s*(.*?)\s*```"
-                            match = re.search(json_pattern, content, re.DOTALL)
-                            if match:
-                                content = match.group(1)
-                        
-                        try:
-                            parsed_content = json.loads(content)
-                            if (expected_format == "dict" and isinstance(parsed_content, dict)) or \
-                               (expected_format == "list" and isinstance(parsed_content, list)):
-                                return parsed_content
-                        except json.JSONDecodeError:
-                            logger.error(f"Failed to parse JSON")
-                            if attempt == max_retries:
-                                return None
-                    else:
-                        error_content = await response.text()
-                        logger.error(f"API error: {response.status}, {error_content[:200]}...")
-                        if attempt == max_retries:
-                            return None
+
+            result = await client.chat(MODEL, [{"role": "user", "content": current_prompt}])
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            if "```json" in content or "```" in content:
+                json_pattern = r"```(?:json)?\s*(.*?)\s*```"
+                match = re.search(json_pattern, content, re.DOTALL)
+                if match:
+                    content = match.group(1)
+
+            try:
+                parsed_content = json.loads(content)
+                if (expected_format == "dict" and isinstance(parsed_content, dict)) or \
+                   (expected_format == "list" and isinstance(parsed_content, list)):
+                    return parsed_content
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON")
+                if attempt == max_retries:
+                    return None
+
         except Exception as e:
             logger.exception(f"Error in API call: {str(e)}")
             if attempt == max_retries:
                 return None
-    
+
     return None
 
 def calculate_timing_metrics(word_details: List[WordDetail]) -> Dict[str, Any]:

@@ -1,10 +1,10 @@
 import logging
-import aiohttp
 import json
 import asyncio
 from typing import List, Dict, Any, Optional
 from app.models.lexical_model import LexicalFeedback, LexicalCorrection
-from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
+from app.core.config import OPENAI_API_KEY
+from app.services.openai_client import get_openai_client
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -21,12 +21,8 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
         logger.warning("No API key available, cannot make API call")
         return None
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
-
     current_prompt = prompt
+    client = get_openai_client()
 
     for attempt in range(max_retries + 1):
         try:
@@ -39,42 +35,24 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 """
                 current_prompt = format_emphasis + "\n\n" + prompt
 
-            payload = {
-                "model": MODEL,
-                "messages": [{"role": "user", "content": current_prompt}]
-            }
+            result = await client.chat(MODEL, [{"role": "user", "content": current_prompt}])
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-            timeout = aiohttp.ClientTimeout(total=60, connect=10)
-            connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300, use_dns_cache=True)
-            
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        
-                        try:
-                            parsed_content = json.loads(content)
-                            if (expected_format == "list" and isinstance(parsed_content, list)) or \
-                               (expected_format == "dict" and isinstance(parsed_content, dict)):
-                                return parsed_content
-                        except json.JSONDecodeError:
-                            if attempt == max_retries:
-                                return None
-                    else:
-                        if attempt == max_retries:
-                            return None
+            try:
+                parsed_content = json.loads(content)
+                if (expected_format == "list" and isinstance(parsed_content, list)) or \
+                   (expected_format == "dict" and isinstance(parsed_content, dict)):
+                    return parsed_content
+            except json.JSONDecodeError:
+                if attempt == max_retries:
+                    return None
 
-        except (aiohttp.ClientError, BrokenPipeError, ConnectionResetError, OSError) as e:
-            logger.warning(f"Connection error in API call (attempt {attempt + 1}): {str(e)}")
+        except Exception as e:
+            logger.warning(f"Error in API call (attempt {attempt + 1}): {str(e)}")
             if attempt == max_retries:
                 logger.error(f"Max retries reached for API call: {str(e)}")
                 return None
             await asyncio.sleep(2 ** attempt)  # Exponential backoff
-        except Exception as e:
-            logger.exception(f"Unexpected error in API call: {str(e)}")
-            if attempt == max_retries:
-                return None
 
     return None
 

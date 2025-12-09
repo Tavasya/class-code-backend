@@ -1,12 +1,12 @@
 import logging
-import aiohttp
 from typing import Dict, Any, Optional
 from app.models.paragraph_restructuring_model import (
     ParagraphRestructuringRequest,
-    ParagraphRestructuringResult, 
+    ParagraphRestructuringResult,
     BandLevelDetectionResult
 )
-from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
+from app.core.config import OPENAI_API_KEY
+from app.services.openai_client import get_openai_client
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -116,20 +116,20 @@ def determine_band_level_from_scores(analysis_results: Dict[str, Any]) -> BandLe
 async def call_openai_for_restructuring(transcript: str, current_band: str, target_band: str) -> str:
     """
     Call OpenAI API to restructure paragraph to target CEFR level
-    
+
     Args:
         transcript: Original transcript text
         current_band: Current CEFR level
         target_band: Target CEFR level
-        
+
     Returns:
         Restructured paragraph text
     """
     logger.info(f"Calling OpenAI to restructure from {current_band} to {target_band}")
-    
+
     # Count original word count for length constraint
     original_word_count = len(transcript.split())
-    
+
     # Create simple, realistic improvement prompt
     prompt = f"""Improve this transcript with simple, natural enhancements.
 
@@ -148,39 +148,25 @@ Original transcript:
 Instructions: Make small, natural improvements to make the transcript clearer and more fluent. Focus on removing disfluencies, fixing basic grammar, and adding simple connecting words. Keep the same meaning and approximate length. Make it sound more natural and polished.
 
 Improved transcript:"""
-    
+
     try:
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json"
+        client = get_openai_client()
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful language assistant. You specialize in making simple, natural improvements to transcripts by removing disfluencies, fixing basic grammar, and adding connecting words. Keep improvements realistic and conversational."
+            },
+            {
+                "role": "user",
+                "content": prompt
             }
-            
-            payload = {
-                "model": "gpt-5-nano",
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "You are a helpful language assistant. You specialize in making simple, natural improvements to transcripts by removing disfluencies, fixing basic grammar, and adding connecting words. Keep improvements realistic and conversational."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            }
-            
-            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    improved_text = data["choices"][0]["message"]["content"].strip()
-                    logger.info(f"Successfully restructured paragraph (length: {len(improved_text)})")
-                    return improved_text
-                else:
-                    error_text = await response.text()
-                    logger.error(f"OpenAI API error {response.status}: {error_text}")
-                    return transcript  # Return original if API fails
-                    
+        ]
+
+        result = await client.chat("gpt-5-nano", messages)
+        improved_text = result["choices"][0]["message"]["content"].strip()
+        logger.info(f"Successfully restructured paragraph (length: {len(improved_text)})")
+        return improved_text
+
     except Exception as e:
         logger.error(f"Error calling OpenAI API: {str(e)}")
         return transcript  # Return original if error occurs

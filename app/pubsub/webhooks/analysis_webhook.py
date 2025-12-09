@@ -1079,9 +1079,9 @@ class AnalysisWebhook:
                 if questions:
                     # Initialize IELTS scoring service
                     ielts_service = IELTSScoringService()
-                    
+
                     # Calculate IELTS score
-                    ielts_score = ielts_service.calculate_ielts_score(question_results, questions)
+                    ielts_score = await ielts_service.calculate_ielts_score(question_results, questions)
                     
                     # Add IELTS score to overall assignment score
                     overall_assignment_score_json.update({

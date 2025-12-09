@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import CORS_ORIGINS
 from app.api.v1.router import api_router
 from app.services.file_manager_service import file_manager
+from app.services.openai_client import close_openai_client
 import logging
 from app.utils.vocabulary_utils import initialize_vocabulary_tools
 import sentry_sdk
@@ -70,7 +71,7 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Clean up background tasks"""
+    """Clean up background tasks and connections"""
     global cleanup_task
     if cleanup_task:
         cleanup_task.cancel()
@@ -79,6 +80,10 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
         logger.info("Stopped periodic file cleanup task")
+
+    # Close shared OpenAI client connection pool
+    await close_openai_client()
+    logger.info("Closed OpenAI client connection pool")
 
 @app.get("/sentry-debug")
 async def trigger_error():

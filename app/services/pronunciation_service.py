@@ -9,8 +9,9 @@ import subprocess
 import azure.cognitiveservices.speech as speechsdk
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
-from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
+from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION
 from app.services.file_manager_service import FileManagerService
+from app.services.openai_client import get_openai_client
 import unicodedata
 import cmudict
 
@@ -871,62 +872,47 @@ class PronunciationService:
         if not OPENAI_API_KEY:
             # Fallback if no API key
             return PronunciationService.generate_fallback_suggestion(transcript, critical_errors, filler_words)
-        
+
         try:
             # Prepare prompt for LLM
             error_info = ""
             if critical_errors:
                 error_words = ", ".join([f"'{e['word']}' (score: {e['score']})" for e in critical_errors[:5]])
                 error_info += f"Critical pronunciation errors: {error_words}. "
-                
+
             if filler_words:
                 filler_count = len(filler_words)
                 filler_info = f"Used {filler_count} filler words/sounds. "
                 error_info += filler_info
-            
+
             prompt = f"""
             Based on a pronunciation assessment of the following speech:
-            
+
             Transcript: "{transcript}"
-            
+
             {error_info}
-            
+
             Provide ONE CONCISE SENTENCE with actionable advice on how to improve pronunciation.
             Focus on the most critical issue. Be specific and direct.
             """
-            
-            # Call OpenAI API
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {OPENAI_API_KEY}"
-            }
-            
-            payload = {
-                "model": "gpt-5-nano",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_completion_tokens": 100
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        suggestion = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        
-                        # Clean up the suggestion if needed
-                        suggestion = suggestion.strip().strip('"')
-                        
-                        # Ensure it's a single sentence
-                        if "." in suggestion:
-                            suggestion = suggestion.split(".")[0].strip() + "."
-                            
-                        return suggestion
-                    else:
-                        logger.error(f"OpenAI API error: {response.status}")
-                        error_text = await response.text()
-                        logger.error(f"Error details: {error_text}")
-                        return PronunciationService.generate_fallback_suggestion(transcript, critical_errors, filler_words)
-                        
+
+            client = get_openai_client()
+            result = await client.chat(
+                "gpt-5-nano",
+                [{"role": "user", "content": prompt}],
+                max_completion_tokens=100
+            )
+            suggestion = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            # Clean up the suggestion if needed
+            suggestion = suggestion.strip().strip('"')
+
+            # Ensure it's a single sentence
+            if "." in suggestion:
+                suggestion = suggestion.split(".")[0].strip() + "."
+
+            return suggestion
+
         except Exception as e:
             logger.exception("Error getting improvement suggestion")
             return PronunciationService.generate_fallback_suggestion(transcript, critical_errors, filler_words)
