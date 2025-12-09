@@ -3,49 +3,106 @@ import aiohttp
 import tempfile
 import subprocess
 import logging
+import uuid
 from app.services.file_manager_service import file_manager
+from app.core.config import supabase
 
 logger = logging.getLogger(__name__)
+
+# Bucket name for converted audio files
+CONVERTED_AUDIO_BUCKET = "converted-audio"
 
 class AudioService:
     def __init__(self):
         pass
 
     async def process_single_audio(self, audio_url: str, question_number: int, submission_url: str) -> dict:
-        """Process a single audio URL with centralized file management"""
+        """Process a single audio URL with centralized file management
+
+        Now uploads WAV to Supabase Storage to ensure availability across Cloud Run instances.
+        """
         try:
             # Generate session ID for this file
             session_id = file_manager.generate_session_id(submission_url, question_number)
-            
-            # Download and convert audio
-            wav_path = await self.convert_to_wav(audio_url)
-            
-            # Register file with dependencies (pronunciation service will use this file)
-            dependent_services = {"pronunciation"}  # Only pronunciation service needs the converted file
-            
-            # Store metadata for potential retries
-            metadata = {
-                "original_audio_url": audio_url,
-                "question_number": question_number,
-                "submission_url": submission_url
-            }
-            
-            await file_manager.register_file_session(
-                session_id=session_id,
-                file_path=wav_path,
-                dependent_services=dependent_services,
-                cleanup_timeout_minutes=30,  # Cleanup after 30 minutes if services don't complete
-                metadata=metadata
-            )
-            
-            return {
-                "wav_path": wav_path,
-                "session_id": session_id,
-                "question_number": question_number
-            }
+
+            # Download and convert audio to WAV
+            local_wav_path = await self.convert_to_wav(audio_url)
+
+            try:
+                # Upload WAV to Supabase Storage for cross-instance access
+                storage_url = await self.upload_wav_to_storage(
+                    local_wav_path,
+                    submission_url,
+                    question_number
+                )
+                logger.info(f"Uploaded WAV to Supabase Storage: {storage_url}")
+
+                # Store metadata for potential retries
+                metadata = {
+                    "original_audio_url": audio_url,
+                    "question_number": question_number,
+                    "submission_url": submission_url,
+                    "storage_url": storage_url
+                }
+
+                # Register for cleanup tracking (optional now since file is in cloud storage)
+                await file_manager.register_file_session(
+                    session_id=session_id,
+                    file_path=local_wav_path,
+                    dependent_services={"pronunciation"},
+                    cleanup_timeout_minutes=30,
+                    metadata=metadata
+                )
+
+                return {
+                    "wav_path": storage_url,  # Return storage URL instead of local path
+                    "local_wav_path": local_wav_path,  # Keep local path for backwards compatibility
+                    "session_id": session_id,
+                    "question_number": question_number
+                }
+            finally:
+                # Clean up local WAV file after upload to storage
+                if local_wav_path and os.path.exists(local_wav_path):
+                    try:
+                        os.unlink(local_wav_path)
+                        logger.info(f"Cleaned up local WAV file after upload: {local_wav_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up local WAV file {local_wav_path}: {str(e)}")
+
         except Exception as e:
             logger.error(f"Error processing audio URL {audio_url} for question {question_number}: {str(e)}")
             raise
+
+    async def upload_wav_to_storage(self, local_wav_path: str, submission_url: str, question_number: int) -> str:
+        """Upload WAV file to Supabase Storage and return public URL"""
+        if not supabase:
+            raise Exception("Supabase client not initialized")
+
+        try:
+            # Generate unique filename
+            unique_id = str(uuid.uuid4())[:8]
+            storage_path = f"wav/{submission_url}/{question_number}_{unique_id}.wav"
+
+            # Read file content
+            with open(local_wav_path, 'rb') as f:
+                file_content = f.read()
+
+            # Upload to Supabase Storage
+            response = supabase.storage.from_(CONVERTED_AUDIO_BUCKET).upload(
+                path=storage_path,
+                file=file_content,
+                file_options={"content-type": "audio/wav"}
+            )
+
+            # Get public URL
+            public_url = supabase.storage.from_(CONVERTED_AUDIO_BUCKET).get_public_url(storage_path)
+
+            logger.info(f"Successfully uploaded WAV to storage: {storage_path}")
+            return public_url
+
+        except Exception as e:
+            logger.error(f"Failed to upload WAV to Supabase Storage: {str(e)}")
+            raise Exception(f"Failed to upload WAV to storage: {str(e)}")
 
     async def convert_to_wav(self, audio_url: str) -> str:
         """Download audio from URL and convert to WAV for speech analysis"""

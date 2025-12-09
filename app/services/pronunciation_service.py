@@ -484,43 +484,79 @@ class PronunciationService:
             }] if reference_text else []
 
     @staticmethod
+    async def download_audio_from_url(url: str) -> str:
+        """Download audio file from URL to local temp file"""
+        import aiohttp
+
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+        temp_path = temp.name
+        temp.close()
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=60, connect=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        raise Exception(f"Failed to download audio from URL: {response.status} {response.reason}")
+                    with open(temp_path, 'wb') as f:
+                        f.write(await response.read())
+
+            file_size_mb = os.path.getsize(temp_path) / 1024 / 1024
+            logger.info(f"Successfully downloaded audio from URL to {temp_path} ({file_size_mb:.2f}MB)")
+            return temp_path
+        except Exception as e:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise Exception(f"Failed to download audio from URL: {str(e)}")
+
+    @staticmethod
     async def analyze_pronunciation(audio_file: str, reference_text: str, session_id: Optional[str] = None, test_logs: Optional[TestLogsManager] = None) -> Dict[str, Any]:
         """
         Analyze pronunciation using Azure Speech Services with a provided reference text
-        
+
         Args:
-            audio_file: Path to the local audio file (no longer accepts URLs)
+            audio_file: Path to local audio file OR URL to audio file in Supabase Storage
             reference_text: Transcript text to use as reference
             session_id: Optional session ID for file lifecycle management
-            
+
         Returns:
             Pronunciation assessment results in standardized format
         """
+        local_file_to_cleanup = None  # Track if we downloaded a file that needs cleanup
+
         try:
             # Initialize test logs if not provided
             if test_logs is None:
                 test_logs = TestLogsManager()
-            
+
             test_logs.log_workflow_step("pronunciation_analysis", "started", f"Reference text: {len(reference_text)} chars", audio_file)
             test_logs.take_memory_snapshot("analysis_start", "Beginning pronunciation analysis")
-            
-            # Validate that we have a local file path, not a URL
+
+            # Check if audio_file is a URL (from Supabase Storage) and download it
             if audio_file.startswith(('http://', 'https://')):
-                error_msg = "PronunciationService now only accepts local file paths, not URLs. Audio URLs should be converted to local files by AudioService first."
-                test_logs.log_pronunciation_error("invalid_input", error_msg, audio_file)
-                raise ValueError(error_msg)
-            
+                logger.info(f"Audio file is a URL, downloading from storage: {audio_file[:100]}...")
+                test_logs.log_workflow_step("audio_download", "started", "Downloading audio from storage URL")
+
+                try:
+                    local_audio_path = await PronunciationService.download_audio_from_url(audio_file)
+                    local_file_to_cleanup = local_audio_path  # Mark for cleanup
+                    audio_file = local_audio_path
+                    test_logs.log_workflow_step("audio_download", "completed", f"Downloaded to {local_audio_path}")
+                except Exception as download_error:
+                    test_logs.log_pronunciation_error("download_failed", str(download_error), audio_file)
+                    raise Exception(f"Failed to download audio from storage: {str(download_error)}")
+
             # Verify file exists with retry mechanism
             max_wait_attempts = 5
             wait_time = 1  # Start with 1 second
-            
+
             for attempt in range(max_wait_attempts):
                 if os.path.exists(audio_file) and os.path.getsize(audio_file) > 0:
                     file_size_mb = os.path.getsize(audio_file) / 1024 / 1024
                     test_logs.log_workflow_step("file_verification", "found", f"File ready after {attempt + 1} attempts, size: {file_size_mb:.2f}MB", audio_file)
                     test_logs.take_memory_snapshot("file_found", f"Audio file located and verified")
                     break
-                    
+
                 if attempt < max_wait_attempts - 1:
                     test_logs.log_file_not_found_error(audio_file, attempt + 1, max_wait_attempts, "File not ready, waiting...")
                     logger.info(f"Audio file not ready yet: {audio_file}. Waiting {wait_time}s (attempt {attempt + 1}/{max_wait_attempts})")
@@ -529,19 +565,19 @@ class PronunciationService:
                 else:
                     test_logs.log_file_not_found_error(audio_file, attempt + 1, max_wait_attempts, "File not found after all attempts - triggering retry")
                     logger.warning(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}. File may have been cleaned up prematurely. Attempting to trigger audio pipeline retry.")
-                    
+
                     # Try to get original audio URL and submission info from session_id
                     if session_id:
                         try:
                             file_manager_service = FileManagerService()
                             session_info = await file_manager_service.get_session_info(session_id)
-                            
+
                             if session_info and session_info.get('metadata'):
                                 metadata = session_info['metadata']
                                 original_audio_url = metadata.get('original_audio_url')
                                 question_number = metadata.get('question_number')
                                 submission_url = metadata.get('submission_url')
-                                
+
                                 if all([original_audio_url, question_number, submission_url]):
                                     # Trigger audio pipeline retry
                                     from app.pubsub.client import PubSubClient
@@ -552,14 +588,14 @@ class PronunciationService:
                                         "submission_url": submission_url,
                                         "retry_reason": "pronunciation_file_not_found"
                                     }
-                                    
+
                                     message_id = pubsub_client.publish_message_by_name(
                                         topic_name="STUDENT_SUBMISSION",
                                         message=retry_message
                                     )
-                                    
+
                                     logger.info(f"Audio pipeline retry triggered with message ID: {message_id}")
-                                    
+
                                     return {
                                         "grade": 0,
                                         "issues": [{
@@ -569,7 +605,7 @@ class PronunciationService:
                                     }
                         except Exception as retry_error:
                             logger.error(f"Failed to trigger audio pipeline retry: {str(retry_error)}")
-                    
+
                     # Fallback if retry couldn't be triggered
                     raise FileNotFoundError(f"Audio file not found after {max_wait_attempts} attempts: {audio_file}")
             
@@ -642,21 +678,37 @@ class PronunciationService:
                     await file_manager_service.mark_service_complete(session_id, "pronunciation")
                 except Exception as e:
                     logger.warning(f"Failed to mark pronunciation service complete: {str(e)}")
-            
+
+            # Cleanup downloaded file if we downloaded from URL
+            if local_file_to_cleanup and os.path.exists(local_file_to_cleanup):
+                try:
+                    os.unlink(local_file_to_cleanup)
+                    logger.info(f"Cleaned up downloaded audio file: {local_file_to_cleanup}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup downloaded audio file: {str(cleanup_error)}")
+
             # Add test logs to result
             test_logs.take_memory_snapshot("analysis_complete", "All processing completed successfully")
             test_logs.log_workflow_step("pronunciation_analysis", "completed", "Analysis completed successfully")
             standardized_result["test_logs"] = test_logs.get_logs()
-            
+
             return standardized_result
-                
+
         except Exception as e:
             logger.exception("Error in analyze_pronunciation")
-            
+
             # Log the error if test_logs is available
             if 'test_logs' in locals() and test_logs:
                 test_logs.log_pronunciation_error("analysis_failed", f"Pronunciation analysis failed: {str(e)}", audio_file)
-            
+
+            # Cleanup downloaded file on error
+            if 'local_file_to_cleanup' in locals() and local_file_to_cleanup and os.path.exists(local_file_to_cleanup):
+                try:
+                    os.unlink(local_file_to_cleanup)
+                    logger.info(f"Cleaned up downloaded audio file on error: {local_file_to_cleanup}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup downloaded audio file on error: {str(cleanup_error)}")
+
             # Mark service complete even on failure to prevent stuck sessions
             if session_id:
                 try:
