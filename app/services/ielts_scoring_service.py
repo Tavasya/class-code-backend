@@ -3,8 +3,8 @@ import json
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import os
+from openai import OpenAI
 from app.core.config import OPENAI_API_KEY
-from app.services.openai_client import get_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -18,41 +18,48 @@ class IELTSScore:
 
 class IELTSScoringService:
     """Service for calculating IELTS band scores based on analysis results using the exact user algorithm"""
-
+    
     def __init__(self):
         """Initialize the IELTS scoring service"""
-        self.has_api_key = bool(OPENAI_API_KEY)
-        if not self.has_api_key:
+        # Initialize OpenAI client if API key is available
+        self.client = None
+        if OPENAI_API_KEY:
+            try:
+                self.client = OpenAI(api_key=OPENAI_API_KEY)
+                logger.info("OpenAI client initialized for IELTS scoring")
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenAI client: {str(e)}")
+        else:
             logger.warning("No OpenAI API key available, will use fallback scoring")
     
-    async def calculate_ielts_score(self, question_results: Dict[str, Any], questions: List[Dict]) -> IELTSScore:
+    def calculate_ielts_score(self, question_results: Dict[str, Any], questions: List[Dict]) -> IELTSScore:
         """
         Calculate IELTS band score based on analysis results using the exact user algorithm
-
+        
         Args:
             question_results: Dictionary of question analysis results
             questions: List of question objects from assignment
-
+            
         Returns:
             IELTSScore object with all band scores
         """
         try:
             logger.info(f"Starting IELTS score calculation for {len(question_results)} questions")
-
+            
             # Process all questions to extract assessment data (similar to user's _process_report_data)
             processed_data = []
-
+            
             for q_num, q_data in question_results.items():
                 if not q_data or not isinstance(q_data, dict):
                     continue
-
+                
                 # Extract transcript
                 transcript = ""
                 if "transcript" in q_data:
                     transcript = q_data["transcript"] or ""
                 elif "pronunciation" in q_data and isinstance(q_data["pronunciation"], dict):
                     transcript = q_data["pronunciation"].get("transcript", "")
-
+                
                 # Extract section feedback
                 section_feedback = {}
                 if "section_feedback" in q_data:
@@ -66,7 +73,7 @@ class IELTSScoringService:
                         "vocabulary": q_data.get("vocabulary", {}),
                         "pronunciation": q_data.get("pronunciation", {})
                     }
-
+                
                 # Get question text
                 question_text = ""
                 try:
@@ -75,7 +82,7 @@ class IELTSScoringService:
                         question_text = questions[q_idx].get("question", "")
                 except (ValueError, IndexError):
                     pass
-
+                
                 assessment_data = {
                     "transcript": transcript,
                     "question": question_text,
@@ -84,19 +91,19 @@ class IELTSScoringService:
                     "duration_feedback": q_data.get("duration_feedback", {})
                 }
                 processed_data.append(assessment_data)
-
+            
             if not processed_data:
                 logger.warning("No valid assessment data found for IELTS scoring")
                 return self._create_default_score()
-
+            
             # Use the exact user algorithm
-            return await self._predict_ielts_band_score(processed_data)
-
+            return self._predict_ielts_band_score(processed_data)
+            
         except Exception as e:
             logger.error(f"Error calculating IELTS score: {str(e)}")
             return self._create_default_score()
     
-    async def _predict_ielts_band_score(self, assessment_data: List[Dict]) -> IELTSScore:
+    def _predict_ielts_band_score(self, assessment_data: List[Dict]) -> IELTSScore:
         """Predict IELTS band score based on assessment data using the exact user algorithm"""
         try:
             # Initialize scores
@@ -104,31 +111,31 @@ class IELTSScoringService:
             grammar_scores = []
             lexical_scores = []
             pronunciation_scores = []
-
+            
             total_responses = len(assessment_data)
             problematic_responses = 0
             empty_responses = 0
             very_short_responses = 0
             total_words = 0
             low_cohesive_count = 0
-
+            
             # Process each response using the exact user algorithm
             for data in assessment_data:
                 feedback = data['section_feedback']
                 transcript = data.get('transcript', '').strip()
-
+                
                 # Check for empty or extremely minimal responses
                 word_count = len(transcript.split()) if transcript else 0
                 is_minimal_response = word_count < 3
                 is_empty_response = word_count == 0
-
+                
                 # Extract existing grades/scores
                 fluency_data = feedback.get('fluency', {})
                 grammar_data = feedback.get('grammar', {})
                 lexical_data = feedback.get('lexical', {})
                 vocabulary_data = feedback.get('vocabulary', {})
                 pronunciation_data = feedback.get('pronunciation', {})
-
+                
                 # Apply severe penalties for empty/minimal responses
                 if is_empty_response:
                     fluency_score = 1.0
@@ -149,7 +156,7 @@ class IELTSScoringService:
                     lexical_score = self._convert_to_ielts_band(lexical_data.get('grade', 50))
                     vocabulary_score = self._convert_to_ielts_band(vocabulary_data.get('grade', 50))
                     pronunciation_score = self._convert_to_ielts_band(pronunciation_data.get('grade', 50))
-
+                    
                     # Apply length penalties for very short responses
                     if word_count < 5:
                         fluency_score = min(fluency_score, 3.0)
@@ -157,24 +164,24 @@ class IELTSScoringService:
                     elif word_count < 8:
                         fluency_score = min(fluency_score, 4.0)
                         lexical_score = min(lexical_score, 4.0)
-
+                    
                     # Detect potentially irrelevant responses
                     vocab_grade = vocabulary_data.get('grade', 50)
                     lexical_grade = lexical_data.get('grade', 50)
-
+                    
                     if vocab_grade < 20 and lexical_grade > 80:
                         fluency_score = min(fluency_score, 3.0)
                         lexical_score = min(lexical_score, 3.5)
                         grammar_score = min(grammar_score, 4.0)
-
+                
                 # Apply additional factors based on detailed feedback
                 paragraph_data = feedback.get('paragraph_restructuring', {})
-
+                
                 # Use LLM for nuanced fluency assessment (skip for empty/minimal responses)
                 if is_empty_response or is_minimal_response:
                     llm_fluency_score = fluency_score
                 else:
-                    llm_fluency_score = await self._llm_assess_fluency(transcript, data['question'])
+                    llm_fluency_score = self._llm_assess_fluency(transcript, data['question'])
                 
                 fluency_score = self._adjust_fluency_score(
                     fluency_score, fluency_data, data.get('duration_feedback', {}), 
@@ -312,11 +319,11 @@ class IELTSScoringService:
         else:
             return 1.5
     
-    async def _llm_assess_fluency(self, transcript: str, question: str) -> float:
+    def _llm_assess_fluency(self, transcript: str, question: str) -> float:
         """Use LLM to assess fluency with universal accuracy calibration"""
-        if not self.has_api_key:
+        if not self.client:
             return 7.0  # Default fallback
-
+        
         prompt = f"""
 You are an expert IELTS examiner. Rate ONLY fluency and coherence (1-9).
 
@@ -342,19 +349,18 @@ Assessment criteria:
 
 Be precise and use the full 1-9 range. Respond with ONLY a number.
 """
-
+        
         try:
-            client = get_openai_client()
-            result = await client.chat(
-                "gpt-5-nano",
-                [
+            response = self.client.chat.completions.create(
+                model="gpt-5-nano",
+                messages=[
                     {"role": "system", "content": "You are an IELTS examiner. Be generous for natural, fluent speech. Respond with only a number."},
                     {"role": "user", "content": prompt}
                 ],
                 max_completion_tokens=10
             )
-
-            score_text = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            
+            score_text = response.choices[0].message.content.strip()
             score = float(score_text)
             return max(1.0, min(9.0, score))
         except Exception as e:

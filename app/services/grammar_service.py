@@ -1,10 +1,10 @@
 import re
 import logging
+import aiohttp
 import json
 import asyncio
 from typing import Dict, List, Any
-from app.core.config import OPENAI_API_KEY
-from app.services.openai_client import get_openai_client
+from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
 import difflib
 
 # Setup logging
@@ -15,14 +15,18 @@ MODEL = "gpt-5-nano"
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2, submission_url: str = None, question_number: int = None) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
     logger.info(f"Calling OpenAI API with format validation, expecting: {expected_format}")
-
+    
     if not OPENAI_API_KEY:
         logger.warning("No API key available, cannot make API call")
         return None
-
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    
     current_prompt = prompt
-    client = get_openai_client()
-
+    
     for attempt in range(max_retries + 1):
         try:
             if attempt > 0:
@@ -33,9 +37,14 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 ONLY return the raw JSON {expected_format}.
                 """
                 current_prompt = format_emphasis + "\n\n" + prompt
-
+            
             logger.info(f"API call attempt {attempt + 1}/{max_retries + 1}")
-
+            
+            payload = {
+                "model": MODEL,
+                "messages": [{"role": "user", "content": current_prompt}]
+            }
+            
             # Track API call
             if submission_url:
                 try:
@@ -43,40 +52,55 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                     await api_call_tracker.increment_openai_call(submission_url, "grammar", question_number)
                 except Exception as e:
                     logger.warning(f"Failed to track API call: {str(e)}")
-
-            result = await client.chat(MODEL, [{"role": "user", "content": current_prompt}])
-            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-            if "```json" in content or "```" in content:
-                json_pattern = r"```(?:json)?\s*(.*?)\s*```"
-                match = re.search(json_pattern, content, re.DOTALL)
-                if match:
-                    content = match.group(1)
-
-            try:
-                parsed_content = json.loads(content)
-                logger.info(f"Parsed content: {parsed_content}")
-
-                # Handle both list and dict responses
-                if isinstance(parsed_content, dict) and "corrections" in parsed_content:
-                    return parsed_content["corrections"]
-                elif isinstance(parsed_content, list):
-                    return parsed_content
-                else:
-                    logger.warning(f"Invalid format: expected list or dict with 'corrections' key, got {type(parsed_content)}")
-
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON: {e}")
-                if attempt == max_retries:
-                    return None
-
-        except Exception as e:
-            logger.warning(f"Error in API call (attempt {attempt + 1}): {str(e)}")
+            
+            timeout = aiohttp.ClientTimeout(total=60, connect=10)
+            connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300, use_dns_cache=True)
+            
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        
+                        if "```json" in content or "```" in content:
+                            json_pattern = r"```(?:json)?\s*(.*?)\s*```"
+                            match = re.search(json_pattern, content, re.DOTALL)
+                            if match:
+                                content = match.group(1)
+                        
+                        try:
+                            parsed_content = json.loads(content)
+                            logger.info(f"Parsed content: {parsed_content}")
+                            
+                            # Handle both list and dict responses
+                            if isinstance(parsed_content, dict) and "corrections" in parsed_content:
+                                return parsed_content["corrections"]
+                            elif isinstance(parsed_content, list):
+                                return parsed_content
+                            else:
+                                logger.warning(f"Invalid format: expected list or dict with 'corrections' key, got {type(parsed_content)}")
+                            
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse JSON: {e}")
+                            if attempt == max_retries:
+                                return None
+                    else:
+                        error_content = await response.text()
+                        logger.error(f"API error: {response.status}, {error_content[:200]}...")
+                        if attempt == max_retries:
+                            return None
+                        
+        except (aiohttp.ClientError, BrokenPipeError, ConnectionResetError, OSError) as e:
+            logger.warning(f"Connection error in API call (attempt {attempt + 1}): {str(e)}")
             if attempt == max_retries:
                 logger.error(f"Max retries reached for API call: {str(e)}")
                 return None
             await asyncio.sleep(2 ** attempt)  # Exponential backoff
-
+        except Exception as e:
+            logger.exception(f"Unexpected error in API call: {str(e)}")
+            if attempt == max_retries:
+                return None
+            
     return None
 
 def split_into_sentences(text: str) -> List[str]:
