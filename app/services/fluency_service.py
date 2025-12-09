@@ -6,7 +6,7 @@ import re
 from typing import Dict, List, Any, Tuple
 from app.models.fluency_model import FluencyRequest, FluencyResponse, WordDetail
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
-from app.services.http_client import get_shared_session
+from app.services.http_client import get_shared_session, rate_limited_request
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -44,32 +44,33 @@ async def call_api_with_retry(prompt: str, expected_format: str = "dict", max_re
                 "messages": [{"role": "user", "content": current_prompt}]
             }
             
-            session = await get_shared_session()
-            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            async with rate_limited_request():
+                session = await get_shared_session()
+                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-                    if "```json" in content or "```" in content:
-                        json_pattern = r"```(?:json)?\s*(.*?)\s*```"
-                        match = re.search(json_pattern, content, re.DOTALL)
-                        if match:
-                            content = match.group(1)
+                        if "```json" in content or "```" in content:
+                            json_pattern = r"```(?:json)?\s*(.*?)\s*```"
+                            match = re.search(json_pattern, content, re.DOTALL)
+                            if match:
+                                content = match.group(1)
 
-                    try:
-                        parsed_content = json.loads(content)
-                        if (expected_format == "dict" and isinstance(parsed_content, dict)) or \
-                           (expected_format == "list" and isinstance(parsed_content, list)):
-                            return parsed_content
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to parse JSON")
+                        try:
+                            parsed_content = json.loads(content)
+                            if (expected_format == "dict" and isinstance(parsed_content, dict)) or \
+                               (expected_format == "list" and isinstance(parsed_content, list)):
+                                return parsed_content
+                        except json.JSONDecodeError:
+                            logger.error(f"Failed to parse JSON")
+                            if attempt == max_retries:
+                                return None
+                    else:
+                        error_content = await response.text()
+                        logger.error(f"API error: {response.status}, {error_content[:200]}...")
                         if attempt == max_retries:
                             return None
-                else:
-                    error_content = await response.text()
-                    logger.error(f"API error: {response.status}, {error_content[:200]}...")
-                    if attempt == max_retries:
-                        return None
         except Exception as e:
             logger.exception(f"Error in API call: {str(e)}")
             if attempt == max_retries:

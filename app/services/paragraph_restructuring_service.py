@@ -7,7 +7,7 @@ from app.models.paragraph_restructuring_model import (
     BandLevelDetectionResult
 )
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
-from app.services.http_client import get_shared_session
+from app.services.http_client import get_shared_session, rate_limited_request
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -170,17 +170,18 @@ Improved transcript:"""
             ]
         }
 
-        session = await get_shared_session()
-        async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-            if response.status == 200:
-                data = await response.json()
-                improved_text = data["choices"][0]["message"]["content"].strip()
-                logger.info(f"Successfully restructured paragraph (length: {len(improved_text)})")
-                return improved_text
-            else:
-                error_text = await response.text()
-                logger.error(f"OpenAI API error {response.status}: {error_text}")
-                return transcript  # Return original if API fails
+        async with rate_limited_request():
+            session = await get_shared_session()
+            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    improved_text = data["choices"][0]["message"]["content"].strip()
+                    logger.info(f"Successfully restructured paragraph (length: {len(improved_text)})")
+                    return improved_text
+                else:
+                    error_text = await response.text()
+                    logger.error(f"OpenAI API error {response.status}: {error_text}")
+                    return transcript  # Return original if API fails
                     
     except Exception as e:
         logger.error(f"Error calling OpenAI API: {str(e)}")

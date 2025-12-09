@@ -5,7 +5,7 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from app.models.lexical_model import LexicalFeedback, LexicalCorrection
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
-from app.services.http_client import get_shared_session
+from app.services.http_client import get_shared_session, rate_limited_request
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -45,23 +45,24 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 "messages": [{"role": "user", "content": current_prompt}]
             }
 
-            session = await get_shared_session()
-            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            async with rate_limited_request():
+                session = await get_shared_session()
+                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-                    try:
-                        parsed_content = json.loads(content)
-                        if (expected_format == "list" and isinstance(parsed_content, list)) or \
-                           (expected_format == "dict" and isinstance(parsed_content, dict)):
-                            return parsed_content
-                    except json.JSONDecodeError:
+                        try:
+                            parsed_content = json.loads(content)
+                            if (expected_format == "list" and isinstance(parsed_content, list)) or \
+                               (expected_format == "dict" and isinstance(parsed_content, dict)):
+                                return parsed_content
+                        except json.JSONDecodeError:
+                            if attempt == max_retries:
+                                return None
+                    else:
                         if attempt == max_retries:
                             return None
-                else:
-                    if attempt == max_retries:
-                        return None
 
         except (aiohttp.ClientError, BrokenPipeError, ConnectionResetError, OSError) as e:
             logger.warning(f"Connection error in API call (attempt {attempt + 1}): {str(e)}")

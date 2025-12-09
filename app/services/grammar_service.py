@@ -5,7 +5,7 @@ import json
 import asyncio
 from typing import Dict, List, Any
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
-from app.services.http_client import get_shared_session
+from app.services.http_client import get_shared_session, rate_limited_request
 import difflib
 
 # Setup logging
@@ -54,39 +54,40 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 except Exception as e:
                     logger.warning(f"Failed to track API call: {str(e)}")
             
-            session = await get_shared_session()
-            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            async with rate_limited_request():
+                session = await get_shared_session()
+                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-                    if "```json" in content or "```" in content:
-                        json_pattern = r"```(?:json)?\s*(.*?)\s*```"
-                        match = re.search(json_pattern, content, re.DOTALL)
-                        if match:
-                            content = match.group(1)
+                        if "```json" in content or "```" in content:
+                            json_pattern = r"```(?:json)?\s*(.*?)\s*```"
+                            match = re.search(json_pattern, content, re.DOTALL)
+                            if match:
+                                content = match.group(1)
 
-                    try:
-                        parsed_content = json.loads(content)
-                        logger.info(f"Parsed content: {parsed_content}")
+                        try:
+                            parsed_content = json.loads(content)
+                            logger.info(f"Parsed content: {parsed_content}")
 
-                        # Handle both list and dict responses
-                        if isinstance(parsed_content, dict) and "corrections" in parsed_content:
-                            return parsed_content["corrections"]
-                        elif isinstance(parsed_content, list):
-                            return parsed_content
-                        else:
-                            logger.warning(f"Invalid format: expected list or dict with 'corrections' key, got {type(parsed_content)}")
+                            # Handle both list and dict responses
+                            if isinstance(parsed_content, dict) and "corrections" in parsed_content:
+                                return parsed_content["corrections"]
+                            elif isinstance(parsed_content, list):
+                                return parsed_content
+                            else:
+                                logger.warning(f"Invalid format: expected list or dict with 'corrections' key, got {type(parsed_content)}")
 
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Failed to parse JSON: {e}")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse JSON: {e}")
+                            if attempt == max_retries:
+                                return None
+                    else:
+                        error_content = await response.text()
+                        logger.error(f"API error: {response.status}, {error_content[:200]}...")
                         if attempt == max_retries:
                             return None
-                else:
-                    error_content = await response.text()
-                    logger.error(f"API error: {response.status}, {error_content[:200]}...")
-                    if attempt == max_retries:
-                        return None
                         
         except (aiohttp.ClientError, BrokenPipeError, ConnectionResetError, OSError) as e:
             logger.warning(f"Connection error in API call (attempt {attempt + 1}): {str(e)}")

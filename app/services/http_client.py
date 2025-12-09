@@ -1,24 +1,30 @@
 """
-Shared HTTP client module for connection pooling.
+Shared HTTP client module for connection pooling and concurrency control.
 
-This module provides a shared aiohttp ClientSession that is reused across
-all API calls, following Google Cloud Run best practices for connection pooling.
+This module provides:
+1. A shared aiohttp ClientSession for connection pooling
+2. A semaphore to limit concurrent API requests and prevent bursts
 
 References:
 - https://docs.cloud.google.com/run/docs/configuring/networking-best-practices
 - https://docs.aiohttp.org/en/stable/http_request_lifecycle.html
+- https://cookbook.openai.com/examples/how_to_handle_rate_limits
 """
 
 import asyncio
 import aiohttp
 import logging
 from typing import Optional
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
 # Module-level shared session
 _shared_session: Optional[aiohttp.ClientSession] = None
 _session_lock = asyncio.Lock()
+
+# Module-level semaphore for concurrency control
+_api_semaphore: Optional[asyncio.Semaphore] = None
 
 # Configuration for the shared session
 SESSION_CONFIG = {
@@ -28,6 +34,11 @@ SESSION_CONFIG = {
     "pool_limit_per_host": 50, # Per-host connection limit (e.g., OpenAI API)
     "dns_cache_ttl": 300,     # DNS cache TTL in seconds
     "keepalive_timeout": 30,  # Keep-alive timeout in seconds
+}
+
+# Concurrency control configuration
+CONCURRENCY_CONFIG = {
+    "max_concurrent_requests": 30,  # Max concurrent API requests per instance
 }
 
 
@@ -111,3 +122,42 @@ async def reset_shared_session() -> None:
     # Recreate the session
     await get_shared_session()
     logger.info("Shared session reset complete")
+
+
+def get_api_semaphore() -> asyncio.Semaphore:
+    """
+    Get or create the API semaphore for concurrency control.
+
+    The semaphore limits the number of concurrent API requests to prevent
+    bursts that can overwhelm the API or cause connection errors.
+
+    Returns:
+        asyncio.Semaphore: A semaphore for rate limiting API requests
+    """
+    global _api_semaphore
+
+    if _api_semaphore is None:
+        max_concurrent = CONCURRENCY_CONFIG["max_concurrent_requests"]
+        _api_semaphore = asyncio.Semaphore(max_concurrent)
+        logger.info(f"Created API semaphore with max_concurrent_requests={max_concurrent}")
+
+    return _api_semaphore
+
+
+@asynccontextmanager
+async def rate_limited_request():
+    """
+    Context manager for rate-limited API requests.
+
+    Usage:
+        async with rate_limited_request():
+            session = await get_shared_session()
+            async with session.post(url, ...) as response:
+                ...
+
+    This ensures that no more than max_concurrent_requests are in-flight
+    at any time, preventing API bursts and connection errors.
+    """
+    semaphore = get_api_semaphore()
+    async with semaphore:
+        yield
