@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from app.core.config import OPENAI_API_KEY, AZURE_SPEECH_KEY, AZURE_SPEECH_REGION, OPENAI_API_URL
 from app.services.file_manager_service import FileManagerService
+from app.services.http_client import get_shared_session
 import unicodedata
 import cmudict
 
@@ -486,20 +487,17 @@ class PronunciationService:
     @staticmethod
     async def download_audio_from_url(url: str) -> str:
         """Download audio file from URL to local temp file"""
-        import aiohttp
-
         temp = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
         temp_path = temp.name
         temp.close()
 
         try:
-            timeout = aiohttp.ClientTimeout(total=60, connect=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise Exception(f"Failed to download audio from URL: {response.status} {response.reason}")
-                    with open(temp_path, 'wb') as f:
-                        f.write(await response.read())
+            session = await get_shared_session()
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to download audio from URL: {response.status} {response.reason}")
+                with open(temp_path, 'wb') as f:
+                    f.write(await response.read())
 
             file_size_mb = os.path.getsize(temp_path) / 1024 / 1024
             logger.info(f"Successfully downloaded audio from URL to {temp_path} ({file_size_mb:.2f}MB)")
@@ -907,25 +905,25 @@ class PronunciationService:
                 "max_completion_tokens": 100
             }
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        suggestion = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        
-                        # Clean up the suggestion if needed
-                        suggestion = suggestion.strip().strip('"')
-                        
-                        # Ensure it's a single sentence
-                        if "." in suggestion:
-                            suggestion = suggestion.split(".")[0].strip() + "."
-                            
-                        return suggestion
-                    else:
-                        logger.error(f"OpenAI API error: {response.status}")
-                        error_text = await response.text()
-                        logger.error(f"Error details: {error_text}")
-                        return PronunciationService.generate_fallback_suggestion(transcript, critical_errors, filler_words)
+            session = await get_shared_session()
+            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    suggestion = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                    # Clean up the suggestion if needed
+                    suggestion = suggestion.strip().strip('"')
+
+                    # Ensure it's a single sentence
+                    if "." in suggestion:
+                        suggestion = suggestion.split(".")[0].strip() + "."
+
+                    return suggestion
+                else:
+                    logger.error(f"OpenAI API error: {response.status}")
+                    error_text = await response.text()
+                    logger.error(f"Error details: {error_text}")
+                    return PronunciationService.generate_fallback_suggestion(transcript, critical_errors, filler_words)
                         
         except Exception as e:
             logger.exception("Error getting improvement suggestion")

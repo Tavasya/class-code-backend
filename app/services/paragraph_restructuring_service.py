@@ -3,10 +3,11 @@ import aiohttp
 from typing import Dict, Any, Optional
 from app.models.paragraph_restructuring_model import (
     ParagraphRestructuringRequest,
-    ParagraphRestructuringResult, 
+    ParagraphRestructuringResult,
     BandLevelDetectionResult
 )
 from app.core.config import OPENAI_API_KEY, OPENAI_API_URL
+from app.services.http_client import get_shared_session
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -150,36 +151,36 @@ Instructions: Make small, natural improvements to make the transcript clearer an
 Improved transcript:"""
     
     try:
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": "gpt-5-nano",
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "You are a helpful language assistant. You specialize in making simple, natural improvements to transcripts by removing disfluencies, fixing basic grammar, and adding connecting words. Keep improvements realistic and conversational."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            }
-            
-            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    improved_text = data["choices"][0]["message"]["content"].strip()
-                    logger.info(f"Successfully restructured paragraph (length: {len(improved_text)})")
-                    return improved_text
-                else:
-                    error_text = await response.text()
-                    logger.error(f"OpenAI API error {response.status}: {error_text}")
-                    return transcript  # Return original if API fails
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "gpt-5-nano",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful language assistant. You specialize in making simple, natural improvements to transcripts by removing disfluencies, fixing basic grammar, and adding connecting words. Keep improvements realistic and conversational."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }
+
+        session = await get_shared_session()
+        async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
+            if response.status == 200:
+                data = await response.json()
+                improved_text = data["choices"][0]["message"]["content"].strip()
+                logger.info(f"Successfully restructured paragraph (length: {len(improved_text)})")
+                return improved_text
+            else:
+                error_text = await response.text()
+                logger.error(f"OpenAI API error {response.status}: {error_text}")
+                return transcript  # Return original if API fails
                     
     except Exception as e:
         logger.error(f"Error calling OpenAI API: {str(e)}")

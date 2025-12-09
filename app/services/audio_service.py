@@ -5,6 +5,7 @@ import subprocess
 import logging
 import uuid
 from app.services.file_manager_service import file_manager
+from app.services.http_client import get_shared_session
 from app.core.config import supabase
 
 logger = logging.getLogger(__name__)
@@ -132,12 +133,12 @@ class AudioService:
         temp.close()
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        raise Exception(f"Failed to download audio: {response.reason}")
-                    with open(temp_path, 'wb') as f:
-                        f.write(await response.read())
+            session = await get_shared_session()
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to download audio: {response.reason}")
+                with open(temp_path, 'wb') as f:
+                    f.write(await response.read())
             logger.info(f"Successfully downloaded audio from {url} to {temp_path}")
             return temp_path
         except Exception as e:

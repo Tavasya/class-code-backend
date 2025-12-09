@@ -4,6 +4,7 @@ import aiohttp
 import asyncio
 from typing import Dict, Any
 from app.core.config import ASSEMBLYAI_API_KEY
+from app.services.http_client import get_shared_session
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -45,22 +46,22 @@ class TranscriptionService:
         
         try:
             with open(file_path, 'rb') as audio_file:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        ASSEMBLYAI_UPLOAD_URL,
-                        headers=headers,
-                        data=audio_file
-                    ) as response:
-                        if response.status == 200:
-                            response_json = await response.json()
-                            upload_url = response_json.get('upload_url')
-                            logger.info(f"File uploaded successfully: {upload_url}")
-                            return upload_url
-                        else:
-                            error_text = await response.text()
-                            logger.error(f"AssemblyAI upload error: {response.status}, {error_text}")
-                            raise Exception(f"AssemblyAI upload failed: {error_text}")
-        
+                session = await get_shared_session()
+                async with session.post(
+                    ASSEMBLYAI_UPLOAD_URL,
+                    headers=headers,
+                    data=audio_file
+                ) as response:
+                    if response.status == 200:
+                        response_json = await response.json()
+                        upload_url = response_json.get('upload_url')
+                        logger.info(f"File uploaded successfully: {upload_url}")
+                        return upload_url
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"AssemblyAI upload error: {response.status}, {error_text}")
+                        raise Exception(f"AssemblyAI upload failed: {error_text}")
+
         except Exception as e:
             logger.exception("Error uploading to AssemblyAI")
             raise Exception(f"Failed to upload file to AssemblyAI: {str(e)}")
@@ -82,45 +83,45 @@ class TranscriptionService:
         }
         
         try:
-            async with aiohttp.ClientSession() as session:
-                # Submit transcription request
-                async with session.post(
-                    ASSEMBLYAI_TRANSCRIPT_URL,
-                    json=data,
-                    headers=headers
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"AssemblyAI transcription request error: {response.status}, {error_text}")
-                        raise Exception(f"AssemblyAI transcription request failed: {error_text}")
-                    
-                    transcript_response = await response.json()
-                    transcript_id = transcript_response['id']
-                    logger.info(f"Transcription request submitted: {transcript_id}")
-                    
-                    # Poll for completion
-                    polling_endpoint = f"{ASSEMBLYAI_TRANSCRIPT_URL}/{transcript_id}"
-                    
-                    while True:
-                        await asyncio.sleep(3)
-                        
-                        async with session.get(polling_endpoint, headers=headers) as polling_response:
-                            if polling_response.status != 200:
-                                error_text = await polling_response.text()
-                                logger.error(f"AssemblyAI polling error: {polling_response.status}, {error_text}")
-                                raise Exception(f"AssemblyAI polling failed: {error_text}")
-                            
-                            polling_result = await polling_response.json()
-                            status = polling_result['status']
-                            
-                            if status == 'completed':
-                                logger.info(f"Transcription completed: {transcript_id}\n")
-                                return polling_result
-                            elif status == 'error':
-                                error_message = polling_result.get('error', 'Unknown error')
-                                logger.error(f"AssemblyAI transcription error: {error_message}")
-                                raise Exception(f"AssemblyAI transcription failed: {error_message}")
-                        
+            session = await get_shared_session()
+            # Submit transcription request
+            async with session.post(
+                ASSEMBLYAI_TRANSCRIPT_URL,
+                json=data,
+                headers=headers
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"AssemblyAI transcription request error: {response.status}, {error_text}")
+                    raise Exception(f"AssemblyAI transcription request failed: {error_text}")
+
+                transcript_response = await response.json()
+                transcript_id = transcript_response['id']
+                logger.info(f"Transcription request submitted: {transcript_id}")
+
+            # Poll for completion
+            polling_endpoint = f"{ASSEMBLYAI_TRANSCRIPT_URL}/{transcript_id}"
+
+            while True:
+                await asyncio.sleep(3)
+
+                async with session.get(polling_endpoint, headers=headers) as polling_response:
+                    if polling_response.status != 200:
+                        error_text = await polling_response.text()
+                        logger.error(f"AssemblyAI polling error: {polling_response.status}, {error_text}")
+                        raise Exception(f"AssemblyAI polling failed: {error_text}")
+
+                    polling_result = await polling_response.json()
+                    status = polling_result['status']
+
+                    if status == 'completed':
+                        logger.info(f"Transcription completed: {transcript_id}\n")
+                        return polling_result
+                    elif status == 'error':
+                        error_message = polling_result.get('error', 'Unknown error')
+                        logger.error(f"AssemblyAI transcription error: {error_message}")
+                        raise Exception(f"AssemblyAI transcription failed: {error_message}")
+
         except Exception as e:
             logger.exception("Error getting transcript from AssemblyAI")
             raise Exception(f"Failed to get transcript from AssemblyAI: {str(e)}")

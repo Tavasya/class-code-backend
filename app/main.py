@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import CORS_ORIGINS
 from app.api.v1.router import api_router
 from app.services.file_manager_service import file_manager
+from app.services.http_client import get_shared_session, close_shared_session
 import logging
 from app.utils.vocabulary_utils import initialize_vocabulary_tools
 import sentry_sdk
@@ -68,9 +69,18 @@ async def startup_event():
         # This allows the application to start even if vocabulary tools fail
         logger.warning("Application will continue without vocabulary tools")
 
+    # Initialize shared HTTP session for connection pooling
+    try:
+        logger.info("Initializing shared HTTP session...")
+        await get_shared_session()
+        logger.info("Successfully initialized shared HTTP session")
+    except Exception as e:
+        logger.error(f"Failed to initialize shared HTTP session: {str(e)}")
+        logger.warning("Application will continue, session will be created on first use")
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Clean up background tasks"""
+    """Clean up background tasks and shared resources"""
     global cleanup_task
     if cleanup_task:
         cleanup_task.cancel()
@@ -79,6 +89,13 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
         logger.info("Stopped periodic file cleanup task")
+
+    # Close shared HTTP session
+    try:
+        await close_shared_session()
+        logger.info("Closed shared HTTP session")
+    except Exception as e:
+        logger.error(f"Error closing shared HTTP session: {str(e)}")
 
 @app.get("/sentry-debug")
 async def trigger_error():
