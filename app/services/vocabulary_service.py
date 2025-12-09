@@ -41,6 +41,9 @@ def init_vocab_log():
 # Previous v2: CEFR-based vocabulary analysis (legacy, commented out)
 MODEL = "gpt-5-nano"
 
+# Batch size for processing multiple sentences in one API call
+VOCABULARY_BATCH_SIZE = 5
+
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
     if not OPENAI_API_KEY:
@@ -152,7 +155,7 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
 def create_vocabulary_prompt_for_single_sentence(sentence: str) -> str:
     """Create optimized prompt for single sentence collocation analysis"""
     return f"""
-You are an expert in English vocabulary and collocation analysis. Analyze the following sentence for incorrect word usage and poor word choices on a word-by-word basis. If you chose a word in a sentence you dont need to choose it again. 
+You are an expert in English vocabulary and collocation analysis. Analyze the following sentence for incorrect word usage and poor word choices on a word-by-word basis. If you chose a word in a sentence you dont need to choose it again.
 
 Sentence: "{sentence}"
 
@@ -172,7 +175,7 @@ IMPORTANT: Focus on individual words and their immediate context. Analyze each w
 
 For each issue identified, provide:
 - The problematic word
-- A suggested replacement word 
+- A suggested replacement word
 - The category number (1-10 from above)
 - A brief explanation of the issue
 - Example usage of the correct word
@@ -183,7 +186,7 @@ Present the results in JSON format:
         "type": "vocabulary",
         "category": [category_number],
         "original_word": "[problematic_word]",
-        "suggested_word": "[better_alternative]", 
+        "suggested_word": "[better_alternative]",
         "explanation": "[reason_for_improvement]",
         "examples": ["[example_with_suggested_word]"]
     }}
@@ -192,10 +195,56 @@ Present the results in JSON format:
 ONLY analyze words that are actually present in the sentence. Return ONLY the JSON array.
 """
 
+def create_vocabulary_prompt_for_batch(sentences: List[str], start_index: int) -> str:
+    """Create prompt for analyzing a batch of sentences for vocabulary"""
+    sentences_text = ""
+    for i, sentence in enumerate(sentences):
+        sentences_text += f"\n{start_index + i + 1}. {sentence}"
+
+    return f"""
+You are an expert in English vocabulary and collocation analysis. Analyze the following sentences for incorrect word usage and poor word choices.
+
+Your job is to identify words that are:
+1. Used incorrectly in context (wrong word choice)
+2. Poor collocations (words that don't naturally go together)
+3. Unnatural or awkward word selections
+4. Misspelled or malformed words
+5. Words that could be replaced with more appropriate alternatives
+6. Vocabulary that doesn't fit the register or style
+7. Words used in wrong grammatical contexts
+8. Redundant or unnecessary words
+9. Missing words that would improve collocations
+10. Other vocabulary issues
+
+IMPORTANT: Focus on individual words and their immediate context. Analyze each word for appropriateness, correctness, and natural usage.
+
+Sentences to analyze:{sentences_text}
+
+Provide suggestions as a JSON array of arrays. Each inner array contains suggestions for the corresponding sentence (by order). If a sentence has no issues, use an empty array.
+
+Output format:
+[
+    [  // suggestions for sentence {start_index + 1}
+        {{
+            "type": "vocabulary",
+            "category": [category_number],
+            "original_word": "[problematic_word]",
+            "suggested_word": "[better_alternative]",
+            "explanation": "[reason_for_improvement]",
+            "examples": ["[example_with_suggested_word]"]
+        }}
+    ],
+    [],  // sentence {start_index + 2}: no suggestions
+    ...
+]
+
+ONLY analyze words that are actually present in the sentences. Return ONLY the JSON array with exactly {len(sentences)} inner arrays. No other text or markdown formatting.
+"""
+
 async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -> Dict[str, Any]:
-    """Analyze vocabulary collocations for a single sentence"""
+    """Analyze vocabulary collocations for a single sentence (fallback for batch failures)"""
     vocab_log(f"🔍 VOCAB: Analyzing sentence {sentence_idx} (len: {len(sentence)})")
-    
+
     if not sentence or not sentence.strip():
         vocab_log(f"🔍 VOCAB: Empty sentence {sentence_idx}, skipping")
         return {
@@ -204,15 +253,15 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
             "suggestions": [],
             "success": True
         }
-    
+
     try:
         prompt = create_vocabulary_prompt_for_single_sentence(sentence)
-        
+
         # Add timeout protection for individual sentence analysis
         try:
             result = await asyncio.wait_for(
-                call_openai_with_retry(prompt, expected_format="list", max_retries=1),  # Reduced retries
-                timeout=30.0  # 30 second timeout per sentence
+                call_openai_with_retry(prompt, expected_format="list", max_retries=1),
+                timeout=30.0
             )
             vocab_log(f"✅ VOCAB: Sentence {sentence_idx} API call completed")
         except asyncio.TimeoutError:
@@ -224,13 +273,13 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
                 "success": False,
                 "error": "timeout"
             }
-        
+
         suggestions = []
         if result and isinstance(result, list):
             for suggestion in result:
                 if isinstance(suggestion, dict) and all(k in suggestion for k in ["type", "category", "original_word", "suggested_word", "explanation", "examples"]):
                     suggestions.append(suggestion)
-        
+
         vocab_log(f"✅ VOCAB: Sentence {sentence_idx} completed with {len(suggestions)} suggestions")
         return {
             "sentence_idx": sentence_idx,
@@ -238,7 +287,7 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
             "suggestions": suggestions,
             "success": result is not None
         }
-        
+
     except Exception as e:
         vocab_log(f"💥 VOCAB: Error analyzing sentence {sentence_idx}: {str(e)[:100]}")
         return {
@@ -248,6 +297,74 @@ async def analyze_single_sentence_vocabulary(sentence: str, sentence_idx: int) -
             "success": False,
             "error": str(e)
         }
+
+async def analyze_batch_vocabulary(sentences: List[str], start_index: int, question_number: int = None) -> List[Dict[str, Any]]:
+    """Analyze vocabulary for a batch of sentences in a single API call"""
+    vocab_log(f"🔍 VOCAB: Analyzing batch of {len(sentences)} sentences starting at index {start_index}", question_number)
+
+    if not sentences:
+        return []
+
+    # Filter out empty sentences but track their positions
+    non_empty_indices = []
+    non_empty_sentences = []
+    for i, sentence in enumerate(sentences):
+        if sentence and sentence.strip():
+            non_empty_indices.append(i)
+            non_empty_sentences.append(sentence)
+
+    # If all sentences are empty, return empty results
+    if not non_empty_sentences:
+        return [{"sentence_idx": start_index + i, "sentence": s, "suggestions": [], "success": True} for i, s in enumerate(sentences)]
+
+    try:
+        prompt = create_vocabulary_prompt_for_batch(non_empty_sentences, start_index)
+
+        # Add timeout protection
+        try:
+            result = await asyncio.wait_for(
+                call_openai_with_retry(prompt, expected_format="list", max_retries=2),
+                timeout=60.0  # 60 second timeout for batch
+            )
+            vocab_log(f"✅ VOCAB: Batch starting at {start_index} API call completed", question_number)
+        except asyncio.TimeoutError:
+            vocab_log(f"⚠️ VOCAB: Batch starting at {start_index} timed out after 60s", question_number)
+            return [{"sentence_idx": start_index + i, "sentence": s, "suggestions": [], "success": False, "error": "timeout"} for i, s in enumerate(sentences)]
+
+        # Initialize results for all sentences (including empty ones)
+        batch_results = []
+        for i, sentence in enumerate(sentences):
+            batch_results.append({
+                "sentence_idx": start_index + i,
+                "sentence": sentence,
+                "suggestions": [],
+                "success": True
+            })
+
+        if result and isinstance(result, list):
+            # Map results back to original positions
+            for result_idx, suggestions in enumerate(result):
+                if result_idx < len(non_empty_indices):
+                    original_batch_idx = non_empty_indices[result_idx]
+
+                    if isinstance(suggestions, list):
+                        valid_suggestions = []
+                        for suggestion in suggestions:
+                            if isinstance(suggestion, dict) and all(k in suggestion for k in ["type", "category", "original_word", "suggested_word", "explanation", "examples"]):
+                                valid_suggestions.append(suggestion)
+                        batch_results[original_batch_idx]["suggestions"] = valid_suggestions
+        else:
+            # Mark all as failed if API returned nothing
+            for br in batch_results:
+                if br["sentence"] and br["sentence"].strip():
+                    br["success"] = False
+
+        vocab_log(f"✅ VOCAB: Batch starting at {start_index} completed", question_number)
+        return batch_results
+
+    except Exception as e:
+        vocab_log(f"💥 VOCAB: Error analyzing batch starting at {start_index}: {str(e)[:100]}", question_number)
+        return [{"sentence_idx": start_index + i, "sentence": s, "suggestions": [], "success": False, "error": str(e)} for i, s in enumerate(sentences)]
 
 def aggregate_vocabulary_results(results: List[Dict], sentences: List[str]) -> Dict[str, Any]:
     """Aggregate vocabulary collocation results from parallel sentence processing"""
@@ -378,56 +495,110 @@ def split_into_sentences(text: str) -> List[str]:
     return result
 
 async def analyze_vocabulary(transcript: str, question_number: int = None) -> Dict[str, Any]:
-    """Analyze vocabulary collocations in a transcript"""
+    """Analyze vocabulary collocations in a transcript using batched API calls for efficiency"""
     vocab_log(f"🔍 VOCAB: Starting vocabulary analysis for transcript of length: {len(transcript)}", question_number)
-    
+
     if not transcript or not transcript.strip():
         vocab_log(f"🔍 VOCAB: Empty transcript, returning default result", question_number)
         return {
             "grade": 100,
             "vocabulary_suggestions": {},
         }
-        
+
     try:
         sentences = split_into_sentences(transcript)
-        vocab_log(f"🔍 VOCAB: Analyzing {len(sentences)} sentences for vocabulary collocations", question_number)
-        
-        # Process sentences in parallel with timeout protection
-        tasks = [analyze_single_sentence_vocabulary(sentence, idx) for idx, sentence in enumerate(sentences)]
-        
+        vocab_log(f"🔍 VOCAB: Analyzing {len(sentences)} sentences in batches of {VOCABULARY_BATCH_SIZE}", question_number)
+
+        # Split sentences into batches
+        batches = []
+        for i in range(0, len(sentences), VOCABULARY_BATCH_SIZE):
+            batch = sentences[i:i + VOCABULARY_BATCH_SIZE]
+            batches.append((batch, i))  # (sentences, start_index)
+
+        vocab_log(f"🔍 VOCAB: Created {len(batches)} batches for {len(sentences)} sentences", question_number)
+
+        # Process batches in parallel
+        batch_tasks = [
+            analyze_batch_vocabulary(batch_sentences, start_idx, question_number)
+            for batch_sentences, start_idx in batches
+        ]
+
         # Add timeout to prevent hanging
         try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=120.0  # 2 minute timeout
+            batch_results = await asyncio.wait_for(
+                asyncio.gather(*batch_tasks, return_exceptions=True),
+                timeout=180.0  # 3 minute timeout for all batches
             )
-            vocab_log(f"🔍 VOCAB: Parallel sentence analysis completed successfully", question_number)
+            vocab_log(f"🔍 VOCAB: Batch processing completed successfully", question_number)
         except asyncio.TimeoutError:
-            vocab_log(f"💥 VOCAB: Timeout after 120s processing {len(sentences)} sentences", question_number)
-            # Return fallback result instead of failing
+            vocab_log(f"💥 VOCAB: Timeout after 180s processing {len(batches)} batches", question_number)
             return {
-                "grade": 50,  # Neutral score for timeout
+                "grade": 50,
                 "vocabulary_suggestions": {},
             }
-        
-        # Check for exceptions in results
-        exceptions = [r for r in results if isinstance(r, Exception)]
-        if exceptions:
-            vocab_log(f"⚠️ VOCAB: {len(exceptions)} sentence analyses failed, continuing with successful ones", question_number)
-            for i, exc in enumerate(exceptions):
-                vocab_log(f"⚠️ VOCAB: Sentence {i} failed: {str(exc)[:100]}", question_number)
-        
+
+        # Flatten results from all batches
+        all_results = []
+        failed_batches = []
+
+        for batch_idx, batch_result in enumerate(batch_results):
+            if isinstance(batch_result, Exception):
+                vocab_log(f"💥 VOCAB: Batch {batch_idx} failed with exception: {batch_result}", question_number)
+                failed_batches.append(batch_idx)
+                # Add failed results for this batch
+                batch_sentences, start_idx = batches[batch_idx]
+                for i, s in enumerate(batch_sentences):
+                    all_results.append({
+                        "sentence_idx": start_idx + i,
+                        "sentence": s,
+                        "suggestions": [],
+                        "success": False,
+                        "error": str(batch_result)
+                    })
+            else:
+                all_results.extend(batch_result)
+
+        # Retry failed batches with per-sentence analysis as fallback
+        if failed_batches:
+            vocab_log(f"⚠️ VOCAB: Retrying {len(failed_batches)} failed batches with per-sentence analysis", question_number)
+            for batch_idx in failed_batches:
+                batch_sentences, start_idx = batches[batch_idx]
+                fallback_tasks = [
+                    analyze_single_sentence_vocabulary(sentence, start_idx + i)
+                    for i, sentence in enumerate(batch_sentences)
+                ]
+                fallback_results = await asyncio.gather(*fallback_tasks, return_exceptions=True)
+
+                # Replace failed results with fallback results
+                for i, fallback_result in enumerate(fallback_results):
+                    result_idx = start_idx + i
+                    for j, r in enumerate(all_results):
+                        if r["sentence_idx"] == result_idx:
+                            if isinstance(fallback_result, Exception):
+                                all_results[j] = {
+                                    "sentence_idx": result_idx,
+                                    "sentence": batch_sentences[i],
+                                    "suggestions": [],
+                                    "success": False,
+                                    "error": str(fallback_result)
+                                }
+                            else:
+                                all_results[j] = fallback_result
+                            break
+
+        # Sort results by sentence index
+        all_results.sort(key=lambda x: x["sentence_idx"])
+
         # Aggregate results
-        vocab_log(f"🔍 VOCAB: Aggregating results from {len(results)} sentence analyses", question_number)
-        final_result = aggregate_vocabulary_results(results, sentences)
+        vocab_log(f"🔍 VOCAB: Aggregating results from {len(all_results)} sentence analyses", question_number)
+        final_result = aggregate_vocabulary_results(all_results, sentences)
         vocab_log(f"✅ VOCAB: Analysis completed successfully with grade: {final_result.get('grade', 'N/A')}", question_number)
         return final_result
-        
+
     except Exception as e:
         vocab_log(f"💥 VOCAB: Critical error in vocabulary analysis: {str(e)}", question_number)
         logger.exception("Full vocabulary analysis exception:")
-        # Return fallback result instead of failing
         return {
-            "grade": 25,  # Low score for error
+            "grade": 25,
             "vocabulary_suggestions": {},
         } 

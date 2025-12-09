@@ -229,6 +229,9 @@ def simplify_single_word_corrections(
         processed_sentences.append(processed_corrections_for_sentence)
     return processed_sentences
 
+# Batch size for processing multiple sentences in one API call
+GRAMMAR_BATCH_SIZE = 5
+
 def create_grammar_prompt_for_single_sentence(sentence: str) -> str:
     """Create optimized prompt for single sentence grammar analysis"""
     return f"""
@@ -258,7 +261,7 @@ Provide corrections in JSON format:
         "type": "grammar",
         "category": 1,
         "original_phrase": "problematic phrase",
-        "suggested_correction": "corrected phrase", 
+        "suggested_correction": "corrected phrase",
         "explanation": "brief explanation"
     }}
 ]
@@ -266,10 +269,57 @@ Provide corrections in JSON format:
 Return ONLY the JSON array. No other text or markdown formatting.
 """
 
+def create_grammar_prompt_for_batch(sentences: List[str], start_index: int) -> str:
+    """Create prompt for analyzing a batch of sentences"""
+    sentences_text = ""
+    for i, sentence in enumerate(sentences):
+        sentences_text += f"\n{start_index + i + 1}. {sentence}"
+
+    return f"""
+You are an expert in English grammar. Analyze the following sentences, which are based on spoken responses. Since they are derived from speech, ignore disfluencies (e.g., "um", "uh"), filler words, and transcription-related punctuation issues.
+
+Your job is to detect and correct grammar mistakes related to:
+1. Subject-verb agreement (e.g., "he don't" → "he doesn't")
+2. Verb tense consistency (e.g., "i am going yesterday" → "i went yesterday")
+3. Article usage (e.g., "i went to store" → "i went to the store")
+4. Singular/plural form (e.g., "they is happy" → "they are happy")
+5. Word order and sentence structure (e.g., "yesterday i went store" → "yesterday i went to the store")
+6. Preposition use (e.g., "i am good in english" → "i am good at english")
+7. Sentence completeness (e.g., "because i was tired" → "i went home because i was tired")
+8. Disfluencies (e.g., "um", "uh")
+9. Punctuation issues
+10. Mispellings/Fragments (e.g., "M not too sure by testing this." → "I'm not too sure about testing this.")
+11. Grammar issues that arise from the punctuation (periods, commas, hyphens)
+12. Other
+
+IMPORTANT: Always analyze complete phrases, not just single words. Grammar issues often involve multiple words working together.
+
+Sentences to analyze:{sentences_text}
+
+Provide corrections as a JSON array of arrays. Each inner array contains corrections for the corresponding sentence (by order). If a sentence has no issues, use an empty array.
+
+Output format:
+[
+    [  // corrections for sentence {start_index + 1}
+        {{
+            "type": "grammar",
+            "category": 1,
+            "original_phrase": "problematic phrase",
+            "suggested_correction": "corrected phrase",
+            "explanation": "brief explanation"
+        }}
+    ],
+    [],  // sentence {start_index + 2}: no corrections
+    ...
+]
+
+Return ONLY the JSON array with exactly {len(sentences)} inner arrays. No other text or markdown formatting.
+"""
+
 async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int, submission_url: str = None, question_number: int = None) -> Dict[str, Any]:
-    """Analyze grammar for a single sentence"""
+    """Analyze grammar for a single sentence (fallback for batch failures)"""
     logger.info(f"Analyzing grammar for sentence {sentence_idx}")
-    
+
     if not sentence or not sentence.strip():
         return {
             "sentence_idx": sentence_idx,
@@ -277,24 +327,24 @@ async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int, subm
             "corrections": [],
             "success": True
         }
-    
+
     try:
         prompt = create_grammar_prompt_for_single_sentence(sentence)
         result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2, submission_url=submission_url, question_number=question_number)
-        
+
         corrections = []
         if result and isinstance(result, list):
             for correction in result:
                 if isinstance(correction, dict) and all(k in correction for k in ["type", "original_phrase", "suggested_correction", "explanation"]):
                     corrections.append(correction)
-        
+
         return {
             "sentence_idx": sentence_idx,
             "sentence": sentence,
             "corrections": corrections,
             "success": result is not None
         }
-        
+
     except Exception as e:
         logger.error(f"Error analyzing sentence {sentence_idx}: {e}")
         return {
@@ -304,6 +354,64 @@ async def analyze_single_sentence_grammar(sentence: str, sentence_idx: int, subm
             "success": False,
             "error": str(e)
         }
+
+async def analyze_batch_grammar(sentences: List[str], start_index: int, submission_url: str = None, question_number: int = None) -> List[Dict[str, Any]]:
+    """Analyze grammar for a batch of sentences in a single API call"""
+    logger.info(f"Analyzing grammar for batch of {len(sentences)} sentences starting at index {start_index}")
+
+    if not sentences:
+        return []
+
+    # Filter out empty sentences but track their positions
+    non_empty_indices = []
+    non_empty_sentences = []
+    for i, sentence in enumerate(sentences):
+        if sentence and sentence.strip():
+            non_empty_indices.append(i)
+            non_empty_sentences.append(sentence)
+
+    # If all sentences are empty, return empty results
+    if not non_empty_sentences:
+        return [{"sentence_idx": start_index + i, "sentence": s, "corrections": [], "success": True} for i, s in enumerate(sentences)]
+
+    try:
+        prompt = create_grammar_prompt_for_batch(non_empty_sentences, start_index)
+        result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2, submission_url=submission_url, question_number=question_number)
+
+        # Initialize results for all sentences (including empty ones)
+        batch_results = []
+        for i, sentence in enumerate(sentences):
+            batch_results.append({
+                "sentence_idx": start_index + i,
+                "sentence": sentence,
+                "corrections": [],
+                "success": True
+            })
+
+        if result and isinstance(result, list):
+            # Map results back to original positions
+            for result_idx, corrections in enumerate(result):
+                if result_idx < len(non_empty_indices):
+                    original_batch_idx = non_empty_indices[result_idx]
+
+                    if isinstance(corrections, list):
+                        valid_corrections = []
+                        for correction in corrections:
+                            if isinstance(correction, dict) and all(k in correction for k in ["type", "original_phrase", "suggested_correction", "explanation"]):
+                                valid_corrections.append(correction)
+                        batch_results[original_batch_idx]["corrections"] = valid_corrections
+        else:
+            # Mark all as failed if API returned nothing
+            for br in batch_results:
+                if br["sentence"] and br["sentence"].strip():
+                    br["success"] = False
+
+        return batch_results
+
+    except Exception as e:
+        logger.error(f"Error analyzing batch starting at {start_index}: {e}")
+        # Return failed results
+        return [{"sentence_idx": start_index + i, "sentence": s, "corrections": [], "success": False, "error": str(e)} for i, s in enumerate(sentences)]
 
 async def check_grammar(sentences: List[str], submission_url: str = None, question_number: int = None) -> List[List[Dict[str, Any]]]:
     """Check grammar for each sentence"""
@@ -453,26 +561,90 @@ def aggregate_grammar_results(results: List[Dict], sentences: List[str]) -> Dict
     }
 
 async def analyze_grammar(transcript: str, submission_url: str = None, question_number: int = None) -> Dict[str, Any]:
-    """Analyze grammar in a transcript"""
+    """Analyze grammar in a transcript using batched API calls for efficiency"""
     logger.info(f"Starting grammar analysis for transcript of length: {len(transcript)}")
-    
+
     if not transcript or not transcript.strip():
         return {
             "grade": 100,
             "grammar_corrections": {},
         }
-        
+
     try:
         sentences = split_into_sentences(transcript)
-        logger.info(f"Analyzing {len(sentences)} sentences")
-        
-        # Process sentences in parallel
-        tasks = [analyze_single_sentence_grammar(sentence, idx, submission_url, question_number) for idx, sentence in enumerate(sentences)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+        logger.info(f"Analyzing {len(sentences)} sentences in batches of {GRAMMAR_BATCH_SIZE}")
+
+        # Split sentences into batches
+        batches = []
+        for i in range(0, len(sentences), GRAMMAR_BATCH_SIZE):
+            batch = sentences[i:i + GRAMMAR_BATCH_SIZE]
+            batches.append((batch, i))  # (sentences, start_index)
+
+        logger.info(f"Created {len(batches)} batches for {len(sentences)} sentences")
+
+        # Process batches in parallel
+        batch_tasks = [
+            analyze_batch_grammar(batch_sentences, start_idx, submission_url, question_number)
+            for batch_sentences, start_idx in batches
+        ]
+        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+        # Flatten results from all batches
+        all_results = []
+        failed_batches = []
+
+        for batch_idx, batch_result in enumerate(batch_results):
+            if isinstance(batch_result, Exception):
+                logger.error(f"Batch {batch_idx} failed with exception: {batch_result}")
+                failed_batches.append(batch_idx)
+                # Add failed results for this batch
+                batch_sentences, start_idx = batches[batch_idx]
+                for i, s in enumerate(batch_sentences):
+                    all_results.append({
+                        "sentence_idx": start_idx + i,
+                        "sentence": s,
+                        "corrections": [],
+                        "success": False,
+                        "error": str(batch_result)
+                    })
+            else:
+                all_results.extend(batch_result)
+
+        # Retry failed batches with per-sentence analysis as fallback
+        if failed_batches:
+            logger.warning(f"Retrying {len(failed_batches)} failed batches with per-sentence analysis")
+            for batch_idx in failed_batches:
+                batch_sentences, start_idx = batches[batch_idx]
+                fallback_tasks = [
+                    analyze_single_sentence_grammar(sentence, start_idx + i, submission_url, question_number)
+                    for i, sentence in enumerate(batch_sentences)
+                ]
+                fallback_results = await asyncio.gather(*fallback_tasks, return_exceptions=True)
+
+                # Replace failed results with fallback results
+                for i, fallback_result in enumerate(fallback_results):
+                    result_idx = start_idx + i
+                    # Find and replace the failed result
+                    for j, r in enumerate(all_results):
+                        if r["sentence_idx"] == result_idx:
+                            if isinstance(fallback_result, Exception):
+                                all_results[j] = {
+                                    "sentence_idx": result_idx,
+                                    "sentence": batch_sentences[i],
+                                    "corrections": [],
+                                    "success": False,
+                                    "error": str(fallback_result)
+                                }
+                            else:
+                                all_results[j] = fallback_result
+                            break
+
+        # Sort results by sentence index
+        all_results.sort(key=lambda x: x["sentence_idx"])
+
         # Aggregate results
-        return aggregate_grammar_results(results, sentences)
-        
+        return aggregate_grammar_results(all_results, sentences)
+
     except Exception as e:
         logger.exception("Error in grammar analysis")
         return {

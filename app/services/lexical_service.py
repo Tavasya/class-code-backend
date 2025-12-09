@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 # OpenAI API configuration
 MODEL = "gpt-4o-mini"
 
+# Batch size for processing multiple sentences in one API call
+LEXICAL_BATCH_SIZE = 5
+
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
     if not OPENAI_API_KEY:
@@ -107,10 +110,48 @@ Present the results in JSON format:
 Return ONLY the JSON array. No other text or markdown formatting.
 """
 
+def create_lexical_prompt_for_batch(sentences: List[str], start_index: int) -> str:
+    """Create prompt for analyzing a batch of sentences for lexical resources"""
+    sentences_text = ""
+    for i, sentence in enumerate(sentences):
+        sentences_text += f"\n{start_index + i + 1}. {sentence}"
+
+    return f"""
+You are an expert in English lexical resources specializing in collocations, idioms, and natural word usage.
+
+Analyze the following sentences for lexical resource issues:
+
+Identify:
+1. Collocations that are used incorrectly or unnaturally
+2. Idioms that are used incorrectly or could be used to enhance the sentence
+3. Word usage errors where a word is used in an incorrect or unnatural context
+4. Word combinations that don't follow conventional Oxford English patterns
+
+Sentences to analyze:{sentences_text}
+
+Provide suggestions as a JSON array of arrays. Each inner array contains suggestions for the corresponding sentence (by order). If a sentence has no issues, use an empty array.
+
+Output format:
+[
+    [  // suggestions for sentence {start_index + 1}
+        {{
+            "original_phrase": "make a decision",
+            "suggested_phrase": "take a decision",
+            "explanation": "In English, decisions are typically 'taken' rather than 'made'",
+            "resource_type": "collocation"
+        }}
+    ],
+    [],  // sentence {start_index + 2}: no suggestions
+    ...
+]
+
+Return ONLY the JSON array with exactly {len(sentences)} inner arrays. No other text or markdown formatting.
+"""
+
 async def analyze_single_sentence_lexical(sentence: str, sentence_idx: int) -> Dict[str, Any]:
-    """Analyze lexical resources for a single sentence"""
+    """Analyze lexical resources for a single sentence (fallback for batch failures)"""
     logger.info(f"Analyzing lexical resources for sentence {sentence_idx}")
-    
+
     if not sentence or not sentence.strip():
         return {
             "sentence_idx": sentence_idx,
@@ -118,24 +159,24 @@ async def analyze_single_sentence_lexical(sentence: str, sentence_idx: int) -> D
             "suggestions": [],
             "success": True
         }
-    
+
     try:
         prompt = create_lexical_prompt_for_single_sentence(sentence)
         result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
-        
+
         suggestions = []
         if result and isinstance(result, list):
             for suggestion in result:
                 if isinstance(suggestion, dict) and all(k in suggestion for k in ["original_phrase", "suggested_phrase", "explanation", "resource_type"]):
                     suggestions.append(suggestion)
-        
+
         return {
             "sentence_idx": sentence_idx,
             "sentence": sentence,
             "suggestions": suggestions,
             "success": result is not None
         }
-        
+
     except Exception as e:
         logger.error(f"Error analyzing lexical resources for sentence {sentence_idx}: {e}")
         return {
@@ -145,6 +186,63 @@ async def analyze_single_sentence_lexical(sentence: str, sentence_idx: int) -> D
             "success": False,
             "error": str(e)
         }
+
+async def analyze_batch_lexical(sentences: List[str], start_index: int) -> List[Dict[str, Any]]:
+    """Analyze lexical resources for a batch of sentences in a single API call"""
+    logger.info(f"Analyzing lexical resources for batch of {len(sentences)} sentences starting at index {start_index}")
+
+    if not sentences:
+        return []
+
+    # Filter out empty sentences but track their positions
+    non_empty_indices = []
+    non_empty_sentences = []
+    for i, sentence in enumerate(sentences):
+        if sentence and sentence.strip():
+            non_empty_indices.append(i)
+            non_empty_sentences.append(sentence)
+
+    # If all sentences are empty, return empty results
+    if not non_empty_sentences:
+        return [{"sentence_idx": start_index + i, "sentence": s, "suggestions": [], "success": True} for i, s in enumerate(sentences)]
+
+    try:
+        prompt = create_lexical_prompt_for_batch(non_empty_sentences, start_index)
+        result = await call_openai_with_retry(prompt, expected_format="list", max_retries=2)
+
+        # Initialize results for all sentences (including empty ones)
+        batch_results = []
+        for i, sentence in enumerate(sentences):
+            batch_results.append({
+                "sentence_idx": start_index + i,
+                "sentence": sentence,
+                "suggestions": [],
+                "success": True
+            })
+
+        if result and isinstance(result, list):
+            # Map results back to original positions
+            for result_idx, suggestions in enumerate(result):
+                if result_idx < len(non_empty_indices):
+                    original_batch_idx = non_empty_indices[result_idx]
+
+                    if isinstance(suggestions, list):
+                        valid_suggestions = []
+                        for suggestion in suggestions:
+                            if isinstance(suggestion, dict) and all(k in suggestion for k in ["original_phrase", "suggested_phrase", "explanation", "resource_type"]):
+                                valid_suggestions.append(suggestion)
+                        batch_results[original_batch_idx]["suggestions"] = valid_suggestions
+        else:
+            # Mark all as failed if API returned nothing
+            for br in batch_results:
+                if br["sentence"] and br["sentence"].strip():
+                    br["success"] = False
+
+        return batch_results
+
+    except Exception as e:
+        logger.error(f"Error analyzing lexical batch starting at {start_index}: {e}")
+        return [{"sentence_idx": start_index + i, "sentence": s, "suggestions": [], "success": False, "error": str(e)} for i, s in enumerate(sentences)]
 
 def aggregate_lexical_results(results: List[Dict], sentences: List[str]) -> Dict[str, Any]:
     """Aggregate lexical results from parallel sentence processing"""
@@ -224,7 +322,7 @@ def aggregate_lexical_results(results: List[Dict], sentences: List[str]) -> Dict
     }
 
 async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
-    """Analyze lexical resources in sentences and return feedback in standardized format"""
+    """Analyze lexical resources in sentences using batched API calls for efficiency"""
     if not sentences:
         return {
             "grade": 100,
@@ -233,12 +331,77 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
         }
 
     try:
-        # Process sentences in parallel
-        tasks = [analyze_single_sentence_lexical(sentence, idx) for idx, sentence in enumerate(sentences)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+        logger.info(f"Analyzing {len(sentences)} sentences in batches of {LEXICAL_BATCH_SIZE}")
+
+        # Split sentences into batches
+        batches = []
+        for i in range(0, len(sentences), LEXICAL_BATCH_SIZE):
+            batch = sentences[i:i + LEXICAL_BATCH_SIZE]
+            batches.append((batch, i))  # (sentences, start_index)
+
+        logger.info(f"Created {len(batches)} batches for {len(sentences)} sentences")
+
+        # Process batches in parallel
+        batch_tasks = [
+            analyze_batch_lexical(batch_sentences, start_idx)
+            for batch_sentences, start_idx in batches
+        ]
+        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+        # Flatten results from all batches
+        all_results = []
+        failed_batches = []
+
+        for batch_idx, batch_result in enumerate(batch_results):
+            if isinstance(batch_result, Exception):
+                logger.error(f"Lexical batch {batch_idx} failed with exception: {batch_result}")
+                failed_batches.append(batch_idx)
+                # Add failed results for this batch
+                batch_sentences, start_idx = batches[batch_idx]
+                for i, s in enumerate(batch_sentences):
+                    all_results.append({
+                        "sentence_idx": start_idx + i,
+                        "sentence": s,
+                        "suggestions": [],
+                        "success": False,
+                        "error": str(batch_result)
+                    })
+            else:
+                all_results.extend(batch_result)
+
+        # Retry failed batches with per-sentence analysis as fallback
+        if failed_batches:
+            logger.warning(f"Retrying {len(failed_batches)} failed lexical batches with per-sentence analysis")
+            for batch_idx in failed_batches:
+                batch_sentences, start_idx = batches[batch_idx]
+                fallback_tasks = [
+                    analyze_single_sentence_lexical(sentence, start_idx + i)
+                    for i, sentence in enumerate(batch_sentences)
+                ]
+                fallback_results = await asyncio.gather(*fallback_tasks, return_exceptions=True)
+
+                # Replace failed results with fallback results
+                for i, fallback_result in enumerate(fallback_results):
+                    result_idx = start_idx + i
+                    for j, r in enumerate(all_results):
+                        if r["sentence_idx"] == result_idx:
+                            if isinstance(fallback_result, Exception):
+                                all_results[j] = {
+                                    "sentence_idx": result_idx,
+                                    "sentence": batch_sentences[i],
+                                    "suggestions": [],
+                                    "success": False,
+                                    "error": str(fallback_result)
+                                }
+                            else:
+                                all_results[j] = fallback_result
+                            break
+
+        # Sort results by sentence index
+        all_results.sort(key=lambda x: x["sentence_idx"])
+
         # Aggregate results
-        return aggregate_lexical_results(results, sentences)
+        return aggregate_lexical_results(all_results, sentences)
 
     except Exception as e:
         logger.exception(f"Error in lexical analysis: {str(e)}")
