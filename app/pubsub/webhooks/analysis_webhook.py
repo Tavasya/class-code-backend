@@ -438,34 +438,30 @@ class AnalysisWebhook:
                 lexical_task(),
                 vocabulary_task()
             ])
-
-            # Background task wrapper to run analysis without blocking the response
-            async def run_analysis_in_background():
-                try:
-                    await asyncio.gather(*tasks)
-                    logger.info(f"🎉 PHASE 1 analysis completed for question {question_number}")
-                    logger.info(f"🔍 QUESTION {question_number} PARALLEL TASKS COMPLETED - Submission: {submission_url}")
-
-                    # Track parallel completion
-                    self._track_question(submission_url, question_number, "PARALLEL_COMPLETED")
-
-                    # Check completion after parallel processing
-                    await self._check_and_publish_completion(submission_url, question_number, total_questions)
-                except Exception as parallel_error:
-                    logger.error(f"💥 Error during background analysis for question {question_number}: {str(parallel_error)}")
-                    # Mark all analyses as failed on exception
-                    for analysis_type in analysis_types:
-                        try:
-                            await db_service.update_status_logs(submission_url, question_number, analysis_type, "failed")
-                        except Exception as status_error:
-                            logger.error(f"Failed to update status to failed for {analysis_type}: {str(status_error)}")
-
-            # Run analysis in background - return immediately to acknowledge pub/sub message
-            # This prevents pub/sub from retrying while analysis is still running
-            asyncio.create_task(run_analysis_in_background())
-            logger.info(f"🚀 Started background analysis for question {question_number}, returning 200 immediately")
-
-            return {"status": "success", "message": "Phase 1 analysis started in background"}
+            
+            # Run all Phase 1 tasks in parallel with proper error handling
+            try:
+                await asyncio.gather(*tasks)
+                logger.info(f"🎉 PHASE 1 analysis completed for question {question_number}")
+                logger.info(f"🔍 QUESTION {question_number} PARALLEL TASKS COMPLETED - Submission: {submission_url}")
+                
+                # Track parallel completion
+                self._track_question(submission_url, question_number, "PARALLEL_COMPLETED")
+                
+                # FIX: Check completion immediately after parallel processing to prevent hanging
+                # This ensures questions complete even if individual webhooks have issues
+                await self._check_and_publish_completion(submission_url, question_number, total_questions)
+                
+                return {"status": "success", "message": "Phase 1 analysis completed (Grammar, Pronunciation, Lexical, Vocabulary)"}
+            except Exception as parallel_error:
+                logger.error(f"💥 Error during parallel analysis for question {question_number}: {str(parallel_error)}")
+                # FIX: Mark all analyses as failed on exception to prevent hanging
+                for analysis_type in analysis_types:
+                    try:
+                        await db_service.update_status_logs(submission_url, question_number, analysis_type, "failed")
+                    except Exception as status_error:
+                        logger.error(f"Failed to update status to failed for {analysis_type}: {str(status_error)}")
+                raise parallel_error
             
         except HTTPException:
             raise
