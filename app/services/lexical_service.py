@@ -341,12 +341,16 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
 
         logger.info(f"Created {len(batches)} batches for {len(sentences)} sentences")
 
-        # Process batches in parallel
-        batch_tasks = [
-            analyze_batch_lexical(batch_sentences, start_idx)
-            for batch_sentences, start_idx in batches
-        ]
-        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+        # Process batches SEQUENTIALLY to avoid connection overload
+        batch_results = []
+        for batch_idx, (batch_sentences, start_idx) in enumerate(batches):
+            try:
+                logger.info(f"Processing lexical batch {batch_idx + 1}/{len(batches)}")
+                result = await analyze_batch_lexical(batch_sentences, start_idx)
+                batch_results.append(result)
+            except Exception as e:
+                logger.warning(f"Lexical batch {batch_idx + 1} failed: {str(e)}")
+                batch_results.append(e)
 
         # Flatten results from all batches
         all_results = []
@@ -369,26 +373,26 @@ async def analyze_lexical_resources(sentences: List[str]) -> Dict[str, Any]:
             else:
                 all_results.extend(batch_result)
 
-        # Retry failed batches with per-sentence analysis as fallback
+        # Retry failed batches with per-sentence analysis as fallback (sequential)
         if failed_batches:
             logger.warning(f"Retrying {len(failed_batches)} failed lexical batches with per-sentence analysis")
             for batch_idx in failed_batches:
                 batch_sentences, start_idx = batches[batch_idx]
-                fallback_tasks = [
-                    analyze_single_sentence_lexical(sentence, start_idx + i)
-                    for i, sentence in enumerate(batch_sentences)
-                ]
-                fallback_results = await asyncio.gather(*fallback_tasks, return_exceptions=True)
 
-                # Replace failed results with fallback results
-                for i, fallback_result in enumerate(fallback_results):
+                for i, sentence in enumerate(batch_sentences):
                     result_idx = start_idx + i
+                    try:
+                        fallback_result = await analyze_single_sentence_lexical(sentence, result_idx)
+                    except Exception as e:
+                        fallback_result = e
+
+                    # Replace failed result with fallback result
                     for j, r in enumerate(all_results):
                         if r["sentence_idx"] == result_idx:
                             if isinstance(fallback_result, Exception):
                                 all_results[j] = {
                                     "sentence_idx": result_idx,
-                                    "sentence": batch_sentences[i],
+                                    "sentence": sentence,
                                     "suggestions": [],
                                     "success": False,
                                     "error": str(fallback_result)

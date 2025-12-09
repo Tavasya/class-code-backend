@@ -517,25 +517,19 @@ async def analyze_vocabulary(transcript: str, question_number: int = None) -> Di
 
         vocab_log(f"🔍 VOCAB: Created {len(batches)} batches for {len(sentences)} sentences", question_number)
 
-        # Process batches in parallel
-        batch_tasks = [
-            analyze_batch_vocabulary(batch_sentences, start_idx, question_number)
-            for batch_sentences, start_idx in batches
-        ]
+        # Process batches SEQUENTIALLY to avoid connection overload
+        # (pub/sub still runs 4 analysis types in parallel, but batches within each are sequential)
+        batch_results = []
+        for batch_idx, (batch_sentences, start_idx) in enumerate(batches):
+            try:
+                vocab_log(f"🔍 VOCAB: Processing batch {batch_idx + 1}/{len(batches)}", question_number)
+                result = await analyze_batch_vocabulary(batch_sentences, start_idx, question_number)
+                batch_results.append(result)
+            except Exception as e:
+                vocab_log(f"⚠️ VOCAB: Batch {batch_idx + 1} failed: {str(e)}", question_number)
+                batch_results.append(e)
 
-        # Add timeout to prevent hanging
-        try:
-            batch_results = await asyncio.wait_for(
-                asyncio.gather(*batch_tasks, return_exceptions=True),
-                timeout=180.0  # 3 minute timeout for all batches
-            )
-            vocab_log(f"🔍 VOCAB: Batch processing completed successfully", question_number)
-        except asyncio.TimeoutError:
-            vocab_log(f"💥 VOCAB: Timeout after 180s processing {len(batches)} batches", question_number)
-            return {
-                "grade": 50,
-                "vocabulary_suggestions": {},
-            }
+        vocab_log(f"🔍 VOCAB: Batch processing completed", question_number)
 
         # Flatten results from all batches
         all_results = []
@@ -558,26 +552,26 @@ async def analyze_vocabulary(transcript: str, question_number: int = None) -> Di
             else:
                 all_results.extend(batch_result)
 
-        # Retry failed batches with per-sentence analysis as fallback
+        # Retry failed batches with per-sentence analysis as fallback (sequential)
         if failed_batches:
             vocab_log(f"⚠️ VOCAB: Retrying {len(failed_batches)} failed batches with per-sentence analysis", question_number)
             for batch_idx in failed_batches:
                 batch_sentences, start_idx = batches[batch_idx]
-                fallback_tasks = [
-                    analyze_single_sentence_vocabulary(sentence, start_idx + i)
-                    for i, sentence in enumerate(batch_sentences)
-                ]
-                fallback_results = await asyncio.gather(*fallback_tasks, return_exceptions=True)
 
-                # Replace failed results with fallback results
-                for i, fallback_result in enumerate(fallback_results):
+                for i, sentence in enumerate(batch_sentences):
                     result_idx = start_idx + i
+                    try:
+                        fallback_result = await analyze_single_sentence_vocabulary(sentence, result_idx)
+                    except Exception as e:
+                        fallback_result = e
+
+                    # Replace failed result with fallback result
                     for j, r in enumerate(all_results):
                         if r["sentence_idx"] == result_idx:
                             if isinstance(fallback_result, Exception):
                                 all_results[j] = {
                                     "sentence_idx": result_idx,
-                                    "sentence": batch_sentences[i],
+                                    "sentence": sentence,
                                     "suggestions": [],
                                     "success": False,
                                     "error": str(fallback_result)
