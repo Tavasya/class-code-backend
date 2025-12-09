@@ -73,7 +73,7 @@ async def call_openai_with_retry(prompt: str, expected_format: str = "list", max
                 "messages": [{"role": "user", "content": current_prompt}]
             }
 
-            timeout = aiohttp.ClientTimeout(total=30, connect=5)  # Reduced timeout
+            timeout = aiohttp.ClientTimeout(total=60, connect=10)
             connector = aiohttp.TCPConnector(limit=10, ttl_dns_cache=300, use_dns_cache=True)
             
             async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
