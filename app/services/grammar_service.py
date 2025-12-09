@@ -10,7 +10,7 @@ import difflib
 # Setup logging
 logger = logging.getLogger(__name__)
 
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-5-nano"
 
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2, submission_url: str = None, question_number: int = None) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""

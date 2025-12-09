@@ -39,7 +39,7 @@ def init_vocab_log():
 
 # Version 3: Collocation-based vocabulary analysis with categorization (similar to grammar service)
 # Previous v2: CEFR-based vocabulary analysis (legacy, commented out)
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-5-nano"
 
 async def call_openai_with_retry(prompt: str, expected_format: str = "list", max_retries: int = 2) -> Any:
     """Call OpenAI API with retry mechanism for format validation"""
