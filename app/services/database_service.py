@@ -696,3 +696,165 @@ class DatabaseService:
         except Exception as e:
             self._log_operation_error(operation, str(e), teacher_id=teacher_id)
             return False
+
+    # ============================================
+    # Coordination State Methods (for multi-instance support)
+    # ============================================
+
+    def get_coordination_state(self, submission_url: str, question_number: int) -> Optional[Dict[str, Any]]:
+        """Get coordination state for a question from the database.
+
+        This allows multiple Cloud Run instances to share state for audio/transcript coordination.
+
+        Args:
+            submission_url: Submission ID
+            question_number: Question number
+
+        Returns:
+            Dict with audio_done, transcript_done, audio_data, transcript_data or None
+        """
+        try:
+            submission = self.get_submission_by_url(submission_url)
+            if not submission:
+                return None
+
+            status_logs = submission.get('status_logs', {})
+            coordination = status_logs.get('coordination', {})
+            question_key = str(question_number)
+
+            return coordination.get(question_key)
+
+        except Exception as e:
+            logger.error(f"Error getting coordination state for {submission_url} Q{question_number}: {str(e)}")
+            return None
+
+    def update_coordination_state(
+        self,
+        submission_url: str,
+        question_number: int,
+        audio_done: Optional[bool] = None,
+        transcript_done: Optional[bool] = None,
+        audio_data: Optional[Dict[str, Any]] = None,
+        transcript_data: Optional[Dict[str, Any]] = None,
+        total_questions: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Update coordination state for a question in the database.
+
+        This allows multiple Cloud Run instances to share state for audio/transcript coordination.
+        Uses atomic read-modify-write to prevent race conditions.
+
+        Args:
+            submission_url: Submission ID
+            question_number: Question number
+            audio_done: Set audio_done flag
+            transcript_done: Set transcript_done flag
+            audio_data: Store audio message data
+            transcript_data: Store transcript message data
+            total_questions: Total questions in submission
+
+        Returns:
+            Updated coordination state for this question, or None on error
+        """
+        operation = "UPDATE_COORDINATION_STATE"
+        question_key = str(question_number)
+
+        try:
+            # Get current submission
+            submission = self.get_submission_by_url(submission_url)
+            if not submission:
+                logger.error(f"Submission not found for coordination update: {submission_url}")
+                return None
+
+            # Get or initialize status_logs
+            status_logs = submission.get('status_logs', {})
+            if not status_logs:
+                status_logs = {
+                    "submission_started": datetime.now().isoformat(),
+                    "questions": {}
+                }
+
+            # Get or initialize coordination section
+            if 'coordination' not in status_logs:
+                status_logs['coordination'] = {}
+
+            # Get or initialize this question's coordination state
+            if question_key not in status_logs['coordination']:
+                status_logs['coordination'][question_key] = {
+                    "audio_done": False,
+                    "transcript_done": False,
+                    "audio_data": None,
+                    "transcript_data": None,
+                    "created_at": datetime.now().isoformat()
+                }
+
+            coord_state = status_logs['coordination'][question_key]
+
+            # Update fields if provided
+            if audio_done is not None:
+                coord_state["audio_done"] = audio_done
+            if transcript_done is not None:
+                coord_state["transcript_done"] = transcript_done
+            if audio_data is not None:
+                coord_state["audio_data"] = audio_data
+            if transcript_data is not None:
+                coord_state["transcript_data"] = transcript_data
+            if total_questions is not None:
+                status_logs['total_questions'] = total_questions
+
+            coord_state["updated_at"] = datetime.now().isoformat()
+
+            # Write back to database
+            result = self.supabase.table('submissions').update({
+                "status_logs": status_logs
+            }).eq('id', submission_url).execute()
+
+            if not result.data:
+                logger.error(f"Failed to update coordination state for {submission_url} Q{question_number}")
+                return None
+
+            logger.info(f"✅ Updated coordination state for {submission_url} Q{question_number}: audio={coord_state['audio_done']}, transcript={coord_state['transcript_done']}")
+
+            return coord_state
+
+        except Exception as e:
+            logger.error(f"Error updating coordination state for {submission_url} Q{question_number}: {str(e)}")
+            return None
+
+    def cleanup_coordination_state(self, submission_url: str, question_number: int) -> bool:
+        """Clean up coordination state after analysis is triggered.
+
+        Args:
+            submission_url: Submission ID
+            question_number: Question number
+
+        Returns:
+            True if successful, False otherwise
+        """
+        question_key = str(question_number)
+
+        try:
+            submission = self.get_submission_by_url(submission_url)
+            if not submission:
+                return False
+
+            status_logs = submission.get('status_logs', {})
+            coordination = status_logs.get('coordination', {})
+
+            if question_key in coordination:
+                # Mark as processed instead of deleting (for debugging)
+                coordination[question_key]["processed"] = True
+                coordination[question_key]["processed_at"] = datetime.now().isoformat()
+
+                result = self.supabase.table('submissions').update({
+                    "status_logs": status_logs
+                }).eq('id', submission_url).execute()
+
+                if result.data:
+                    logger.info(f"✅ Cleaned up coordination state for {submission_url} Q{question_number}")
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error cleaning up coordination state: {str(e)}")
+            return False
